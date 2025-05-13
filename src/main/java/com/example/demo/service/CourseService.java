@@ -22,6 +22,12 @@ public class CourseService {
         this.progressRepository = progressRepository;
     }
 
+    // اضافه کردن این متد
+    public List<Course> getAllCourses() {
+        return courseRepository.findAll();
+    }
+
+    // متدهای موجود
     public Course createCourse(Course course, User teacher) {
         course.setTeacher(teacher);
         return courseRepository.save(course);

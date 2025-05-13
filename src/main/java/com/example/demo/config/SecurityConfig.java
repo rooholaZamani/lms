@@ -22,17 +22,19 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable()) // Disabling CSRF for simplicity (student project)
+                .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authz -> authz
-                        // Allow Swagger UI and API docs
+                        // Swagger و API docs
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**").permitAll()
-                        // Allow H2 Console
+                        // H2 Console
                         .requestMatchers("/h2-console/**").permitAll()
-                        // Allow static resources
-                        .requestMatchers("/", "/login", "/register", "/css/**", "/js/**").permitAll()
-                        // Allow public APIs
-                        .requestMatchers("/api/public/**").permitAll()
-                        // Role-based authorization
+                        // فایل‌های استاتیک و صفحات عمومی
+                        .requestMatchers("/", "/home", "/login", "/register", "/css/**", "/js/**", "/images/**").permitAll()
+                        // API‌های عمومی
+                        .requestMatchers("/api/auth/**").permitAll()
+                        // مسیر‌های داشبورد که توسط کنترلر مدیریت می‌شوند
+                        .requestMatchers("/dashboard", "/courses/**", "/available-courses", "/exams/**").authenticated()
+                        // دسترسی‌های نقش محور
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")
                         .requestMatchers("/api/student/**").hasRole("STUDENT")
                         .anyRequest().authenticated()

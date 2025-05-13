@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
-    <title>داشبورد استاد - سامانه مدیریت یادگیری</title>
+    <title>داشبورد دانش‌آموز - سامانه مدیریت یادگیری</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
@@ -71,10 +72,6 @@
             color: #6c757d;
             font-size: 0.9rem;
         }
-        .course-actions {
-            display: flex;
-            gap: 5px;
-        }
     </style>
 </head>
 <body>
@@ -94,7 +91,7 @@
             <div class="d-flex">
                 <div class="dropdown">
                     <a class="btn btn-outline-light dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-user"></i> <span th:text="${#authentication.principal.username}">کاربر</span>
+                        <i class="fas fa-user"></i> <span th:text="${user.firstName + ' ' + user.lastName}">کاربر</span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="#"><i class="fas fa-user-cog"></i> پروفایل</a></li>
@@ -124,13 +121,13 @@
                         <a class="sidebar-link" href="#"><i class="fas fa-book"></i> دوره‌های من</a>
                     </li>
                     <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-graduation-cap"></i> آزمون‌ها</a>
+                        <a class="sidebar-link" href="/available-courses"><i class="fas fa-search"></i> جستجوی دوره‌ها</a>
                     </li>
                     <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-users"></i> دانش‌آموزان</a>
+                        <a class="sidebar-link" href="#"><i class="fas fa-graduation-cap"></i> آزمون‌های من</a>
                     </li>
                     <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-chart-line"></i> گزارش‌ها</a>
+                        <a class="sidebar-link" href="#"><i class="fas fa-chart-line"></i> پیشرفت تحصیلی</a>
                     </li>
                 </ul>
             </div>
@@ -138,120 +135,105 @@
 
         <!-- Main Content -->
         <div class="col-md-10 col-sm-12 p-4">
-            <div class="d-flex justify-content-between align-items-center">
-                <h2 class="dashboard-title">داشبورد استاد</h2>
-                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCourseModal">
-                    <i class="fas fa-plus"></i> ایجاد دوره جدید
-                </button>
-            </div>
+            <h2 class="dashboard-title">داشبورد دانش‌آموز</h2>
 
             <!-- Summary Stats -->
             <div class="row mb-4">
                 <div class="col-md-3 col-sm-6">
                     <div class="stats-card">
                         <div class="icon"><i class="fas fa-book"></i></div>
-                        <div class="number" th:text="${courses.size()}">0</div>
+                        <div class="number" th:text="${totalCourses}">0</div>
                         <div class="label">تعداد دوره‌ها</div>
                     </div>
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <div class="stats-card">
-                        <div class="icon"><i class="fas fa-users"></i></div>
-                        <div class="number">
-                            <span th:text="${#aggregates.sum(courses.![enrolledStudents.size()])}">0</span>
-                        </div>
-                        <div class="label">تعداد دانش‌آموزان</div>
+                        <div class="icon"><i class="fas fa-check-circle"></i></div>
+                        <div class="number" th:text="${completedCourses}">0</div>
+                        <div class="label">دوره‌های تکمیل شده</div>
                     </div>
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <div class="stats-card">
-                        <div class="icon"><i class="fas fa-list-check"></i></div>
+                        <div class="icon"><i class="fas fa-chart-line"></i></div>
                         <div class="number">
-                            <span th:text="${#aggregates.sum(courses.![lessons.size()])}">0</span>
+                            <span th:text="${averageProgress}">0</span>%
                         </div>
-                        <div class="label">تعداد درس‌ها</div>
+                        <div class="label">میانگین پیشرفت</div>
                     </div>
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <div class="stats-card">
-                        <div class="icon"><i class="fas fa-clipboard-question"></i></div>
+                        <div class="icon"><i class="fas fa-clipboard-check"></i></div>
                         <div class="number">0</div>
-                        <div class="label">آزمون‌های فعال</div>
+                        <div class="label">آزمون‌های انجام شده</div>
                     </div>
                 </div>
             </div>
 
             <h3 class="dashboard-subtitle">دوره‌های من</h3>
-            <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead class="table-dark">
-                    <tr>
-                        <th>عنوان دوره</th>
-                        <th>تعداد درس‌ها</th>
-                        <th>تعداد دانش‌آموزان</th>
-                        <th>وضعیت</th>
-                        <th>عملیات</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr th:each="course : ${courses}">
-                        <td th:text="${course.title}">عنوان دوره</td>
-                        <td th:text="${course.lessons.size()}">0</td>
-                        <td th:text="${course.enrolledStudents.size()}">0</td>
-                        <td><span class="badge bg-success">فعال</span></td>
-                        <td>
-                            <div class="course-actions">
-                                <a th:href="@{/courses/{id}(id=${course.id})}" class="btn btn-sm btn-primary">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                <a href="#" class="btn btn-sm btn-success">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <a href="#" class="btn btn-sm btn-info">
-                                    <i class="fas fa-plus"></i> درس
-                                </a>
-                                <a href="#" class="btn btn-sm btn-warning">
-                                    <i class="fas fa-clipboard-check"></i> آزمون
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                    <!-- Empty State -->
-                    <tr th:if="${#lists.isEmpty(courses)}">
-                        <td colspan="5" class="text-center">
-                            <p class="my-3">هنوز هیچ دوره‌ای ایجاد نکرده‌اید</p>
-                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCourseModal">
-                                <i class="fas fa-plus"></i> ایجاد دوره جدید
-                            </button>
-                        </td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
+            <div class="row">
+                <!-- دوره‌های ثبت‌نام شده -->
+                <div th:each="course : ${courses}" class="col-md-4 mb-4">
+                    <div class="card course-card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title" th:text="${course.title}">عنوان دوره</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text" th:text="${course.description}">توضیحات دوره...</p>
 
-<!-- Create Course Modal -->
-<div class="modal fade" id="createCourseModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">ایجاد دوره جدید</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <!-- نمایش پیشرفت دوره -->
+                            <div th:each="progress : ${progressList}"
+                                 th:if="${progress.course.id == course.id}">
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>پیشرفت دوره:</span>
+                                    <span th:text="${progress.completionPercentage + '%'}">0%</span>
+                                </div>
+                                <div class="progress mb-3">
+                                    <div class="progress-bar bg-success"
+                                         th:style="'width: ' + ${progress.completionPercentage} + '%'"
+                                         th:attr="aria-valuenow=${progress.completionPercentage}"
+                                         role="progressbar" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">
+                                        <span th:text="${progress.completedLessonCount}">0</span> از
+                                        <span th:text="${progress.totalLessons}">0</span> درس تکمیل شده
+                                    </small>
+                                    <small class="text-muted">
+                                        آخرین بازدید:
+                                        <span th:text="${#temporals.format(progress.lastAccessed, 'yyyy/MM/dd')}">
+                                            2023/01/01
+                                        </span>
+                                    </small>
+                                </div>
+                            </div>
+
+                            <a th:href="@{/courses/{id}(id=${course.id})}" class="btn btn-primary mt-3 w-100">
+                                مشاهده دوره
+                            </a>
+                        </div>
+                        <div class="card-footer text-muted">
+                            <small>استاد: <span th:text="${course.teacher.firstName + ' ' + course.teacher.lastName}">نام استاد</span></small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- حالت خالی -->
+                <div th:if="${#lists.isEmpty(courses)}" class="col-12">
+                    <div class="alert alert-info text-center py-5">
+                        <h5>شما هنوز در هیچ دوره‌ای ثبت‌نام نکرده‌اید</h5>
+                        <p class="mb-0">برای مشاهده دوره‌های موجود، به صفحه <a href="/available-courses">جستجوی دوره‌ها</a> مراجعه کنید</p>
+                    </div>
+                </div>
             </div>
-            <div class="modal-body">
-                <form th:action="@{/api/courses}" method="post">
-                    <div class="mb-3">
-                        <label for="title" class="form-label">عنوان دوره</label>
-                        <input type="text" class="form-control" id="title" name="title" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="description" class="form-label">توضیحات دوره</label>
-                        <textarea class="form-control" id="description" name="description" rows="3" required></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">ایجاد دوره</button>
-                </form>
+
+            <div class="text-center mt-4">
+                <a href="/available-courses" class="btn btn-outline-primary">
+                    <i class="fas fa-search me-2"></i> جستجوی دوره‌های جدید
+                </a>
             </div>
         </div>
     </div>
