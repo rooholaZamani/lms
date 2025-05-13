@@ -26,6 +26,9 @@ public class Exam {
 
     private Integer passingScore; // minimum score to pass
 
+    @OneToOne(mappedBy = "exam")
+    private Lesson lesson;
+
     @OneToMany(mappedBy = "exam", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Question> questions = new ArrayList<>();
 }
