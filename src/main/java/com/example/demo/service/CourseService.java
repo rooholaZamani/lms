@@ -57,5 +57,8 @@ public class CourseService {
         return course;
     }
 
-    // Other methods as needed...
+    public Course getCourseById(Long courseId) {
+        return courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+    }
 }
