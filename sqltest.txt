@@ -1,0 +1,146 @@
+DELETE FROM VIEWED_CONTENT;
+DELETE FROM COMPLETED_LESSONS;
+DELETE FROM PROGRESS;
+DELETE FROM COURSE_ENROLLMENTS;
+DELETE FROM ANSWER;
+DELETE FROM QUESTION;
+DELETE FROM EXAM;
+DELETE FROM CONTENT;
+DELETE FROM LESSON;
+DELETE FROM COURSE;
+DELETE FROM USER_ROLES;
+DELETE FROM LMS_USER;
+DELETE FROM ROLE;
+
+INSERT INTO ROLE (ID, NAME) VALUES (1, 'ROLE_TEACHER');
+INSERT INTO ROLE (ID, NAME) VALUES (2, 'ROLE_STUDENT');
+
+INSERT INTO LMS_USER (ID, USERNAME, PASSWORD, FIRST_NAME, LAST_NAME, EMAIL, NATIONAL_ID, PHONE_NUMBER, AGE)
+VALUES (1, 'teacher1', '$2a$10$IqTJTjn39IU5.7KY1hQ6C.3oFiRKtFJQ4vWCw.Z3MBDSS9Ktt3v8S', 'Teacher', 'One', 'teacher1@example.com', '1234567890', '09123456789', 35);
+
+INSERT INTO LMS_USER (ID, USERNAME, PASSWORD, FIRST_NAME, LAST_NAME, EMAIL, NATIONAL_ID, PHONE_NUMBER, AGE)
+VALUES (2, 'teacher2', '$2a$10$IqTJTjn39IU5.7KY1hQ6C.3oFiRKtFJQ4vWCw.Z3MBDSS9Ktt3v8S', 'Teacher', 'Two', 'teacher2@example.com', '2345678901', '09123456788', 40);
+
+INSERT INTO LMS_USER (ID, USERNAME, PASSWORD, FIRST_NAME, LAST_NAME, EMAIL, NATIONAL_ID, PHONE_NUMBER, AGE)
+VALUES (3, 'student1', '$2a$10$IqTJTjn39IU5.7KY1hQ6C.3oFiRKtFJQ4vWCw.Z3MBDSS9Ktt3v8S', 'Student', 'One', 'student1@example.com', '3456789012', '09123456787', 20);
+
+INSERT INTO LMS_USER (ID, USERNAME, PASSWORD, FIRST_NAME, LAST_NAME, EMAIL, NATIONAL_ID, PHONE_NUMBER, AGE)
+VALUES (4, 'student2', '$2a$10$IqTJTjn39IU5.7KY1hQ6C.3oFiRKtFJQ4vWCw.Z3MBDSS9Ktt3v8S', 'Student', 'Two', 'student2@example.com', '4567890123', '09123456786', 21);
+
+INSERT INTO LMS_USER (ID, USERNAME, PASSWORD, FIRST_NAME, LAST_NAME, EMAIL, NATIONAL_ID, PHONE_NUMBER, AGE)
+VALUES (5, 'student3', '$2a$10$IqTJTjn39IU5.7KY1hQ6C.3oFiRKtFJQ4vWCw.Z3MBDSS9Ktt3v8S', 'Student', 'Three', 'student3@example.com', '5678901234', '09123456785', 22);
+
+
+INSERT INTO USER_ROLES (USER_ID, ROLE_ID) VALUES (1, 1);
+INSERT INTO USER_ROLES (USER_ID, ROLE_ID) VALUES (2, 1);
+INSERT INTO USER_ROLES (USER_ID, ROLE_ID) VALUES (3, 2);
+INSERT INTO USER_ROLES (USER_ID, ROLE_ID) VALUES (4, 2);
+INSERT INTO USER_ROLES (USER_ID, ROLE_ID) VALUES (5, 2);
+
+
+INSERT INTO COURSE (ID, TITLE, DESCRIPTION, TEACHER_ID)
+VALUES (1, 'برنامه‌نویسی جاوا', 'آموزش مبانی برنامه‌نویسی با زبان جاوا برای مبتدیان', 1);
+
+INSERT INTO COURSE (ID, TITLE, DESCRIPTION, TEACHER_ID)
+VALUES (2, 'ریاضیات پایه', 'آموزش مفاهیم پایه‌ای ریاضیات شامل جبر و حسابان', 2);
+
+INSERT INTO LESSON (ID, TITLE, DESCRIPTION, ORDER_INDEX, COURSE_ID)
+VALUES (1, 'مقدمه‌ای بر جاوا', 'آشنایی با زبان برنامه‌نویسی جاوا و تاریخچه آن', 0, 1);
+
+INSERT INTO LESSON (ID, TITLE, DESCRIPTION, ORDER_INDEX, COURSE_ID)
+VALUES (2, 'متغیرها و انواع داده', 'آشنایی با انواع داده در جاوا و نحوه تعریف متغیرها', 1, 1);
+
+INSERT INTO LESSON (ID, TITLE, DESCRIPTION, ORDER_INDEX, COURSE_ID)
+VALUES (3, 'ساختارهای کنترلی', 'آشنایی با دستورات شرطی و حلقه‌ها در جاوا', 2, 1);
+
+
+INSERT INTO LESSON (ID, TITLE, DESCRIPTION, ORDER_INDEX, COURSE_ID)
+VALUES (4, 'مقدمه‌ای بر جبر', 'آشنایی با مفاهیم اولیه جبر', 0, 2);
+
+INSERT INTO LESSON (ID, TITLE, DESCRIPTION, ORDER_INDEX, COURSE_ID)
+VALUES (5, 'معادلات خطی', 'حل معادلات خطی', 1, 2);
+
+INSERT INTO CONTENT (ID, TITLE, TYPE, TEXT_CONTENT, LESSON_ID, ORDER_INDEX)
+VALUES (1, 'جاوا چیست؟', 'TEXT', 'جاوا یک زبان برنامه‌نویسی سطح بالا، شیء‌گرا و قدرتمند است که توسط شرکت سان میکروسیستمز در سال ۱۹۹۵ ارائه شد. این زبان با هدف قابلیت اجرا در پلتفرم‌های مختلف طراحی شده است...', 1, 0);
+
+INSERT INTO CONTENT (ID, TITLE, TYPE, TEXT_CONTENT, LESSON_ID, ORDER_INDEX)
+VALUES (2, 'ویژگی‌های جاوا', 'TEXT', 'جاوا دارای ویژگی‌های مهمی همچون قابلیت حمل، شیء‌گرایی، امنیت، قوی‌بودن و چندنخی است. در این درس به بررسی هر یک از این ویژگی‌ها خواهیم پرداخت...', 1, 1);
+
+INSERT INTO CONTENT (ID, TITLE, TYPE, TEXT_CONTENT, LESSON_ID, ORDER_INDEX)
+VALUES (3, 'انواع داده عددی صحیح', 'TEXT', 'در جاوا انواع داده عددی صحیح عبارتند از: byte، short، int و long. هر کدام از این انواع داده محدوده مشخصی از اعداد را پشتیبانی می‌کنند...', 2, 0);
+
+INSERT INTO CONTENT (ID, TITLE, TYPE, TEXT_CONTENT, LESSON_ID, ORDER_INDEX)
+VALUES (4, 'انواع داده اعشاری', 'TEXT', 'در جاوا دو نوع داده اعشاری وجود دارد: float و double. این انواع داده برای نمایش اعداد اعشاری با دقت‌های متفاوت استفاده می‌شوند...', 2, 1);
+
+INSERT INTO CONTENT (ID, TITLE, TYPE, TEXT_CONTENT, LESSON_ID, ORDER_INDEX)
+VALUES (5, 'دستورات شرطی', 'TEXT', 'دستورات شرطی در جاوا شامل if، if-else و switch-case می‌باشند. این دستورات به برنامه‌نویس اجازه می‌دهند تا بر اساس شرایط مختلف، عملیات متفاوتی را اجرا کند...', 3, 0);
+
+INSERT INTO CONTENT (ID, TITLE, TYPE, TEXT_CONTENT, LESSON_ID, ORDER_INDEX)
+VALUES (6, 'حلقه‌ها', 'TEXT', 'حلقه‌ها در جاوا شامل for، while و do-while می‌باشند. این ساختارها به برنامه‌نویس اجازه می‌دهند تا یک بلوک کد را چندین بار تکرار کند...', 3, 1);
+
+
+INSERT INTO EXAM (ID, TITLE, DESCRIPTION, TIME_LIMIT, PASSING_SCORE, LESSON_ID)
+VALUES (1, 'آزمون مبانی جاوا', 'آزمون برای سنجش دانش شما از مبانی زبان جاوا', 30, 70, 3);
+
+INSERT INTO QUESTION (ID, TEXT, POINTS, EXAM_ID)
+VALUES (1, 'کدام یک از موارد زیر سینتکس صحیح برای نمایش "Hello World" در جاوا است؟', 10, 1);
+
+INSERT INTO QUESTION (ID, TEXT, POINTS, EXAM_ID)
+VALUES (2, 'آیا جاوا مخفف "JavaScript" است؟', 10, 1);
+
+INSERT INTO QUESTION (ID, TEXT, POINTS, EXAM_ID)
+VALUES (3, 'چگونه یک متغیر با مقدار عددی 5 ایجاد می‌کنید؟', 10, 1);
+
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (1, 'System.out.println("Hello World");', true, 1);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (2, 'echo("Hello World");', false, 1);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (3, 'print("Hello World");', false, 1);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (4, 'True', false, 2);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (5, 'False', true, 2);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (6, 'int x = 5;', true, 3);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (7, 'num x = 5;', false, 3);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (8, 'x = 5;', false, 3);
+
+INSERT INTO ANSWER (ID, TEXT, CORRECT, QUESTION_ID)
+VALUES (9, 'var x = 5;', false, 3);
+
+
+INSERT INTO COURSE_ENROLLMENTS (COURSE_ID, USER_ID) VALUES (1, 3);
+INSERT INTO COURSE_ENROLLMENTS (COURSE_ID, USER_ID) VALUES (1, 4);
+INSERT INTO COURSE_ENROLLMENTS (COURSE_ID, USER_ID) VALUES (2, 3);
+INSERT INTO COURSE_ENROLLMENTS (COURSE_ID, USER_ID) VALUES (2, 5);
+
+
+INSERT INTO PROGRESS (ID, STUDENT_ID, COURSE_ID, LAST_ACCESSED, TOTAL_LESSONS, COMPLETED_LESSON_COUNT, COMPLETION_PERCENTAGE)
+VALUES (1, 3, 1, '2025-05-13 10:00:00', 3, 1, 33.33);
+
+INSERT INTO PROGRESS (ID, STUDENT_ID, COURSE_ID, LAST_ACCESSED, TOTAL_LESSONS, COMPLETED_LESSON_COUNT, COMPLETION_PERCENTAGE)
+VALUES (2, 4, 1, '2025-05-13 11:00:00', 3, 0, 0.0);
+
+INSERT INTO PROGRESS (ID, STUDENT_ID, COURSE_ID, LAST_ACCESSED, TOTAL_LESSONS, COMPLETED_LESSON_COUNT, COMPLETION_PERCENTAGE)
+VALUES (3, 3, 2, '2025-05-12 15:30:00', 2, 1, 50.0);
+
+INSERT INTO PROGRESS (ID, STUDENT_ID, COURSE_ID, LAST_ACCESSED, TOTAL_LESSONS, COMPLETED_LESSON_COUNT, COMPLETION_PERCENTAGE)
+VALUES (4, 5, 2, '2025-05-13 09:45:00', 2, 0, 0.0);
+
+INSERT INTO COMPLETED_LESSONS (PROGRESS_ID, LESSON_ID) VALUES (1, 1);
+INSERT INTO COMPLETED_LESSONS (PROGRESS_ID, LESSON_ID) VALUES (3, 4);
+
+INSERT INTO VIEWED_CONTENT (PROGRESS_ID, CONTENT_ID) VALUES (1, 1);
+INSERT INTO VIEWED_CONTENT (PROGRESS_ID, CONTENT_ID) VALUES (1, 2);
+INSERT INTO VIEWED_CONTENT (PROGRESS_ID, CONTENT_ID) VALUES (3, 5);

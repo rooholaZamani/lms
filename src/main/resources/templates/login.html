@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <title>داشبورد دانش آموز - سامانه مدیریت یادگیری</title>
+    <title>ورود - سامانه مدیریت یادگیری</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
@@ -11,194 +11,85 @@
             direction: rtl;
             font-family: Tahoma, Arial, sans-serif;
             background-color: #f5f5f5;
-        }
-        .navbar-brand {
-            font-weight: bold;
-        }
-        .sidebar {
-            background-color: #343a40;
-            color: white;
-            min-height: calc(100vh - 56px);
-            padding-top: 20px;
-        }
-        .sidebar-link {
-            color: #f8f9fa;
-            text-decoration: none;
-            display: block;
-            padding: 10px 15px;
-            transition: background-color 0.3s;
-        }
-        .sidebar-link:hover, .sidebar-link.active {
-            background-color: #495057;
-        }
-        .sidebar-link i {
-            margin-left: 8px;
-        }
-        .course-card {
-            transition: transform 0.3s;
-            margin-bottom: 20px;
-        }
-        .course-card:hover {
-            transform: translateY(-5px);
-        }
-        .progress-container {
-            margin-top: 10px;
-        }
-        .progress-label {
+            height: 100vh;
             display: flex;
-            justify-content: space-between;
+            align-items: center;
+            justify-content: center;
         }
-        .dashboard-title {
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
+        .login-container {
+            max-width: 400px;
+            width: 100%;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .login-header {
+            text-align: center;
             margin-bottom: 20px;
         }
-        .dashboard-subtitle {
-            margin-top: 30px;
-            margin-bottom: 20px;
+        .login-logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+        .login-title {
+            font-size: 1.5rem;
+            color: #333;
+        }
+        .form-control {
+            margin-bottom: 15px;
+        }
+        .login-footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #6c757d;
         }
     </style>
 </head>
 <body>
-<!-- Navigation Bar -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="#">سامانه مدیریت یادگیری</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNavDropdown">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link active" href="#">داشبورد</a>
-                </li>
-            </ul>
-            <div class="d-flex">
-                <div class="dropdown">
-                    <a class="btn btn-outline-light dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-user"></i> <span th:text="${#authentication.principal.username}">کاربر</span>
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="#"><i class="fas fa-user-cog"></i> پروفایل</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form th:action="@{/logout}" method="post">
-                                <button type="submit" class="dropdown-item"><i class="fas fa-sign-out-alt"></i> خروج</button>
-                            </form>
-                        </li>
-                    </ul>
-                </div>
-            </div>
+<div class="login-container">
+    <div class="login-header">
+        <div class="login-logo">
+            <i class="fas fa-graduation-cap"></i>
         </div>
+        <h1 class="login-title">ورود به سامانه مدیریت یادگیری</h1>
     </div>
-</nav>
 
-<div class="container-fluid">
-    <div class="row">
-        <!-- Sidebar -->
-        <div class="col-md-2 d-none d-md-block sidebar">
-            <div class="position-sticky">
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a class="sidebar-link active" href="#"><i class="fas fa-tachometer-alt"></i> داشبورد</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-book"></i> دوره‌های من</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-graduation-cap"></i> آزمون‌ها</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-chart-line"></i> پیشرفت تحصیلی</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="sidebar-link" href="#"><i class="fas fa-certificate"></i> گواهینامه‌ها</a>
-                    </li>
-                </ul>
-            </div>
+    <div th:if="${param.error}" class="alert alert-danger">
+        نام کاربری یا رمز عبور اشتباه است
+    </div>
+    <div th:if="${param.logout}" class="alert alert-success">
+        شما با موفقیت از سیستم خارج شدید
+    </div>
+
+    <form th:action="@{/login}" method="post">
+        <div class="mb-3">
+            <label for="username" class="form-label">نام کاربری</label>
+            <input type="text" class="form-control" id="username" name="username" required autofocus>
         </div>
-
-        <!-- Main Content -->
-        <div class="col-md-10 col-sm-12 p-4">
-            <h2 class="dashboard-title">داشبورد دانش آموز</h2>
-
-            <!-- Progress Summary -->
-            <div class="row mb-4">
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">تعداد دوره‌ها</h5>
-                            <h2 class="card-text" th:text="${courses.size()}">0</h2>
-                            <p class="text-muted">دوره‌های ثبت‌نام شده</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">میانگین پیشرفت</h5>
-                            <h2 class="card-text">
-                                <span th:if="${!progressList.isEmpty()}" th:text="${#aggregates.avg(progressList.![completionPercentage])}">0</span>
-                                <span th:if="${progressList.isEmpty()}">0</span>%
-                            </h2>
-                            <p class="text-muted">در تمام دوره‌ها</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">آخرین فعالیت</h5>
-                            <h2 class="card-text">
-                                <span th:if="${!progressList.isEmpty()}" th:text="${#temporals.format(progressList[0].lastAccessed, 'dd/MM/yyyy')}">-</span>
-                                <span th:if="${progressList.isEmpty()}">-</span>
-                            </h2>
-                            <p class="text-muted">تاریخ آخرین فعالیت</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <h3 class="dashboard-subtitle">دوره‌های من</h3>
-            <div class="row">
-                <div class="col-md-4" th:each="course : ${courses}">
-                    <div class="card course-card">
-                        <div class="card-body">
-                            <h5 class="card-title" th:text="${course.title}">عنوان دوره</h5>
-                            <p class="card-text" th:text="${#strings.abbreviate(course.description, 100)}">توضیحات دوره...</p>
-                            <p class="text-muted"><i class="fas fa-user"></i> استاد: <span th:text="${course.teacher.firstName + ' ' + course.teacher.lastName}">نام استاد</span></p>
-
-                            <!-- Progress Bar -->
-                            <div class="progress-container" th:with="progress=${#lists.isEmpty(progressList) ? null : progressList.?[course.id == course.id][0]}">
-                                <div class="progress-label">
-                                    <span>پیشرفت:</span>
-                                    <span th:text="${progress != null ? progress.completionPercentage : 0} + '%'">0%</span>
-                                </div>
-                                <div class="progress">
-                                    <div class="progress-bar bg-success"
-                                         th:style="'width: ' + ${progress != null ? progress.completionPercentage : 0} + '%'"
-                                         th:attr="aria-valuenow=${progress != null ? progress.completionPercentage : 0}"
-                                         role="progressbar" aria-valuemin="0" aria-valuemax="100"></div>
-                                </div>
-                            </div>
-
-                            <div class="mt-3">
-                                <a th:href="@{/courses/{id}(id=${course.id})}" class="btn btn-primary">ادامه یادگیری</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Empty State -->
-                <div class="col-12 text-center" th:if="${#lists.isEmpty(courses)}">
-                    <div class="p-5 bg-light rounded">
-                        <h5>هنوز در هیچ دوره‌ای ثبت‌نام نکرده‌اید</h5>
-                        <p>برای شروع یادگیری در یک دوره ثبت‌نام کنید</p>
-                        <a href="#" class="btn btn-primary">مشاهده دوره‌های موجود</a>
-                    </div>
-                </div>
-            </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">رمز عبور</label>
+            <input type="password" class="form-control" id="password" name="password" required>
         </div>
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="remember-me" name="remember-me">
+            <label class="form-check-label" for="remember-me">مرا به خاطر بسپار</label>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">ورود</button>
+    </form>
+
+    <div class="login-footer">
+        <p>حساب کاربری ندارید؟ <a th:href="@{/register}">ثبت نام</a></p>
+        <p>بازگشت به <a th:href="@{/}">صفحه اصلی</a></p>
     </div>
 </div>
 
