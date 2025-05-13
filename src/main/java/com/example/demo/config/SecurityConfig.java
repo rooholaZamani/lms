@@ -24,12 +24,21 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable()) // Disabling CSRF for simplicity (student project)
                 .authorizeHttpRequests(authz -> authz
+                        // Allow Swagger UI and API docs
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**").permitAll()
+                        // Allow H2 Console
+                        .requestMatchers("/h2-console/**").permitAll()
+                        // Allow static resources
                         .requestMatchers("/", "/login", "/register", "/css/**", "/js/**").permitAll()
+                        // Allow public APIs
                         .requestMatchers("/api/public/**").permitAll()
+                        // Role-based authorization
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")
                         .requestMatchers("/api/student/**").hasRole("STUDENT")
                         .anyRequest().authenticated()
                 )
+                // Allow frames for H2 console
+                .headers(headers -> headers.frameOptions().sameOrigin())
                 .formLogin(form -> form
                         .loginPage("/login")
                         .defaultSuccessUrl("/dashboard")
