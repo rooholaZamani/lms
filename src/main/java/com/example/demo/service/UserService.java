@@ -45,5 +45,10 @@ public class UserService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
     }
 
+    public User findByNationalId(String nationalId) {
+        return userRepository.findByNationalId(nationalId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
     // Other methods as needed...
 }

@@ -24,7 +24,18 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    private String fullName;
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(unique = true, nullable = false)
+    private String nationalId;
+
+    private String phoneNumber;
+
+    private Integer age;
 
     @Column(unique = true)
     private String email;
