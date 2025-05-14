@@ -12,9 +12,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/content")
+@CrossOrigin(origins = "*")
 public class ContentController {
 
     private final ContentService contentService;
@@ -81,6 +83,12 @@ public class ContentController {
         return ResponseEntity.ok(savedContent);
     }
 
+    @GetMapping("/lesson/{lessonId}")
+    public ResponseEntity<List<Content>> getLessonContent(@PathVariable Long lessonId) {
+        List<Content> contents = contentService.getLessonContents(lessonId);
+        return ResponseEntity.ok(contents);
+    }
+
     @GetMapping("/files/{fileId}")
     public ResponseEntity<Resource> getFile(
             @PathVariable Long fileId,
@@ -113,5 +121,9 @@ public class ContentController {
                 .body(resource);
     }
 
-    // Other endpoints as needed...
+    @DeleteMapping("/{contentId}")
+    public ResponseEntity<?> deleteContent(@PathVariable Long contentId) {
+        contentService.deleteContent(contentId);
+        return ResponseEntity.ok().build();
+    }
 }

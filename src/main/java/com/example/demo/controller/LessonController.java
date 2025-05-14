@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/controller/LessonController.java
 package com.example.demo.controller;
 
 import com.example.demo.model.Lesson;
@@ -9,10 +8,12 @@ import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/lessons")
+@CrossOrigin(origins = "*")
 public class LessonController {
 
     private final LessonService lessonService;

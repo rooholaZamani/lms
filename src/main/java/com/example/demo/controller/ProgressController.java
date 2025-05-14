@@ -9,10 +9,13 @@ import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/progress")
+@CrossOrigin(origins = "*")
 public class ProgressController {
 
     private final ProgressService progressService;
@@ -33,6 +36,35 @@ public class ProgressController {
         User student = userService.findByUsername(authentication.getName());
         List<Progress> progressList = progressService.getProgressByStudent(student);
         return ResponseEntity.ok(progressList);
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Object>> getProgressStats(Authentication authentication) {
+        User student = userService.findByUsername(authentication.getName());
+        List<Course> courses = courseService.getEnrolledCourses(student);
+        List<Progress> progressList = progressService.getProgressByStudent(student);
+
+        // Calculate overall stats for dashboard
+        int totalCourses = courses.size();
+        int completedCourses = 0;
+        double averageProgress = 0;
+
+        if (!progressList.isEmpty()) {
+            for (Progress progress : progressList) {
+                if (progress.getCompletionPercentage() >= 100) {
+                    completedCourses++;
+                }
+                averageProgress += progress.getCompletionPercentage();
+            }
+            averageProgress = averageProgress / progressList.size();
+        }
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalCourses", totalCourses);
+        stats.put("completedCourses", completedCourses);
+        stats.put("averageProgress", (int)averageProgress);
+
+        return ResponseEntity.ok(stats);
     }
 
     @GetMapping("/{courseId}")

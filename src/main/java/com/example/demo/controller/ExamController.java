@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/controller/ExamController.java
 package com.example.demo.controller;
 
 import com.example.demo.model.*;
@@ -12,6 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/exams")
+@CrossOrigin(origins = "*")
 public class ExamController {
 
     private final ExamService examService;
