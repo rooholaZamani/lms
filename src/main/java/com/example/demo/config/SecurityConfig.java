@@ -2,6 +2,8 @@ package com.example.demo.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -25,43 +27,43 @@ public class SecurityConfig {
     }
 
     @Bean
+    public AuthenticationManager authenticationManager(HttpSecurity http) throws Exception {
+        return http.getSharedObject(AuthenticationManagerBuilder.class)
+                .userDetailsService(userDetailsService)
+                .passwordEncoder(passwordEncoder())
+                .and()
+                .build();
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(authz -> authz
-                        // Swagger و API docs
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/api-docs/**").permitAll()
+                        // Swagger และ API docs
+                        .requestMatchers("/swagger","/webjars/**",
+                                "/swagger-resources/**",
+                                "/swagger-resources",
+                                "/configuration/ui",
+                                "/configuration/security","/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**","/docs", "/api-docs/**").permitAll()
                         // H2 Console
                         .requestMatchers("/h2-console/**").permitAll()
-                        // فایل‌های استاتیک و صفحات عمومی
+                        // Static files and public pages
                         .requestMatchers("/", "/index.html", "/static/**", "/css/**", "/js/**", "/img/**", "/favicon.ico").permitAll()
-                        // API‌های عمومی
+                        // Public APIs
                         .requestMatchers("/api/auth/**").permitAll()
-                        // مسیرهای API که نیاز به احراز هویت دارند
+                        // APIs requiring authentication
                         .requestMatchers("/api/courses/**", "/api/lessons/**", "/api/content/**",
                                 "/api/exams/**", "/api/progress/**", "/api/user/**").authenticated()
-                        // دسترسی‌های نقش محور
+                        // Role-based access
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")
                         .requestMatchers("/api/student/**").hasRole("STUDENT")
                         .anyRequest().authenticated()
                 )
                 // Allow frames for H2 console
                 .headers(headers -> headers.frameOptions().sameOrigin())
-                .formLogin(form -> form
-                        .loginProcessingUrl("/api/auth/login")
-                        .successHandler((request, response, authentication) -> {
-                            response.setContentType("application/json");
-                            response.setStatus(200);
-                            response.getWriter().write("{\"success\":true}");
-                        })
-                        .failureHandler((request, response, exception) -> {
-                            response.setContentType("application/json");
-                            response.setStatus(401);
-                            response.getWriter().write("{\"success\":false,\"message\":\"Invalid username or password\"}");
-                        })
-                        .permitAll()
-                )
+                .formLogin(form -> form.disable())  // Disable form login since we're using REST API
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")
                         .logoutSuccessHandler((request, response, authentication) -> {
