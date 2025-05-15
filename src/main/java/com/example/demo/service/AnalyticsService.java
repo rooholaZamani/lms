@@ -329,7 +329,12 @@ public class AnalyticsService {
         }
 
         // Sort by difficulty score descending
-        difficultLessons.sort(Comparator.comparing(m -> ((Double) m.get("difficultyScore"))).reversed());
+        // FIX: Added explicit casting for the comparator
+        difficultLessons.sort((d1, d2) -> {
+            Double score1 = (Double) ((Map<String, Object>) d1).get("difficultyScore");
+            Double score2 = (Double) ((Map<String, Object>) d2).get("difficultyScore");
+            return score2.compareTo(score1); // Reversed order
+        });
 
         return difficultLessons;
     }
@@ -387,7 +392,12 @@ public class AnalyticsService {
         }
 
         // Sort by struggle score descending (highest struggle first)
-        strugglingStudents.sort(Comparator.comparing(m -> ((Double) m.get("struggleScore"))).reversed());
+        // FIX: Added explicit casting for the comparator
+        strugglingStudents.sort((s1, s2) -> {
+            Double score1 = (Double) ((Map<String, Object>) s1).get("struggleScore");
+            Double score2 = (Double) ((Map<String, Object>) s2).get("struggleScore");
+            return score2.compareTo(score1); // Reversed order
+        });
 
         return strugglingStudents;
     }
@@ -469,7 +479,12 @@ public class AnalyticsService {
         }
 
         // Sort by participation rate descending
-        participationMetrics.sort(Comparator.comparing(m -> ((Double) m.get("participationRate"))).reversed());
+        // FIX: Added explicit casting for the comparator
+        participationMetrics.sort((p1, p2) -> {
+            Double rate1 = (Double) ((Map<String, Object>) p1).get("participationRate");
+            Double rate2 = (Double) ((Map<String, Object>) p2).get("participationRate");
+            return rate2.compareTo(rate1); // Reversed order
+        });
 
         return participationMetrics;
     }
