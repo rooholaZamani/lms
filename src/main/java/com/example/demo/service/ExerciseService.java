@@ -9,7 +9,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,8 +41,9 @@ public class ExerciseService {
         // Save exercise first
         Exercise savedExercise = exerciseRepository.save(exercise);
 
-        // Update lesson with exercise
-        lesson.setExam(savedExercise);
+        // Update lesson with exercise - here's where the type error might be occurring
+        // Make sure lesson has a reference to the Exercise, not Exam
+        lesson.setExercise(savedExercise);  // You'll need to add this field to Lesson
         lessonRepository.save(lesson);
 
         return savedExercise;
@@ -58,13 +61,13 @@ public class ExerciseService {
 
     public Question addQuestion(Question question, Long exerciseId) {
         Exercise exercise = getExerciseById(exerciseId);
-        question.setExam(exercise);
+        question.setExercise(exercise);  // You'll need to add this field to Question model
         return questionRepository.save(question);
     }
 
     public List<Question> getExerciseQuestions(Long exerciseId) {
         Exercise exercise = getExerciseById(exerciseId);
-        return questionRepository.findByExamOrderById(exercise);
+        return questionRepository.findByExerciseOrderById(exercise);  // You'll need to add this method
     }
 
     @Transactional
@@ -83,7 +86,7 @@ public class ExerciseService {
         int earnedPoints = 0;
         int timeBonus = 0;
 
-        List<Question> questions = questionRepository.findByExamOrderById(exercise);
+        List<Question> questions = getExerciseQuestions(exerciseId);
         for (Question question : questions) {
             totalPoints += question.getPoints();
 
@@ -99,17 +102,10 @@ public class ExerciseService {
                 if (isCorrect) {
                     earnedPoints += question.getPoints();
 
-                    // Calculate time bonus if applicable
+                    // Add time bonus if applicable
                     Integer timeTaken = answerTimes.get(question.getId());
-                    if (timeTaken != null && exercise.getTimeLimit() != null) {
-                        // Example: bonus points for quick answers
-                        int expectedTime = exercise.getTimeLimit() / questions.size();
-                        if (timeTaken < expectedTime) {
-                            // Award bonus based on how quickly they answered
-                            int bonus = Math.min(question.getPoints() / 2,
-                                    (expectedTime - timeTaken) / 5);
-                            timeBonus += bonus;
-                        }
+                    if (timeTaken != null && timeTaken < 30) {  // Example: bonus for < 30 seconds
+                        timeBonus += question.getPoints() / 2;  // 50% bonus for fast answers
                     }
                 }
             }
@@ -118,7 +114,7 @@ public class ExerciseService {
         submission.setScore(earnedPoints);
         submission.setTimeBonus(timeBonus);
         submission.setTotalScore(earnedPoints + timeBonus);
-        submission.setPassed(earnedPoints >= exercise.getPassingScore());
+        submission.setPassed(submission.getTotalScore() >= exercise.getPassingScore());
 
         return submissionRepository.save(submission);
     }
@@ -136,22 +132,12 @@ public class ExerciseService {
         Exercise exercise = getExerciseById(exerciseId);
         List<ExerciseSubmission> submissions = submissionRepository.findByExercise(exercise);
 
-        Map<String, Object> difficultyData = new HashMap<>();
+        Map<String, Object> difficultyMetrics = new HashMap<>();
 
-        // Basic stats
+        // Calculate overall pass rate
         int totalSubmissions = submissions.size();
-        if (totalSubmissions == 0) {
-            difficultyData.put("difficulty", "Unknown (no submissions)");
-            difficultyData.put("passRate", 0);
-            difficultyData.put("averageScore", 0);
-            return difficultyData;
-        }
-
-        // Calculate pass rate
-        long passedCount = submissions.stream()
-                .filter(ExerciseSubmission::isPassed)
-                .count();
-        double passRate = (double) passedCount / totalSubmissions * 100;
+        int passedCount = (int) submissions.stream().filter(ExerciseSubmission::isPassed).count();
+        double passRate = totalSubmissions > 0 ? (double) passedCount / totalSubmissions * 100 : 0;
 
         // Calculate average score
         double averageScore = submissions.stream()
@@ -159,76 +145,63 @@ public class ExerciseService {
                 .average()
                 .orElse(0);
 
-        // Calculate average time per question if time data exists
-        Map<Long, List<Integer>> questionTimes = new HashMap<>();
+        // Calculate average time taken per question (if available)
+        double averageTimePerQuestion = 0;
+        int totalAnswerTimes = 0;
+        int totalAnswers = 0;
 
         for (ExerciseSubmission submission : submissions) {
-            for (Map.Entry<Long, Integer> entry : submission.getAnswerTimes().entrySet()) {
-                Long questionId = entry.getKey();
-                Integer time = entry.getValue();
-
-                questionTimes.computeIfAbsent(questionId, k -> new ArrayList<>())
-                        .add(time);
+            for (Map.Entry<Long, Integer> answerTime : submission.getAnswerTimes().entrySet()) {
+                totalAnswerTimes += answerTime.getValue();
+                totalAnswers++;
             }
         }
 
-        // Calculate per-question difficulty
-        List<Map<String, Object>> questionDifficulties = new ArrayList<>();
-        List<Question> questions = questionRepository.findByExamOrderById(exercise);
-
-        for (Question question : questions) {
-            Map<String, Object> questionData = new HashMap<>();
-            questionData.put("questionId", question.getId());
-            questionData.put("text", question.getText());
-
-            // Count correct answers for this question
-            long correctCount = submissions.stream()
-                    .filter(s -> {
-                        Long answerId = s.getAnswers().get(question.getId());
-                        if (answerId == null) return false;
-
-                        return question.getAnswers().stream()
-                                .filter(a -> a.getId().equals(answerId) && a.isCorrect())
-                                .findFirst()
-                                .isPresent();
-                    })
-                    .count();
-
-            double correctRate = (double) correctCount / totalSubmissions * 100;
-            questionData.put("correctRate", correctRate);
-
-            // Calculate average time for this question
-            List<Integer> times = questionTimes.get(question.getId());
-            if (times != null && !times.isEmpty()) {
-                double avgTime = times.stream()
-                        .mapToInt(Integer::intValue)
-                        .average()
-                        .orElse(0);
-                questionData.put("averageTime", avgTime);
-            }
-
-            // Difficulty rating based on correct rate
-            String difficulty;
-            if (correctRate >= 80) difficulty = "Easy";
-            else if (correctRate >= 50) difficulty = "Medium";
-            else difficulty = "Hard";
-
-            questionData.put("difficulty", difficulty);
-            questionDifficulties.add(questionData);
+        if (totalAnswers > 0) {
+            averageTimePerQuestion = (double) totalAnswerTimes / totalAnswers;
         }
 
-        // Overall exercise difficulty
-        String overallDifficulty;
-        if (passRate >= 80) overallDifficulty = "Easy";
-        else if (passRate >= 50) overallDifficulty = "Medium";
-        else overallDifficulty = "Hard";
+        // Calculate difficulty based on pass rate and average score
+        double difficulty = 100 - passRate;
 
-        difficultyData.put("difficulty", overallDifficulty);
-        difficultyData.put("passRate", passRate);
-        difficultyData.put("averageScore", averageScore);
-        difficultyData.put("totalSubmissions", totalSubmissions);
-        difficultyData.put("questions", questionDifficulties);
+        // Question-level difficulty
+        List<Map<String, Object>> questionDifficulty = getExerciseQuestions(exerciseId).stream()
+                .map(question -> {
+                    Map<String, Object> questionMetrics = new HashMap<>();
+                    questionMetrics.put("questionId", question.getId());
+                    questionMetrics.put("text", question.getText());
 
-        return difficultyData;
+                    // Calculate how many students answered this question correctly
+                    long correctCount = submissions.stream()
+                            .filter(sub -> {
+                                Long answerId = sub.getAnswers().get(question.getId());
+                                if (answerId == null) return false;
+
+                                return question.getAnswers().stream()
+                                        .filter(answer -> answer.getId().equals(answerId))
+                                        .findFirst()
+                                        .map(Answer::isCorrect)
+                                        .orElse(false);
+                            })
+                            .count();
+
+                    double correctRate = totalSubmissions > 0 ? (double) correctCount / totalSubmissions * 100 : 0;
+                    questionMetrics.put("correctRate", correctRate);
+                    questionMetrics.put("difficulty", 100 - correctRate);
+
+                    return questionMetrics;
+                })
+                .collect(Collectors.toList());
+
+        // Populate result
+        difficultyMetrics.put("exerciseId", exerciseId);
+        difficultyMetrics.put("totalSubmissions", totalSubmissions);
+        difficultyMetrics.put("passRate", passRate);
+        difficultyMetrics.put("averageScore", averageScore);
+        difficultyMetrics.put("averageTimePerQuestion", averageTimePerQuestion);
+        difficultyMetrics.put("overallDifficulty", difficulty);
+        difficultyMetrics.put("questionDifficulty", questionDifficulty);
+
+        return difficultyMetrics;
     }
 }

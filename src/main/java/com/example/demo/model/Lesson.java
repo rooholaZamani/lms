@@ -32,4 +32,7 @@ public class Lesson {
 
     @OneToOne(cascade = CascadeType.ALL)
     private Exam exam;
+
+    @OneToOne(cascade = CascadeType.ALL)
+    private Exercise exercise;
 }

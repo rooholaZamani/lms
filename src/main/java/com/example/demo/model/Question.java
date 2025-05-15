@@ -28,4 +28,7 @@ public class Question {
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "question_id")
     private List<Answer> answers = new ArrayList<>();
+
+    @ManyToOne
+    private Exercise exercise;
 }
