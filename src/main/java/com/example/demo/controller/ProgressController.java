@@ -15,7 +15,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/progress")
-@CrossOrigin(origins = "*")
+//@CrossOrigin(origins = "*")
 public class ProgressController {
 
     private final ProgressService progressService;
