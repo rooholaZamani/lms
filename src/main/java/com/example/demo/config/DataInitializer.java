@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/config/DataInitializer.java
 package com.example.demo.config;
 
 import com.example.demo.model.Role;
@@ -24,6 +23,13 @@ public class DataInitializer {
                 Role teacherRole = new Role();
                 teacherRole.setName("ROLE_TEACHER");
                 roleRepository.save(teacherRole);
+            }
+
+            // Add admin role
+            if (roleRepository.findByName("ROLE_ADMIN").isEmpty()) {
+                Role adminRole = new Role();
+                adminRole.setName("ROLE_ADMIN");
+                roleRepository.save(adminRole);
             }
         };
     }

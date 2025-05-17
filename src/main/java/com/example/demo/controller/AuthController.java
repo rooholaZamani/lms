@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -159,6 +160,35 @@ public class AuthController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Logout successful");
+
+        return ResponseEntity.ok(response);
+    }
+    @GetMapping("/check")
+    @Operation(summary = "Check authentication status", description = "Returns details about the currently authenticated user")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> checkAuthentication(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User user = userService.findByUsername(authentication.getName());
+        Map<String, Object> response = new HashMap<>();
+        response.put("authenticated", true);
+        response.put("username", user.getUsername());
+        response.put("firstName", user.getFirstName());
+        response.put("lastName", user.getLastName());
+
+        // Add user roles
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_ADMIN"));
+        boolean isTeacher = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+        boolean isStudent = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        response.put("isAdmin", isAdmin);
+        response.put("isTeacher", isTeacher);
+        response.put("isStudent", isStudent);
 
         return ResponseEntity.ok(response);
     }
