@@ -35,12 +35,20 @@ public class UserController {
         }
 
         User user = userService.findByUsername(authentication.getName());
+
         boolean isTeacher = user.getRoles().stream()
                 .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
 
+        boolean isStudent = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_ADMIN"));
+
         Map<String, Object> response = new HashMap<>();
         response.put("isTeacher", isTeacher);
-        response.put("isStudent", !isTeacher);
+        response.put("isStudent", isStudent);
+        response.put("isAdmin", isAdmin);
 
         return ResponseEntity.ok(response);
     }
