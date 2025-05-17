@@ -69,4 +69,42 @@ public class UserService {
 
         return userRepository.save(user);
     }
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found with username: " + username));
+    }
+    @Transactional
+    public User registerUser(User user, boolean isTeacher) {
+        // Check if username is already taken
+        if (userRepository.existsByUsername(user.getUsername())) {
+            throw new RuntimeException("Username is already taken");
+        }
+
+        // Check if email is already taken
+        if (user.getEmail() != null && userRepository.existsByEmail(user.getEmail())) {
+            throw new RuntimeException("Email is already taken");
+        }
+
+        // Check if national ID is already taken
+        if (user.getNationalId() != null && userRepository.existsByNationalId(user.getNationalId())) {
+            throw new RuntimeException("National ID is already registered");
+        }
+
+        // Encode password
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+
+        // Assign role based on isTeacher flag
+        Role role;
+        if (isTeacher) {
+            role = roleRepository.findByName("ROLE_TEACHER")
+                    .orElseThrow(() -> new RuntimeException("Teacher role not found"));
+        } else {
+            role = roleRepository.findByName("ROLE_STUDENT")
+                    .orElseThrow(() -> new RuntimeException("Student role not found"));
+        }
+
+        user.setRoles(Set.of(role));
+
+        return userRepository.save(user);
+    }
 }
