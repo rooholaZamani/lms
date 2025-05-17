@@ -1,8 +1,10 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.CourseDTO;
 import com.example.demo.model.Course;
 import com.example.demo.model.User;
 import com.example.demo.service.CourseService;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -23,10 +25,15 @@ public class AdminController {
 
     private final UserService userService;
     private final CourseService courseService;
+    private final DTOMapperService dtoMapperService;
 
-    public AdminController(UserService userService, CourseService courseService) {
+    public AdminController(
+            UserService userService,
+            CourseService courseService,
+            DTOMapperService dtoMapperService) {
         this.userService = userService;
         this.courseService = courseService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @GetMapping("/users")
@@ -40,11 +47,13 @@ public class AdminController {
     @GetMapping("/courses")
     @Operation(summary = "Get all courses", description = "Returns a list of all courses in the system")
     @SecurityRequirement(name = "basicAuth")
-    public ResponseEntity<List<Course>> getAllCourses() {
+    public ResponseEntity<List<CourseDTO>> getAllCourses() {
         List<Course> courses = courseService.getAllCourses();
-        return ResponseEntity.ok(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        return ResponseEntity.ok(courseDTOs);
     }
 
+    // Remaining methods stay the same
     @PostMapping("/users/{userId}/reset-password")
     @Operation(summary = "Reset user password", description = "Reset password for a specific user")
     @SecurityRequirement(name = "basicAuth")
