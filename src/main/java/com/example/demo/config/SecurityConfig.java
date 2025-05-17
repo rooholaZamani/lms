@@ -60,6 +60,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/courses/**", "/api/lessons/**", "/api/content/**",
                                 "/api/exams/**", "/api/progress/**", "/api/user/**").authenticated()
                         // Role-based access
+                        .requestMatchers("/api/courses/**", "/api/lessons/**", "/api/content/**",
+                                "/api/exams/**", "/api/progress/**", "/api/user/**",
+                                "/api/auth/check", "/api/password/**").authenticated()
+                        // Role-based access
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")
                         .requestMatchers("/api/student/**").hasRole("STUDENT")
                         .anyRequest().authenticated()
