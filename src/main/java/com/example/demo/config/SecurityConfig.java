@@ -6,6 +6,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,6 +14,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.security.config.Customizer;
 
 import java.util.Arrays;
 
@@ -52,7 +54,8 @@ public class SecurityConfig {
                         // Static files and public pages
                         .requestMatchers("/", "/index.html", "/static/**", "/css/**", "/js/**", "/img/**", "/favicon.ico").permitAll()
                         // Public APIs
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register/**").permitAll()
+                        .requestMatchers("/api/auth/check").authenticated()
                         // APIs requiring authentication
                         .requestMatchers("/api/courses/**", "/api/lessons/**", "/api/content/**",
                                 "/api/exams/**", "/api/progress/**", "/api/user/**").authenticated()
@@ -63,6 +66,9 @@ public class SecurityConfig {
                 )
                 // Allow frames for H2 console
                 .headers(headers -> headers.frameOptions().sameOrigin())
+                .httpBasic(Customizer.withDefaults())
+                .sessionManagement(session -> session
+                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(form -> form.disable())  // Disable form login since we're using REST API
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")
@@ -80,11 +86,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // به جای setAllowedOrigins از setAllowedOriginPatterns استفاده می‌کنیم
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));  // اجازه همه origins با pattern
+        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type"));
-        configuration.setAllowCredentials(true);  // همچنان true باقی می‌ماند
+        configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
