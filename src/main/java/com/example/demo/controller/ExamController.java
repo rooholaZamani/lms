@@ -1,6 +1,10 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.ExamDTO;
+import com.example.demo.dto.QuestionDTO;
+import com.example.demo.dto.SubmissionDTO;
 import com.example.demo.model.*;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExamService;
 import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
@@ -8,39 +12,42 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/exams")
-//@CrossOrigin(origins = "*")
 public class ExamController {
 
     private final ExamService examService;
     private final UserService userService;
+    private final DTOMapperService dtoMapperService;
 
     public ExamController(
             ExamService examService,
-            UserService userService) {
+            UserService userService,
+            DTOMapperService dtoMapperService) {
         this.examService = examService;
         this.userService = userService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @PostMapping("/lesson/{lessonId}")
-    public ResponseEntity<Exam> createExam(
+    public ResponseEntity<ExamDTO> createExam(
             @PathVariable Long lessonId,
             @RequestBody Exam exam,
             Authentication authentication) {
 
         User teacher = userService.findByUsername(authentication.getName());
         Exam savedExam = examService.createExam(exam, lessonId);
-        return ResponseEntity.ok(savedExam);
+        return ResponseEntity.ok(dtoMapperService.mapToExamDTO(savedExam));
     }
 
     @GetMapping("/{examId}")
-    public ResponseEntity<Exam> getExam(
+    public ResponseEntity<ExamDTO> getExam(
             @PathVariable Long examId) {
 
         Exam exam = examService.getExamById(examId);
-        return ResponseEntity.ok(exam);
+        return ResponseEntity.ok(dtoMapperService.mapToExamDTO(exam));
     }
 
     @GetMapping("/lesson/{lessonId}")

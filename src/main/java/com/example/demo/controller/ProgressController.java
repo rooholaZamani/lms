@@ -1,41 +1,52 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.ProgressDTO;
 import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
 import com.example.demo.service.CourseService;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ProgressService;
 import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/progress")
-//@CrossOrigin(origins = "*")
 public class ProgressController {
 
     private final ProgressService progressService;
     private final UserService userService;
     private final CourseService courseService;
+    private final DTOMapperService dtoMapperService;
 
     public ProgressController(
             ProgressService progressService,
             UserService userService,
-            CourseService courseService) {
+            CourseService courseService,
+            DTOMapperService dtoMapperService) {
         this.progressService = progressService;
         this.userService = userService;
         this.courseService = courseService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @GetMapping
-    public ResponseEntity<List<Progress>> getStudentProgress(Authentication authentication) {
+    public ResponseEntity<List<ProgressDTO>> getStudentProgress(Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         List<Progress> progressList = progressService.getProgressByStudent(student);
-        return ResponseEntity.ok(progressList);
+
+        List<ProgressDTO> progressDTOs = progressList.stream()
+                .map(progress -> dtoMapperService.mapToProgressDTO(progress))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(progressDTOs);
     }
 
     @GetMapping("/stats")

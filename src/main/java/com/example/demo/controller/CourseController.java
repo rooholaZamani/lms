@@ -1,5 +1,7 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.CourseDTO;
+
 import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
@@ -9,6 +11,7 @@ import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import com.example.demo.service.DTOMapperService;
 
 import java.util.HashMap;
 import java.util.List;
@@ -19,17 +22,21 @@ import java.util.Map;
 //@CrossOrigin(origins = "*")
 public class CourseController {
 
-    private final CourseService courseService;
     private final UserService userService;
     private final ProgressService progressService;
+    private final DTOMapperService dtoMapperService;
+    private final CourseService courseService;
 
     public CourseController(
             CourseService courseService,
             UserService userService,
-            ProgressService progressService) {
-        this.courseService = courseService;
+            ProgressService progressService,
+            DTOMapperService dtoMapperService) {
+
         this.userService = userService;
         this.progressService = progressService;
+        this.dtoMapperService = dtoMapperService;
+        this.courseService = courseService;
     }
 
     @PostMapping
@@ -83,8 +90,11 @@ public class CourseController {
         User user = userService.findByUsername(authentication.getName());
         Course course = courseService.getCourseById(courseId);
 
+
+        CourseDTO courseDTOs = dtoMapperService.mapToCourseDTO(course);
+
         Map<String, Object> response = new HashMap<>();
-        response.put("course", course);
+        response.put("course", courseDTOs);
 
         boolean isTeacher = user.getRoles().stream()
                 .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
@@ -100,8 +110,10 @@ public class CourseController {
     }
 
     @GetMapping("/all")
-    public ResponseEntity<List<Course>> getAllCourses() {
+    public ResponseEntity<List<CourseDTO>> getAllCourses() {
+
         List<Course> courses = courseService.getAllCourses();
-        return ResponseEntity.ok(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        return ResponseEntity.ok(courseDTOs);
     }
 }

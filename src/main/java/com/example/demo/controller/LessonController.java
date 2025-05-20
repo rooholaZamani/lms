@@ -1,8 +1,10 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.LessonDTO;
 import com.example.demo.model.Lesson;
 import com.example.demo.model.User;
 import com.example.demo.service.CourseService;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.LessonService;
 import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
@@ -13,24 +15,26 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/lessons")
-//@CrossOrigin(origins = "*")
 public class LessonController {
 
     private final LessonService lessonService;
     private final CourseService courseService;
     private final UserService userService;
+    private final DTOMapperService dtoMapperService;
 
     public LessonController(
             LessonService lessonService,
             CourseService courseService,
-            UserService userService) {
+            UserService userService,
+            DTOMapperService dtoMapperService) {
         this.lessonService = lessonService;
         this.courseService = courseService;
         this.userService = userService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @PostMapping("/course/{courseId}")
-    public ResponseEntity<Lesson> createLesson(
+    public ResponseEntity<LessonDTO> createLesson(
             @PathVariable Long courseId,
             @RequestBody Lesson lesson,
             Authentication authentication) {
@@ -41,27 +45,27 @@ public class LessonController {
 
         // Save the lesson
         Lesson savedLesson = lessonService.createLesson(lesson, courseId);
-        return ResponseEntity.ok(savedLesson);
+        return ResponseEntity.ok(dtoMapperService.mapToLessonDTO(savedLesson));
     }
 
     @GetMapping("/course/{courseId}")
-    public ResponseEntity<List<Lesson>> getCourseLessons(
+    public ResponseEntity<List<LessonDTO>> getCourseLessons(
             @PathVariable Long courseId) {
 
         List<Lesson> lessons = lessonService.getCourseLessons(courseId);
-        return ResponseEntity.ok(lessons);
+        return ResponseEntity.ok(dtoMapperService.mapToLessonDTOList(lessons));
     }
 
     @GetMapping("/{lessonId}")
-    public ResponseEntity<Lesson> getLessonById(
+    public ResponseEntity<LessonDTO> getLessonById(
             @PathVariable Long lessonId) {
 
         Lesson lesson = lessonService.getLessonById(lessonId);
-        return ResponseEntity.ok(lesson);
+        return ResponseEntity.ok(dtoMapperService.mapToLessonDTO(lesson));
     }
 
     @PutMapping("/{lessonId}")
-    public ResponseEntity<Lesson> updateLesson(
+    public ResponseEntity<LessonDTO> updateLesson(
             @PathVariable Long lessonId,
             @RequestBody Lesson lessonDetails,
             Authentication authentication) {
@@ -74,7 +78,7 @@ public class LessonController {
 
         // Update the lesson
         Lesson updatedLesson = lessonService.updateLesson(lessonId, lessonDetails);
-        return ResponseEntity.ok(updatedLesson);
+        return ResponseEntity.ok(dtoMapperService.mapToLessonDTO(updatedLesson));
     }
 
     @DeleteMapping("/{lessonId}")

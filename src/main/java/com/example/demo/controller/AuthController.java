@@ -167,6 +167,7 @@ public class AuthController {
     @Operation(summary = "Check authentication status", description = "Returns details about the currently authenticated user")
     @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<Map<String, Object>> checkAuthentication(Authentication authentication) {
+
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(401).build();
         }
