@@ -1,7 +1,10 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.AssignmentDTO;
+import com.example.demo.dto.AssignmentSubmissionDTO;
 import com.example.demo.model.*;
 import com.example.demo.service.AssignmentService;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.FileStorageService;
 import com.example.demo.service.UserService;
 import org.springframework.core.io.Resource;
@@ -22,18 +25,21 @@ public class AssignmentController {
     private final AssignmentService assignmentService;
     private final UserService userService;
     private final FileStorageService fileStorageService;
+    private final DTOMapperService dtoMapperService;
 
     public AssignmentController(
             AssignmentService assignmentService,
             UserService userService,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            DTOMapperService dtoMapperService) {
         this.assignmentService = assignmentService;
         this.userService = userService;
         this.fileStorageService = fileStorageService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @PostMapping("/lesson/{lessonId}")
-    public ResponseEntity<Assignment> createAssignment(
+    public ResponseEntity<AssignmentDTO> createAssignment(
             @PathVariable Long lessonId,
             @RequestParam("title") String title,
             @RequestParam("description") String description,
@@ -43,23 +49,23 @@ public class AssignmentController {
 
         User teacher = userService.findByUsername(authentication.getName());
         Assignment assignment = assignmentService.createAssignment(lessonId, title, description, file, dueDate, teacher);
-        return ResponseEntity.ok(assignment);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentDTO(assignment));
     }
 
     @GetMapping("/lesson/{lessonId}")
-    public ResponseEntity<List<Assignment>> getLessonAssignments(@PathVariable Long lessonId) {
+    public ResponseEntity<List<AssignmentDTO>> getLessonAssignments(@PathVariable Long lessonId) {
         List<Assignment> assignments = assignmentService.getLessonAssignments(lessonId);
-        return ResponseEntity.ok(assignments);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentDTOList(assignments));
     }
 
     @GetMapping("/{assignmentId}")
-    public ResponseEntity<Assignment> getAssignment(@PathVariable Long assignmentId) {
+    public ResponseEntity<AssignmentDTO> getAssignment(@PathVariable Long assignmentId) {
         Assignment assignment = assignmentService.getAssignmentById(assignmentId);
-        return ResponseEntity.ok(assignment);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentDTO(assignment));
     }
 
     @PostMapping("/{assignmentId}/submit")
-    public ResponseEntity<AssignmentSubmission> submitAssignment(
+    public ResponseEntity<AssignmentSubmissionDTO> submitAssignment(
             @PathVariable Long assignmentId,
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam("comment") String comment,
@@ -67,21 +73,21 @@ public class AssignmentController {
 
         User student = userService.findByUsername(authentication.getName());
         AssignmentSubmission submission = assignmentService.submitAssignment(assignmentId, student, file, comment);
-        return ResponseEntity.ok(submission);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTO(submission));
     }
 
     @GetMapping("/{assignmentId}/submissions")
-    public ResponseEntity<List<AssignmentSubmission>> getAssignmentSubmissions(
+    public ResponseEntity<List<AssignmentSubmissionDTO>> getAssignmentSubmissions(
             @PathVariable Long assignmentId,
             Authentication authentication) {
 
         User teacher = userService.findByUsername(authentication.getName());
         List<AssignmentSubmission> submissions = assignmentService.getAssignmentSubmissions(assignmentId);
-        return ResponseEntity.ok(submissions);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTOList(submissions));
     }
 
     @PostMapping("/submissions/{submissionId}/grade")
-    public ResponseEntity<AssignmentSubmission> gradeSubmission(
+    public ResponseEntity<AssignmentSubmissionDTO> gradeSubmission(
             @PathVariable Long submissionId,
             @RequestParam("score") Integer score,
             @RequestParam("feedback") String feedback,
@@ -89,14 +95,14 @@ public class AssignmentController {
 
         User teacher = userService.findByUsername(authentication.getName());
         AssignmentSubmission gradedSubmission = assignmentService.gradeSubmission(submissionId, score, feedback, teacher);
-        return ResponseEntity.ok(gradedSubmission);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTO(gradedSubmission));
     }
 
     @GetMapping("/submissions/student")
-    public ResponseEntity<List<AssignmentSubmission>> getStudentSubmissions(Authentication authentication) {
+    public ResponseEntity<List<AssignmentSubmissionDTO>> getStudentSubmissions(Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         List<AssignmentSubmission> submissions = assignmentService.getStudentSubmissions(student);
-        return ResponseEntity.ok(submissions);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTOList(submissions));
     }
 
     @GetMapping("/files/{fileId}")

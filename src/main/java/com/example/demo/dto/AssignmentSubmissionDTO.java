@@ -1,7 +1,10 @@
 package com.example.demo.dto;
 
+import lombok.Data;
+
 import java.time.LocalDateTime;
 
+@Data
 public class AssignmentSubmissionDTO {
     private Long id;
     private Long assignmentId;

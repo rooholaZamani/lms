@@ -282,4 +282,160 @@ public class DTOMapperService {
 
         return dto;
     }
+    public ChatMessageDTO mapToChatMessageDTO(ChatMessage message) {
+        if (message == null) {
+            return null;
+        }
+
+        ChatMessageDTO dto = new ChatMessageDTO();
+        dto.setId(message.getId());
+
+        if (message.getCourse() != null) {
+            dto.setCourseId(message.getCourse().getId());
+            dto.setCourseName(message.getCourse().getTitle());
+        }
+
+        if (message.getSender() != null) {
+            dto.setSenderId(message.getSender().getId());
+            dto.setSenderName(message.getSender().getFirstName() + " " +
+                    message.getSender().getLastName());
+        }
+
+        dto.setContent(message.getContent());
+        dto.setSentAt(message.getSentAt());
+        dto.setReadBy(message.getReadBy());
+
+        return dto;
+    }
+
+    public ExerciseSubmissionDTO mapToExerciseSubmissionDTO(ExerciseSubmission submission) {
+        if (submission == null) {
+            return null;
+        }
+
+        ExerciseSubmissionDTO dto = new ExerciseSubmissionDTO();
+        dto.setId(submission.getId());
+
+        if (submission.getStudent() != null) {
+            dto.setStudentId(submission.getStudent().getId());
+            dto.setStudentName(submission.getStudent().getFirstName() + " " +
+                    submission.getStudent().getLastName());
+        }
+
+        if (submission.getExercise() != null) {
+            dto.setExerciseId(submission.getExercise().getId());
+            dto.setExerciseTitle(submission.getExercise().getTitle());
+        }
+
+        dto.setSubmissionTime(submission.getSubmissionTime());
+        dto.setScore(submission.getScore());
+        dto.setTimeBonus(submission.getTimeBonus());
+        dto.setTotalScore(submission.getTotalScore());
+        dto.setPassed(submission.isPassed());
+        dto.setAnswers(submission.getAnswers());
+        dto.setAnswerTimes(submission.getAnswerTimes());
+
+        return dto;
+    }
+
+    /**
+     * Maps an Assignment entity to an AssignmentDTO
+     */
+    public AssignmentDTO mapToAssignmentDTO(Assignment assignment) {
+        if (assignment == null) {
+            return null;
+        }
+
+        AssignmentDTO dto = new AssignmentDTO();
+        dto.setId(assignment.getId());
+        dto.setTitle(assignment.getTitle());
+        dto.setDescription(assignment.getDescription());
+
+        if (assignment.getLesson() != null) {
+            dto.setLessonId(assignment.getLesson().getId());
+        }
+
+        if (assignment.getTeacher() != null) {
+            dto.setTeacherId(assignment.getTeacher().getId());
+            dto.setTeacherName(assignment.getTeacher().getFirstName() + " " +
+                    assignment.getTeacher().getLastName());
+        }
+
+        if (assignment.getFile() != null) {
+            dto.setFile(mapToFileMetadataDTO(assignment.getFile()));
+        }
+
+        dto.setCreatedAt(assignment.getCreatedAt());
+        dto.setDueDate(assignment.getDueDate());
+
+        return dto;
+    }
+
+    /**
+     * Maps an AssignmentSubmission entity to an AssignmentSubmissionDTO
+     */
+    public AssignmentSubmissionDTO mapToAssignmentSubmissionDTO(AssignmentSubmission submission) {
+        if (submission == null) {
+            return null;
+        }
+
+        AssignmentSubmissionDTO dto = new AssignmentSubmissionDTO();
+        dto.setId(submission.getId());
+
+        if (submission.getAssignment() != null) {
+            dto.setAssignmentId(submission.getAssignment().getId());
+            dto.setAssignmentTitle(submission.getAssignment().getTitle());
+        }
+
+        if (submission.getStudent() != null) {
+            dto.setStudentId(submission.getStudent().getId());
+            dto.setStudentName(submission.getStudent().getFirstName() + " " +
+                    submission.getStudent().getLastName());
+        }
+
+        dto.setComment(submission.getComment());
+
+        if (submission.getFile() != null) {
+            dto.setFile(mapToFileMetadataDTO(submission.getFile()));
+        }
+
+        dto.setSubmittedAt(submission.getSubmittedAt());
+        dto.setScore(submission.getScore());
+        dto.setFeedback(submission.getFeedback());
+        dto.setGraded(submission.isGraded());
+        dto.setGradedAt(submission.getGradedAt());
+
+        return dto;
+    }
+
+
+    public List<ExerciseSubmissionDTO> mapToExerciseSubmissionDTOList(List<ExerciseSubmission> submissions) {
+        return submissions.stream()
+                .map(this::mapToExerciseSubmissionDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Maps a list of Assignments to DTOs
+     */
+    public List<AssignmentDTO> mapToAssignmentDTOList(List<Assignment> assignments) {
+        return assignments.stream()
+                .map(this::mapToAssignmentDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Maps a list of Assignment submissions to DTOs
+     */
+    public List<AssignmentSubmissionDTO> mapToAssignmentSubmissionDTOList(List<AssignmentSubmission> submissions) {
+        return submissions.stream()
+                .map(this::mapToAssignmentSubmissionDTO)
+                .collect(Collectors.toList());
+    }
+
+    public List<ChatMessageDTO> mapToChatMessageDTOList(List<ChatMessage> messages) {
+        return messages.stream()
+                .map(this::mapToChatMessageDTO)
+                .collect(Collectors.toList());
+    }
 }

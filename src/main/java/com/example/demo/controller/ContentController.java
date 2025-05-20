@@ -1,7 +1,9 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.ContentDTO;
 import com.example.demo.model.*;
 import com.example.demo.service.ContentService;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.FileStorageService;
 import com.example.demo.service.LessonService;
 import org.springframework.core.io.Resource;
@@ -13,27 +15,30 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/content")
-//@CrossOrigin(origins = "*")
 public class ContentController {
 
     private final ContentService contentService;
     private final LessonService lessonService;
     private final FileStorageService fileStorageService;
+    private final DTOMapperService dtoMapperService;
 
     public ContentController(
             ContentService contentService,
             LessonService lessonService,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            DTOMapperService dtoMapperService) {
         this.contentService = contentService;
         this.lessonService = lessonService;
         this.fileStorageService = fileStorageService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @PostMapping("/upload")
-    public ResponseEntity<Content> uploadContent(
+    public ResponseEntity<ContentDTO> uploadContent(
             @RequestParam("file") MultipartFile file,
             @RequestParam("lessonId") Long lessonId,
             @RequestParam("title") String title,
@@ -60,11 +65,11 @@ public class ContentController {
         content.setFile(metadata);
 
         Content savedContent = contentService.saveContent(content);
-        return ResponseEntity.ok(savedContent);
+        return ResponseEntity.ok(dtoMapperService.mapToContentDTO(savedContent));
     }
 
     @PostMapping("/text")
-    public ResponseEntity<Content> createTextContent(
+    public ResponseEntity<ContentDTO> createTextContent(
             @RequestParam("lessonId") Long lessonId,
             @RequestParam("title") String title,
             @RequestParam("textContent") String textContent,
@@ -80,14 +85,19 @@ public class ContentController {
         content.setOrderIndex(orderIndex);
 
         Content savedContent = contentService.saveContent(content);
-        return ResponseEntity.ok(savedContent);
+        return ResponseEntity.ok(dtoMapperService.mapToContentDTO(savedContent));
     }
 
     @GetMapping("/lesson/{lessonId}")
-    public ResponseEntity<List<Content>> getLessonContent(@PathVariable Long lessonId) {
+    public ResponseEntity<List<ContentDTO>> getLessonContent(@PathVariable Long lessonId) {
         List<Content> contents = contentService.getLessonContents(lessonId);
-        return ResponseEntity.ok(contents);
+        List<ContentDTO> contentDTOs = contents.stream()
+                .map(content -> dtoMapperService.mapToContentDTO(content))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(contentDTOs);
     }
+
+
 
     @GetMapping("/files/{fileId}")
     public ResponseEntity<Resource> getFile(
