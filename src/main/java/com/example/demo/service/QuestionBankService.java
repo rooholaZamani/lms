@@ -17,12 +17,12 @@ public class QuestionBankService {
     }
 
     public List<Question> getAllBankQuestions() {
-        return questionRepository.findByIsInBankTrue();
+        return questionRepository.findByInBankTrue();
     }
 
     @Transactional
     public Question createBankQuestion(Question question) {
-        question.setIsInBank(true);
+        question.setInBank(true);
         question.setExam(null);
         question.setExercise(null);
         return questionRepository.save(question);
@@ -34,7 +34,7 @@ public class QuestionBankService {
                 .orElseThrow(() -> new RuntimeException("Bank question not found"));
 
         // Verify it's a bank question
-        if (!question.isInBank()) {
+        if (!question.getInBank()) {
             throw new RuntimeException("Not a bank question");
         }
 
@@ -56,7 +56,7 @@ public class QuestionBankService {
         Question question = questionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Bank question not found"));
 
-        if (!question.isInBank()) {
+        if (!question.getInBank()) {
             throw new RuntimeException("Not a bank question");
         }
 

@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.Accessors;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +34,6 @@ public class Question {
     @ManyToOne
     private Exercise exercise;
 
-    private boolean isInBank = true;
 
+    private Boolean  inBank = true;
 }

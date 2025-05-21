@@ -120,7 +120,7 @@ public class ExamService {
         Question bankQuestion = questionRepository.findById(questionId)
                 .orElseThrow(() -> new RuntimeException("Bank question not found"));
 
-        if (!bankQuestion.isInBank()) {
+        if (!bankQuestion.getInBank()) {
             throw new RuntimeException("Not a bank question");
         }
 
@@ -129,7 +129,7 @@ public class ExamService {
         newQuestion.setText(bankQuestion.getText());
         newQuestion.setPoints(bankQuestion.getPoints());
         newQuestion.setExam(exam);
-        newQuestion.setIsInBank(false);
+        newQuestion.setInBank(false);
 
         // Clone answers
         for (Answer answer : bankQuestion.getAnswers()) {

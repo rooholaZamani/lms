@@ -10,5 +10,5 @@ import java.util.List;
 public interface QuestionRepository extends JpaRepository<Question, Long> {
     List<Question> findByExamOrderById(Exam exam);
     List<Question> findByExerciseOrderById(Exercise exercise);
-    List<Question> findByIsInBankTrue();
+    List<Question> findByInBankTrue();
 }
