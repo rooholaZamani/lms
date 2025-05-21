@@ -114,4 +114,31 @@ public class ExamService {
         Exam exam = getExamById(examId);
         return submissionRepository.findByExam(exam);
     }
+    @Transactional
+    public Question cloneQuestionFromBank(Long examId, Long questionId) {
+        Exam exam = getExamById(examId);
+        Question bankQuestion = questionRepository.findById(questionId)
+                .orElseThrow(() -> new RuntimeException("Bank question not found"));
+
+        if (!bankQuestion.isInBank()) {
+            throw new RuntimeException("Not a bank question");
+        }
+
+        // Create a new question based on bank question
+        Question newQuestion = new Question();
+        newQuestion.setText(bankQuestion.getText());
+        newQuestion.setPoints(bankQuestion.getPoints());
+        newQuestion.setExam(exam);
+        newQuestion.setIsInBank(false);
+
+        // Clone answers
+        for (Answer answer : bankQuestion.getAnswers()) {
+            Answer newAnswer = new Answer();
+            newAnswer.setText(answer.getText());
+            newAnswer.setCorrect(answer.isCorrect());
+            newQuestion.getAnswers().add(newAnswer);
+        }
+
+        return questionRepository.save(newQuestion);
+    }
 }

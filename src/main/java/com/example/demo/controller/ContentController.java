@@ -6,6 +6,8 @@ import com.example.demo.service.ContentService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.FileStorageService;
 import com.example.demo.service.LessonService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
+
 
 @RestController
 @RequestMapping("/api/content")
@@ -37,13 +40,15 @@ public class ContentController {
         this.dtoMapperService = dtoMapperService;
     }
 
-    @PostMapping("/upload")
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "آپلود محتوای فایل", description = "آپلود یک فایل به عنوان محتوا درس")
+
     public ResponseEntity<ContentDTO> uploadContent(
             @RequestParam("file") MultipartFile file,
             @RequestParam("lessonId") Long lessonId,
             @RequestParam("title") String title,
             @RequestParam("contentType") ContentType contentType,
-            @RequestParam("orderIndex") Integer orderIndex) {
+            @RequestParam("orderIndex") Integer orderIndex){
 
         Lesson lesson = lessonService.getLessonById(lessonId);
 

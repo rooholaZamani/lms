@@ -41,6 +41,15 @@ public class ExamController {
         Exam savedExam = examService.createExam(exam, lessonId);
         return ResponseEntity.ok(dtoMapperService.mapToExamDTO(savedExam));
     }
+    @PostMapping("/{examId}/questions/clone/{questionId}")
+    public ResponseEntity<QuestionDTO> cloneQuestionToExam(
+            @PathVariable Long examId,
+            @PathVariable Long questionId,
+            Authentication authentication) {
+        User teacher = userService.findByUsername(authentication.getName());
+        Question clonedQuestion = examService.cloneQuestionFromBank(examId, questionId);
+        return ResponseEntity.ok(dtoMapperService.mapToQuestionDTO(clonedQuestion));
+    }
 
     @GetMapping("/{examId}")
     public ResponseEntity<ExamDTO> getExam(

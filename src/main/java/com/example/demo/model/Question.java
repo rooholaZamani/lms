@@ -31,4 +31,7 @@ public class Question {
 
     @ManyToOne
     private Exercise exercise;
+
+    private boolean isInBank = true;
+
 }

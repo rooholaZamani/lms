@@ -49,10 +49,11 @@ public class CourseController {
     }
 
     @GetMapping("/teaching")
-    public ResponseEntity<List<Course>> getTeacherCourses(Authentication authentication) {
+    public ResponseEntity<List<CourseDTO>> getTeacherCourses(Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
         List<Course> courses = courseService.getTeacherCourses(teacher);
-        return ResponseEntity.ok(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        return ResponseEntity.ok(courseDTOs);
     }
 
     @GetMapping("/enrolled")
