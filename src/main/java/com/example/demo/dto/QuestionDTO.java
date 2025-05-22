@@ -19,5 +19,6 @@ public class QuestionDTO {
     private Boolean Required;
     private Double difficulty;
 
+
     private List<AnswerDTO> answers = new ArrayList<>();
 }
