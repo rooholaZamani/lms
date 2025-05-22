@@ -96,7 +96,7 @@ public class ExerciseService {
                 boolean isCorrect = question.getAnswers().stream()
                         .filter(answer -> answer.getId().equals(answerId))
                         .findFirst()
-                        .map(Answer::isCorrect)
+                        .map(Answer::getCorrect)
                         .orElse(false);
 
                 if (isCorrect) {
@@ -180,7 +180,7 @@ public class ExerciseService {
                                 return question.getAnswers().stream()
                                         .filter(answer -> answer.getId().equals(answerId))
                                         .findFirst()
-                                        .map(Answer::isCorrect)
+                                        .map(Answer::getCorrect)
                                         .orElse(false);
                             })
                             .count();

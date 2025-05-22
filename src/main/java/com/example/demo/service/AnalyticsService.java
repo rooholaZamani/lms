@@ -539,8 +539,8 @@ public class AnalyticsService {
                 if (answerOpt.isPresent()) {
                     Answer answer = answerOpt.get();
                     questionData.put("studentAnswer", answer.getText());
-                    questionData.put("correct", answer.isCorrect());
-                    questionData.put("pointsEarned", answer.isCorrect() ? question.getPoints() : 0);
+                    questionData.put("correct", answer.getCorrect());
+                    questionData.put("pointsEarned", answer.getCorrect() ? question.getPoints() : 0);
                 }
             } else {
                 questionData.put("studentAnswer", "Not answered");
@@ -550,7 +550,7 @@ public class AnalyticsService {
 
             // Add correct answer for reference
             Optional<Answer> correctAnswerOpt = question.getAnswers().stream()
-                    .filter(Answer::IsCorrect)
+                    .filter(Answer::getCorrect)
                     .findFirst();
 
             if (correctAnswerOpt.isPresent()) {

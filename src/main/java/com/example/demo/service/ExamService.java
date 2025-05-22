@@ -105,7 +105,7 @@ public class ExamService {
                 boolean isCorrect = question.getAnswers().stream()
                         .filter(answer -> answer.getId().equals(answerId))
                         .findFirst()
-                        .map(Answer::isCorrect)
+                        .map(Answer::getCorrect)
                         .orElse(false);
 
                 if (isCorrect) {
@@ -156,7 +156,7 @@ public class ExamService {
         for (Answer answer : bankQuestion.getAnswers()) {
             Answer newAnswer = new Answer();
             newAnswer.setText(answer.getText());
-            newAnswer.setCorrect(answer.isCorrect());
+            newAnswer.setCorrect(answer.getCorrect());
             newQuestion.getAnswers().add(newAnswer);
         }
 
@@ -195,7 +195,7 @@ public class ExamService {
             
             // Check if at least one answer is marked as correct
             boolean hasCorrectAnswer = question.getAnswers().stream()
-                    .anyMatch(Answer::isCorrect);
+                    .anyMatch(Answer::getCorrect);
             
             if (!hasCorrectAnswer) {
                 throw new RuntimeException("Cannot finalize exam: Question '" + question.getText() + "' has no correct answer");
@@ -252,7 +252,7 @@ public class ExamService {
             }
             
             boolean hasCorrectAnswer = question.getAnswers().stream()
-                    .anyMatch(Answer::isCorrect);
+                    .anyMatch(Answer::getCorrect);
             
             if (!hasCorrectAnswer) {
                 allQuestionsValid = false;
