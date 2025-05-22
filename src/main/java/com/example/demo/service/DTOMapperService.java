@@ -170,12 +170,48 @@ public class DTOMapperService {
         dto.setTimeLimit(exam.getTimeLimit());
         dto.setPassingScore(exam.getPassingScore());
 
-        // Map questions if needed
+        // New finalization fields
+        if (exam.getStatus() != null) {
+            dto.setStatus(exam.getStatus().toString());
+        }
+        dto.setFinalizedAt(exam.getFinalizedAt());
+
+        // Safe handling of finalizer name
+        if (exam.getFinalizedBy() != null) {
+            String finalizerName = exam.getFinalizedBy().getFirstName();
+            if (exam.getFinalizedBy().getLastName() != null) {
+                finalizerName += " " + exam.getFinalizedBy().getLastName();
+            }
+            dto.setFinalizedBy(finalizerName);
+        }
+
+        dto.setTotalPossibleScore(exam.getTotalPossibleScore());
+        dto.setAvailableFrom(exam.getAvailableFrom());
+        dto.setAvailableTo(exam.getAvailableTo());
+
+        // Lesson information
+        if (exam.getLesson() != null) {
+            dto.setLessonId(exam.getLesson().getId());
+            dto.setLessonTitle(exam.getLesson().getTitle());
+        }
+
+        // Helper fields
+        dto.setCanBeModified(exam.canBeModified());
+        dto.setAvailableForStudents(exam.isAvailableForStudents());
+
+        // Questions count (avoid loading all questions for performance)
         if (exam.getQuestions() != null) {
-            List<QuestionDTO> questionDTOs = exam.getQuestions().stream()
-                    .map(this::mapToQuestionDTO)
-                    .collect(Collectors.toList());
-            dto.setQuestions(questionDTOs);
+            dto.setQuestionCount(exam.getQuestions().size());
+
+            // Only include full questions if they're already loaded and not too many
+            if (exam.getQuestions().size() <= 20) { // Reasonable limit
+                List<QuestionDTO> questionDTOs = exam.getQuestions().stream()
+                        .map(this::mapToQuestionDTO)
+                        .collect(Collectors.toList());
+                dto.setQuestions(questionDTOs);
+            }
+        } else {
+            dto.setQuestionCount(0);
         }
 
         return dto;
@@ -443,5 +479,47 @@ public class DTOMapperService {
         return messages.stream()
                 .map(this::mapToChatMessageDTO)
                 .collect(Collectors.toList());
+    }
+    public ExamDTO mapToExamDTOWithoutQuestions(Exam exam) {
+        if (exam == null) {
+            return null;
+        }
+
+        ExamDTO dto = new ExamDTO();
+        dto.setId(exam.getId());
+        dto.setTitle(exam.getTitle());
+        dto.setDescription(exam.getDescription());
+        dto.setTimeLimit(exam.getTimeLimit());
+        dto.setPassingScore(exam.getPassingScore());
+
+        if (exam.getStatus() != null) {
+            dto.setStatus(exam.getStatus().toString());
+        }
+        dto.setFinalizedAt(exam.getFinalizedAt());
+
+        if (exam.getFinalizedBy() != null) {
+            String finalizerName = exam.getFinalizedBy().getFirstName();
+            if (exam.getFinalizedBy().getLastName() != null) {
+                finalizerName += " " + exam.getFinalizedBy().getLastName();
+            }
+            dto.setFinalizedBy(finalizerName);
+        }
+
+        dto.setTotalPossibleScore(exam.getTotalPossibleScore());
+        dto.setAvailableFrom(exam.getAvailableFrom());
+        dto.setAvailableTo(exam.getAvailableTo());
+
+        if (exam.getLesson() != null) {
+            dto.setLessonId(exam.getLesson().getId());
+            dto.setLessonTitle(exam.getLesson().getTitle());
+        }
+
+        dto.setCanBeModified(exam.canBeModified());
+        dto.setAvailableForStudents(exam.isAvailableForStudents());
+
+        // Only count, no questions data
+        dto.setQuestionCount(exam.getQuestions() != null ? exam.getQuestions().size() : 0);
+
+        return dto;
     }
 }

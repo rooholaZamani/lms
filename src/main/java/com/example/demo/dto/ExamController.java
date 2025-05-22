@@ -1,4 +1,4 @@
-package com.example.demo.controller;
+package com.example.demo.dto;
 
 import com.example.demo.dto.ExamDTO;
 import com.example.demo.dto.QuestionDTO;

@@ -1,10 +1,9 @@
 package com.example.demo.dto;
 
 import lombok.Data;
-
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-
 
 @Data
 public class ExamDTO {
@@ -13,5 +12,24 @@ public class ExamDTO {
     private String description;
     private Integer timeLimit;
     private Integer passingScore;
+    
+    // New finalization fields
+    private String status; // ExamStatus as string
+    private LocalDateTime finalizedAt;
+    private String finalizedBy; // Teacher name who finalized
+    private Integer totalPossibleScore;
+    private LocalDateTime availableFrom;
+    private LocalDateTime availableTo;
+    
+    // Lesson information
+    private Long lessonId;
+    private String lessonTitle;
+    
+    // Questions (only included when specifically requested)
     private List<QuestionDTO> questions = new ArrayList<>();
+    
+    // Additional metadata
+    private Integer questionCount;
+    private boolean canBeModified;
+    private boolean AvailableForStudents;
 }
