@@ -7,15 +7,23 @@ import com.example.demo.model.*;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExamService;
 import com.example.demo.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/exams")
+@Tag(name = "Exams", description = "Exam management operations")
 public class ExamController {
 
     private final ExamService examService;
@@ -32,6 +40,8 @@ public class ExamController {
     }
 
     @PostMapping("/lesson/{lessonId}")
+    @Operation(summary = "Create a new exam", description = "Create a new exam for a specific lesson")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<ExamDTO> createExam(
             @PathVariable Long lessonId,
             @RequestBody Exam exam,
@@ -41,7 +51,10 @@ public class ExamController {
         Exam savedExam = examService.createExam(exam, lessonId);
         return ResponseEntity.ok(dtoMapperService.mapToExamDTO(savedExam));
     }
+
     @PostMapping("/{examId}/questions/clone/{questionId}")
+    @Operation(summary = "Clone question from bank", description = "Clone a question from question bank to exam")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<QuestionDTO> cloneQuestionToExam(
             @PathVariable Long examId,
             @PathVariable Long questionId,
@@ -52,6 +65,7 @@ public class ExamController {
     }
 
     @GetMapping("/{examId}")
+    @Operation(summary = "Get exam details", description = "Retrieve detailed information about an exam")
     public ResponseEntity<ExamDTO> getExam(
             @PathVariable Long examId) {
 
@@ -60,6 +74,7 @@ public class ExamController {
     }
 
     @GetMapping("/lesson/{lessonId}")
+    @Operation(summary = "Get exam by lesson", description = "Retrieve exam associated with a specific lesson")
     public ResponseEntity<Exam> getExamByLesson(
             @PathVariable Long lessonId) {
 
@@ -68,6 +83,8 @@ public class ExamController {
     }
 
     @PostMapping("/{examId}/questions")
+    @Operation(summary = "Add question to exam", description = "Add a new question to an existing exam")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<Question> addQuestion(
             @PathVariable Long examId,
             @RequestBody Question question,
@@ -79,6 +96,7 @@ public class ExamController {
     }
 
     @GetMapping("/{examId}/questions")
+    @Operation(summary = "Get exam questions", description = "Retrieve all questions for a specific exam")
     public ResponseEntity<List<Question>> getExamQuestions(
             @PathVariable Long examId) {
 
@@ -87,6 +105,8 @@ public class ExamController {
     }
 
     @PostMapping("/{examId}/submit")
+    @Operation(summary = "Submit exam", description = "Submit student answers for an exam")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<Submission> submitExam(
             @PathVariable Long examId,
             @RequestBody Map<Long, Long> answers,
@@ -98,6 +118,8 @@ public class ExamController {
     }
 
     @GetMapping("/submissions/student")
+    @Operation(summary = "Get student submissions", description = "Retrieve all exam submissions for current student")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<List<Submission>> getStudentSubmissions(
             Authentication authentication) {
 
@@ -107,6 +129,8 @@ public class ExamController {
     }
 
     @GetMapping("/{examId}/submissions")
+    @Operation(summary = "Get exam submissions", description = "Retrieve all submissions for a specific exam (teacher only)")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<List<Submission>> getExamSubmissions(
             @PathVariable Long examId,
             Authentication authentication) {
@@ -114,5 +138,89 @@ public class ExamController {
         User teacher = userService.findByUsername(authentication.getName());
         List<Submission> submissions = examService.getExamSubmissions(examId);
         return ResponseEntity.ok(submissions);
+    }
+
+    /**
+     * NEW: Finalize exam endpoint
+     */
+    @PutMapping("/{examId}/finalize")
+    @Operation(
+        summary = "Finalize exam", 
+        description = "Transform exam from draft to finalized status, making it available for students"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Exam successfully finalized"),
+        @ApiResponse(responseCode = "400", description = "Exam cannot be finalized (validation failed)"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized - user not authenticated"),
+        @ApiResponse(responseCode = "403", description = "Forbidden - user doesn't own this exam"),
+        @ApiResponse(responseCode = "404", description = "Exam not found")
+    })
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> finalizeExam(
+            @Parameter(description = "ID of the exam to finalize") 
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+            
+            // Finalize the exam
+            Exam finalizedExam = examService.finalizeExam(examId, teacher);
+            
+            // Prepare success response
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Exam finalized successfully");
+            response.put("examId", finalizedExam.getId());
+            response.put("title", finalizedExam.getTitle());
+            response.put("status", finalizedExam.getStatus().toString());
+            response.put("totalPossibleScore", finalizedExam.getTotalPossibleScore());
+            response.put("finalizedAt", finalizedExam.getFinalizedAt());
+            response.put("availableFrom", finalizedExam.getAvailableFrom());
+            
+            // Include exam statistics
+            List<Question> questions = examService.getExamQuestions(examId);
+            response.put("questionCount", questions.size());
+            response.put("passingScore", finalizedExam.getPassingScore());
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (RuntimeException e) {
+            // Handle business logic errors
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("examId", examId);
+            
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * NEW: Get exam finalization info (for validation before finalizing)
+     */
+    @GetMapping("/{examId}/finalization-info")
+    @Operation(
+        summary = "Get exam finalization information", 
+        description = "Get information about whether exam can be finalized and validation details"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getExamFinalizationInfo(
+            @Parameter(description = "ID of the exam") 
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+            Map<String, Object> info = examService.getExamFinalizationInfo(examId, teacher);
+            return ResponseEntity.ok(info);
+            
+        } catch (RuntimeException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
     }
 }
