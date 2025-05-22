@@ -21,9 +21,10 @@ public class Question {
     private String text;
 
     @Enumerated(EnumType.STRING)
-    private QuestionType questionType;
+    @Column(name = "question_type")
+    private QuestionType questionType = QuestionType.MULTIPLE_CHOICE; // Set default value
 
-    private Integer points;
+    private Integer points = 1; // Set default value
 
     @Column(length = 1000)
     private String explanation; // توضیح سوال
@@ -59,11 +60,36 @@ public class Question {
     @JoinColumn(name = "question_id") 
     private List<MatchingPair> matchingPairs = new ArrayList<>();
 
+    @Column(name = "in_bank")
     private Boolean inBank = false;
 
     private Integer timeLimit; // محدودیت زمان برای سوال (ثانیه)
 
+    @Column(name = "is_required")
     private Boolean isRequired = true; // آیا پاسخ دادن اجباری است
 
     private Double difficulty; // سطح دشواری (1.0 - 5.0)
+
+    // Helper method to safely get question type
+    public QuestionType getQuestionType() {
+        return questionType != null ? questionType : QuestionType.MULTIPLE_CHOICE;
+    }
+
+    // PrePersist to ensure questionType is never null
+    @PrePersist
+    @PreUpdate
+    private void validateQuestionType() {
+        if (this.questionType == null) {
+            this.questionType = QuestionType.MULTIPLE_CHOICE;
+        }
+        if (this.points == null) {
+            this.points = 1;
+        }
+        if (this.inBank == null) {
+            this.inBank = false;
+        }
+        if (this.isRequired == null) {
+            this.isRequired = true;
+        }
+    }
 }
