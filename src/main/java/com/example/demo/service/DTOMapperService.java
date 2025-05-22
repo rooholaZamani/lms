@@ -93,6 +93,12 @@ public class DTOMapperService {
         if (lesson.getCourse() != null) {
             dto.setCourseId(lesson.getCourse().getId());
             dto.setCourseTitle(lesson.getCourse().getTitle());
+
+            // اضافه کردن course object
+            LessonDTO.CourseSummaryDTO courseSummary = new LessonDTO.CourseSummaryDTO();
+            courseSummary.setId(lesson.getCourse().getId());
+            courseSummary.setTitle(lesson.getCourse().getTitle());
+            dto.setCourse(courseSummary);
         }
 
         dto.setHasExam(lesson.getExam() != null);

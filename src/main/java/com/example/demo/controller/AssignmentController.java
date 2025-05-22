@@ -7,6 +7,8 @@ import com.example.demo.service.AssignmentService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.FileStorageService;
 import com.example.demo.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -39,12 +41,16 @@ public class AssignmentController {
     }
 
     @PostMapping("/lesson/{lessonId}")
+    @Operation(
+            summary = "Create a new assignment",
+            description = "Create a new assignment for a specific lesson with optional file attachment"
+    )
     public ResponseEntity<AssignmentDTO> createAssignment(
-            @PathVariable Long lessonId,
-            @RequestParam("title") String title,
-            @RequestParam("description") String description,
-            @RequestParam(value = "file", required = false) MultipartFile file,
-            @RequestParam("dueDate") String dueDate,
+            @Parameter(description = "ID of the lesson") @PathVariable Long lessonId,
+            @Parameter(description = "Title of the assignment") @RequestParam("title") String title,
+            @Parameter(description = "Description of the assignment") @RequestParam("description") String description,
+            @Parameter(description = "File attachment (optional)") @RequestParam(value = "file", required = false) MultipartFile file,
+            @Parameter(description = "Due date in ISO-8601 format (yyyy-MM-ddTHH:mm:ss)") @RequestParam("dueDate") String dueDate,
             Authentication authentication) {
 
         User teacher = userService.findByUsername(authentication.getName());

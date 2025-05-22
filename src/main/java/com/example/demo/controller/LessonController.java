@@ -96,4 +96,21 @@ public class LessonController {
         lessonService.deleteLesson(lessonId);
         return ResponseEntity.ok().build();
     }
+    @GetMapping("/teaching")
+    public ResponseEntity<List<LessonDTO>> getTeacherLessons(Authentication authentication) {
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        List<Lesson> lessons = lessonService.getTeacherLessons(teacher);
+        List<LessonDTO> lessonDTOs = dtoMapperService.mapToLessonDTOList(lessons);
+
+        return ResponseEntity.ok(lessonDTOs);
+    }
 }

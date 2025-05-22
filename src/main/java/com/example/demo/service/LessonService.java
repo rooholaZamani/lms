@@ -3,9 +3,12 @@ package com.example.demo.service;
 
 import com.example.demo.model.Course;
 import com.example.demo.model.Lesson;
+import com.example.demo.model.User;
 import com.example.demo.repository.CourseRepository;
 import com.example.demo.repository.LessonRepository;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -55,6 +58,20 @@ public class LessonService {
         }
 
         return lessonRepository.save(lesson);
+    }
+    public List<Lesson> getTeacherLessons(User teacher) {
+        // Get all courses taught by this teacher
+        List<Course> teacherCourses = courseRepository.findByTeacher(teacher);
+
+        List<Lesson> allLessons = new ArrayList<>();
+
+        // Get all lessons from all courses
+        for (Course course : teacherCourses) {
+            List<Lesson> courseLessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+            allLessons.addAll(courseLessons);
+        }
+
+        return allLessons;
     }
 
     public void deleteLesson(Long lessonId) {

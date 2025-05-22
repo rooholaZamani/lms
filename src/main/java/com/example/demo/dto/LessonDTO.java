@@ -18,4 +18,13 @@ public class LessonDTO {
     private ExerciseDTO exercise;
     private boolean hasExam;
     private boolean hasExercise;
+
+    private CourseSummaryDTO course;
+
+    @Data
+    public static class CourseSummaryDTO {
+        private Long id;
+        private String title;
+    }
+
 }
