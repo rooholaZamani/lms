@@ -43,7 +43,7 @@ public class ProgressController {
         List<Progress> progressList = progressService.getProgressByStudent(student);
 
         List<ProgressDTO> progressDTOs = progressList.stream()
-                .map(progress -> dtoMapperService.mapToProgressDTO(progress))
+                .map(dtoMapperService::mapToProgressDTO)
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(progressDTOs);

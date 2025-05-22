@@ -1,16 +1,19 @@
 package com.example.demo.model;
 
 import jakarta.persistence.*;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.Id;
 
 @Entity
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(name = "answer") // تغییر نام جدول برای جلوگیری از تداخل
 public class Answer {
-
+    @jakarta.persistence.Id
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
@@ -18,5 +21,21 @@ public class Answer {
     @Column(length = 1000)
     private String text;
 
-    private boolean correct;
+    private Boolean correct = false;
+
+    private String answerType = "TEXT"; // TEXT, IMAGE, AUDIO
+
+    @Column(length = 1000)
+    private String mediaUrl; // URL برای تصویر یا صوت
+
+    private Integer points = 0; // امتیاز این گزینه (برای امتیازدهی جزئی)
+
+    @Column(length = 500)
+    private String feedback; // بازخورد برای این گزینه
+
+    private Integer orderIndex; // ترتیب نمایش گزینه
+
+    // برای سوالات دسته‌بندی
+    @Column(length = 200)
+    private String category; // دسته‌بندی
 }

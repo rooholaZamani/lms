@@ -4,6 +4,7 @@ import com.example.demo.dto.*;
 import com.example.demo.model.*;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -233,39 +234,39 @@ public class DTOMapperService {
         return dto;
     }
 
-    public QuestionDTO mapToQuestionDTO(Question question) {
-        if (question == null) {
-            return null;
-        }
+//    public QuestionDTO mapToQuestionDTO(Question question) {
+//        if (question == null) {
+//            return null;
+//        }
+//
+//        QuestionDTO dto = new QuestionDTO();
+//        dto.setId(question.getId());
+//        dto.setText(question.getText());
+//        dto.setPoints(question.getPoints());
+//
+//        // Map answers
+//        if (question.getAnswers() != null) {
+//            List<AnswerDTO> answerDTOs = question.getAnswers().stream()
+//                    .map(this::mapToAnswerDTO)
+//                    .collect(Collectors.toList());
+//            dto.setAnswers(answerDTOs);
+//        }
+//
+//        return dto;
+//    }
 
-        QuestionDTO dto = new QuestionDTO();
-        dto.setId(question.getId());
-        dto.setText(question.getText());
-        dto.setPoints(question.getPoints());
-
-        // Map answers
-        if (question.getAnswers() != null) {
-            List<AnswerDTO> answerDTOs = question.getAnswers().stream()
-                    .map(this::mapToAnswerDTO)
-                    .collect(Collectors.toList());
-            dto.setAnswers(answerDTOs);
-        }
-
-        return dto;
-    }
-
-    public AnswerDTO mapToAnswerDTO(Answer answer) {
-        if (answer == null) {
-            return null;
-        }
-
-        AnswerDTO dto = new AnswerDTO();
-        dto.setId(answer.getId());
-        dto.setText(answer.getText());
-        dto.setCorrect(answer.isCorrect());
-
-        return dto;
-    }
+//    public AnswerDTO mapToAnswerDTO(Answer answer) {
+//        if (answer == null) {
+//            return null;
+//        }
+//
+//        AnswerDTO dto = new AnswerDTO();
+//        dto.setId(answer.getId());
+//        dto.setText(answer.getText());
+//        dto.setCorrect(answer.getCorrect());
+//
+//        return dto;
+//    }
     public List<LessonDTO> mapToLessonDTOList(List<Lesson> lessons) {
         return lessons.stream()
                 .map(this::mapToLessonDTO)
@@ -519,6 +520,112 @@ public class DTOMapperService {
 
         // Only count, no questions data
         dto.setQuestionCount(exam.getQuestions() != null ? exam.getQuestions().size() : 0);
+
+        return dto;
+    }
+    public QuestionDTO mapToQuestionDTO(Question question) {
+        if (question == null) {
+            return null;
+        }
+
+        QuestionDTO dto = new QuestionDTO();
+        dto.setId(question.getId());
+        dto.setText(question.getText());
+        dto.setQuestionType(question.getQuestionType());
+        dto.setPoints(question.getPoints());
+        dto.setExplanation(question.getExplanation());
+        dto.setHint(question.getHint());
+        dto.setTemplate(question.getTemplate());
+        dto.setTimeLimit(question.getTimeLimit());
+        dto.setIsRequired(question.getIsRequired());
+        dto.setDifficulty(question.getDifficulty());
+
+        // Map answers based on question type
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+            case CATEGORIZATION:
+                if (question.getAnswers() != null) {
+                    List<AnswerDTO> answerDTOs = question.getAnswers().stream()
+                            .map(this::mapToAnswerDTO)
+                            .collect(Collectors.toList());
+                    dto.setAnswers(answerDTOs);
+                }
+                break;
+
+            case FILL_IN_THE_BLANKS:
+                if (question.getBlankAnswers() != null) {
+                    List<BlankAnswerDTO> blankDTOs = question.getBlankAnswers().stream()
+                            .map(this::mapToBlankAnswerDTO)
+                            .collect(Collectors.toList());
+                    dto.setBlankAnswers(blankDTOs);
+                }
+                break;
+
+            case MATCHING:
+                if (question.getMatchingPairs() != null) {
+                    List<MatchingPairDTO> matchingDTOs = question.getMatchingPairs().stream()
+                            .map(this::mapToMatchingPairDTO)
+                            .collect(Collectors.toList());
+                    dto.setMatchingPairs(matchingDTOs);
+                }
+                break;
+        }
+
+        return dto;
+    }
+
+    public AnswerDTO mapToAnswerDTO(Answer answer) {
+        if (answer == null) {
+            return null;
+        }
+
+        AnswerDTO dto = new AnswerDTO();
+        dto.setId(answer.getId());
+        dto.setText(answer.getText());
+        dto.setCorrect(answer.getCorrect());
+        dto.setAnswerType(answer.getAnswerType());
+        dto.setMediaUrl(answer.getMediaUrl());
+        dto.setPoints(answer.getPoints());
+        dto.setFeedback(answer.getFeedback());
+        dto.setOrderIndex(answer.getOrderIndex());
+        dto.setCategory(answer.getCategory());
+
+        return dto;
+    }
+
+    public BlankAnswerDTO mapToBlankAnswerDTO(BlankAnswer blankAnswer) {
+        if (blankAnswer == null) {
+            return null;
+        }
+
+        BlankAnswerDTO dto = new BlankAnswerDTO();
+        dto.setBlankIndex(blankAnswer.getBlankIndex());
+        dto.setCorrectAnswer(blankAnswer.getCorrectAnswer());
+        dto.setCaseSensitive(blankAnswer.getCaseSensitive());
+        dto.setPoints(blankAnswer.getPoints());
+
+        // Parse acceptable answers from string to list
+        if (blankAnswer.getAcceptableAnswers() != null) {
+            dto.setAcceptableAnswers(Arrays.asList(blankAnswer.getAcceptableAnswers().split(",")));
+        }
+
+        return dto;
+    }
+
+    public MatchingPairDTO mapToMatchingPairDTO(MatchingPair pair) {
+        if (pair == null) {
+            return null;
+        }
+
+        MatchingPairDTO dto = new MatchingPairDTO();
+        dto.setLeftItem(pair.getLeftItem());
+        dto.setRightItem(pair.getRightItem());
+        dto.setLeftItemType(pair.getLeftItemType());
+        dto.setRightItemType(pair.getRightItemType());
+        dto.setLeftItemUrl(pair.getLeftItemUrl());
+        dto.setRightItemUrl(pair.getRightItemUrl());
+        dto.setPoints(pair.getPoints());
 
         return dto;
     }

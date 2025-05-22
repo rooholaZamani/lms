@@ -550,7 +550,7 @@ public class AnalyticsService {
 
             // Add correct answer for reference
             Optional<Answer> correctAnswerOpt = question.getAnswers().stream()
-                    .filter(Answer::isCorrect)
+                    .filter(Answer::IsCorrect)
                     .findFirst();
 
             if (correctAnswerOpt.isPresent()) {
