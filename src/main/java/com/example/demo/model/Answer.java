@@ -5,7 +5,6 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.Id;
 
 @Entity
 @Data
@@ -13,7 +12,6 @@ import org.springframework.data.annotation.Id;
 @AllArgsConstructor
 @Table(name = "answer") // تغییر نام جدول برای جلوگیری از تداخل
 public class Answer {
-    @jakarta.persistence.Id
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
@@ -38,4 +36,5 @@ public class Answer {
     // برای سوالات دسته‌بندی
     @Column(length = 200)
     private String category; // دسته‌بندی
+
 }
