@@ -36,5 +36,4 @@ public class Answer {
     // برای سوالات دسته‌بندی
     @Column(length = 200)
     private String category; // دسته‌بندی
-
 }

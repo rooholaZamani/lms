@@ -141,4 +141,27 @@ public class ContentController {
         contentService.deleteContent(contentId);
         return ResponseEntity.ok().build();
     }
+    @PutMapping("/lesson/{lessonId}")
+    @Operation(summary = "Update lesson contents", description = "Update all contents of a lesson")
+    public ResponseEntity<List<ContentDTO>> updateLessonContents(
+            @PathVariable Long lessonId,
+            @RequestBody List<Content> contents) {
+
+        // خواندن درس از دیتابیس
+        Lesson lesson = lessonService.getLessonById(lessonId);
+
+        // آپدیت کردن محتوا
+        for (Content content : contents) {
+            content.setLesson(lesson);
+            contentService.saveContent(content);
+        }
+
+        // خواندن محتوای به‌روزرسانی شده
+        List<Content> updatedContents = contentService.getLessonContents(lessonId);
+        List<ContentDTO> contentDTOs = updatedContents.stream()
+                .map(dtoMapperService::mapToContentDTO)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(contentDTOs);
+    }
 }

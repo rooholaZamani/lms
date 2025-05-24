@@ -1,17 +1,21 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.ContentDTO;
 import com.example.demo.dto.LessonDTO;
+import com.example.demo.model.Content;
 import com.example.demo.model.Lesson;
 import com.example.demo.model.User;
 import com.example.demo.service.CourseService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.LessonService;
 import com.example.demo.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/lessons")
