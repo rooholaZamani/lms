@@ -1,25 +1,25 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.CourseDTO;
-
+import com.example.demo.dto.CourseDetailsDTO;
 import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
 import com.example.demo.service.CourseService;
 import com.example.demo.service.ProgressService;
 import com.example.demo.service.UserService;
+import com.example.demo.service.DTOMapperService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import com.example.demo.service.DTOMapperService;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/courses")
-//@CrossOrigin(origins = "*")
+@Tag(name = "Courses", description = "Course management operations")
 public class CourseController {
 
     private final UserService userService;
@@ -40,12 +40,12 @@ public class CourseController {
     }
 
     @PostMapping
-    public ResponseEntity<Course> createCourse(
+    public ResponseEntity<CourseDTO> createCourse(
             @RequestBody Course course,
             Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
         Course savedCourse = courseService.createCourse(course, teacher);
-        return ResponseEntity.ok(savedCourse);
+        return ResponseEntity.ok(dtoMapperService.mapToCourseDTO(savedCourse));
     }
 
     @GetMapping("/teaching")
@@ -56,15 +56,20 @@ public class CourseController {
         return ResponseEntity.ok(courseDTOs);
     }
 
+    // 🔥 FIXED: Now returns CourseDTO instead of raw Course entity
     @GetMapping("/enrolled")
-    public ResponseEntity<List<Course>> getEnrolledCourses(Authentication authentication) {
+    @Operation(summary = "Get enrolled courses", description = "Get list of courses the student is enrolled in")
+    public ResponseEntity<List<CourseDTO>> getEnrolledCourses(Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         List<Course> courses = courseService.getEnrolledCourses(student);
-        return ResponseEntity.ok(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        return ResponseEntity.ok(courseDTOs);
     }
 
+    // 🔥 FIXED: Now returns CourseDTO instead of raw Course entity
     @GetMapping("/available")
-    public ResponseEntity<List<Course>> getAvailableCourses(Authentication authentication) {
+    @Operation(summary = "Get available courses", description = "Get list of courses available for enrollment")
+    public ResponseEntity<List<CourseDTO>> getAvailableCourses(Authentication authentication) {
         User user = userService.findByUsername(authentication.getName());
         List<Course> allCourses = courseService.getAllCourses();
         List<Course> enrolledCourses = courseService.getEnrolledCourses(user);
@@ -72,39 +77,46 @@ public class CourseController {
         // Filter out courses the student is already enrolled in
         allCourses.removeAll(enrolledCourses);
 
-        return ResponseEntity.ok(allCourses);
+        // Convert to DTOs
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(allCourses);
+        return ResponseEntity.ok(courseDTOs);
     }
 
     @PostMapping("/{courseId}/enroll")
-    public ResponseEntity<Course> enrollInCourse(
+    public ResponseEntity<CourseDTO> enrollInCourse(
             @PathVariable Long courseId,
             Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         Course course = courseService.enrollStudent(courseId, student);
-        return ResponseEntity.ok(course);
+        return ResponseEntity.ok(dtoMapperService.mapToCourseDTO(course));
     }
 
+    // 🔥 FIXED: Now returns a cleaner response using CourseDetailsDTO
     @GetMapping("/{courseId}")
-    public ResponseEntity<Map<String, Object>> getCourseDetails(
+    @Operation(summary = "Get course details", description = "Get detailed information about a specific course")
+    public ResponseEntity<CourseDetailsDTO> getCourseDetails(
             @PathVariable Long courseId,
             Authentication authentication) {
         User user = userService.findByUsername(authentication.getName());
         Course course = courseService.getCourseById(courseId);
 
+        CourseDTO courseDTO = dtoMapperService.mapToCourseDTO(course);
 
-        CourseDTO courseDTOs = dtoMapperService.mapToCourseDTO(course);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("course", courseDTOs);
+        // Create detailed response
+        CourseDetailsDTO response = new CourseDetailsDTO();
+        response.setCourse(courseDTO);
 
         boolean isTeacher = user.getRoles().stream()
                 .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
         boolean isStudent = user.getRoles().stream()
                 .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
 
+        response.setIsTeacher(isTeacher);
+        response.setIsStudent(isStudent);
+
         if (isStudent) {
             Progress progress = progressService.getOrCreateProgress(user, course);
-            response.put("progress", progress);
+            response.setProgress(dtoMapperService.mapToProgressDTO(progress));
         }
 
         return ResponseEntity.ok(response);
@@ -112,7 +124,6 @@ public class CourseController {
 
     @GetMapping("/all")
     public ResponseEntity<List<CourseDTO>> getAllCourses() {
-
         List<Course> courses = courseService.getAllCourses();
         List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
         return ResponseEntity.ok(courseDTOs);

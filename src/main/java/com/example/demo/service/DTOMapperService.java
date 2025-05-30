@@ -629,4 +629,49 @@ public class DTOMapperService {
 
         return dto;
     }
+    public CourseDTO mapToCourseDTOForList(Course course) {
+        if (course == null) {
+            return null;
+        }
+
+        CourseDTO dto = new CourseDTO();
+        dto.setId(course.getId());
+        dto.setTitle(course.getTitle());
+        dto.setDescription(course.getDescription());
+
+        // Map teacher (lightweight)
+        if (course.getTeacher() != null) {
+            dto.setTeacher(mapToUserSummary(course.getTeacher()));
+        }
+
+        // Only include lesson count and basic info, not full lesson details
+        if (course.getLessons() != null) {
+            List<LessonSummaryDTO> lessonSummaries = course.getLessons().stream()
+                    .map(lesson -> {
+                        LessonSummaryDTO summary = new LessonSummaryDTO();
+                        summary.setId(lesson.getId());
+                        summary.setTitle(lesson.getTitle());
+                        summary.setOrderIndex(lesson.getOrderIndex());
+                        summary.setHasExam(lesson.getExam() != null);
+                        summary.setHasExercise(lesson.getExercise() != null);
+                        // Don't include description to keep response smaller
+                        return summary;
+                    })
+                    .collect(Collectors.toList());
+            dto.setLessons(lessonSummaries);
+        }
+
+        // For list views, don't include enrolled students to reduce response size
+        // dto.setEnrolledStudents(new ArrayList<>());
+
+        return dto;
+    }
+    /**
+     * Maps list of courses to DTOs optimized for list views
+     */
+    public List<CourseDTO> mapToCourseDTOListOptimized(List<Course> courses) {
+        return courses.stream()
+                .map(this::mapToCourseDTOForList)
+                .collect(Collectors.toList());
+    }
 }
