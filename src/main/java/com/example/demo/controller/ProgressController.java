@@ -79,30 +79,39 @@ public class ProgressController {
     }
 
     @GetMapping("/{courseId}")
-    public ResponseEntity<Progress> getCourseProgress(
+    public ResponseEntity<ProgressDTO> getCourseProgress(
             @PathVariable Long courseId,
             Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         Course course = courseService.getCourseById(courseId);
         Progress progress = progressService.getOrCreateProgress(student, course);
-        return ResponseEntity.ok(progress);
+        
+        // 🔥 FIXED: Use DTO instead of entity
+        ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(progress);
+        return ResponseEntity.ok(progressDTO);
     }
 
     @PostMapping("/lesson/{lessonId}/complete")
-    public ResponseEntity<Progress> markLessonComplete(
+    public ResponseEntity<ProgressDTO> markLessonComplete(
             @PathVariable Long lessonId,
             Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markLessonComplete(student, lessonId);
-        return ResponseEntity.ok(updatedProgress);
+        
+        // 🔥 FIXED: Use DTO instead of entity
+        ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
+        return ResponseEntity.ok(progressDTO);
     }
 
     @PostMapping("/content/{contentId}/view")
-    public ResponseEntity<Progress> markContentViewed(
+    public ResponseEntity<ProgressDTO> markContentViewed(
             @PathVariable Long contentId,
             Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markContentViewed(student, contentId);
-        return ResponseEntity.ok(updatedProgress);
+        
+        // 🔥 FIXED: Use DTO instead of entity to prevent circular reference
+        ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
+        return ResponseEntity.ok(progressDTO);
     }
 }
