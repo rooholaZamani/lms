@@ -289,4 +289,22 @@ public class ExamService {
         
         return result;
     }
+    public List<Exam> getExamsByTeacher(User teacher) {
+        return examRepository.findByTeacher(teacher);
+    }
+
+    /**
+     * Get exams with submissions for a teacher
+     */
+    public Map<Long, List<Submission>> getSubmissionsByExamsForTeacher(User teacher) {
+        List<Exam> teacherExams = getExamsByTeacher(teacher);
+        Map<Long, List<Submission>> submissionsByExam = new HashMap<>();
+
+        for (Exam exam : teacherExams) {
+            List<Submission> submissions = submissionRepository.findByExam(exam);
+            submissionsByExam.put(exam.getId(), submissions);
+        }
+
+        return submissionsByExam;
+    }
 }

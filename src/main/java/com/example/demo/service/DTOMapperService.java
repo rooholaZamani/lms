@@ -4,8 +4,10 @@ import com.example.demo.dto.*;
 import com.example.demo.model.*;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -672,6 +674,76 @@ public class DTOMapperService {
     public List<CourseDTO> mapToCourseDTOListOptimized(List<Course> courses) {
         return courses.stream()
                 .map(this::mapToCourseDTOForList)
+                .collect(Collectors.toList());
+    }
+    // Add these methods to DTOMapperService.java
+
+    public ExamWithDetailsDTO mapToExamWithDetailsDTO(Exam exam, List<Submission> submissions) {
+        if (exam == null) {
+            return null;
+        }
+
+        ExamWithDetailsDTO dto = new ExamWithDetailsDTO();
+        dto.setId(exam.getId());
+        dto.setTitle(exam.getTitle());
+        dto.setDescription(exam.getDescription());
+        dto.setDuration(exam.getTimeLimit());
+        dto.setPassingScore(exam.getPassingScore());
+
+        // Set status
+        if (exam.getStatus() != null) {
+            dto.setStatus(exam.getStatus().toString());
+        }
+
+        // Use finalizedAt as createdAt if available, otherwise null
+        dto.setCreatedAt(exam.getFinalizedAt());
+
+        // Set question count
+        dto.setQuestionCount(exam.getQuestions() != null ? exam.getQuestions().size() : 0);
+
+        // Map lesson information
+        if (exam.getLesson() != null) {
+            dto.setLessonId(exam.getLesson().getId());
+
+            ExamWithDetailsDTO.LessonSummary lessonSummary = new ExamWithDetailsDTO.LessonSummary();
+            lessonSummary.setId(exam.getLesson().getId());
+            lessonSummary.setTitle(exam.getLesson().getTitle());
+
+            // Map course information
+            if (exam.getLesson().getCourse() != null) {
+                ExamWithDetailsDTO.CourseSummary courseSummary = new ExamWithDetailsDTO.CourseSummary();
+                courseSummary.setId(exam.getLesson().getCourse().getId());
+                courseSummary.setTitle(exam.getLesson().getCourse().getTitle());
+                lessonSummary.setCourse(courseSummary);
+            }
+
+            dto.setLesson(lessonSummary);
+        }
+
+        // Map submissions
+        if (submissions != null) {
+            List<ExamWithDetailsDTO.SubmissionSummary> submissionSummaries = submissions.stream()
+                    .map(submission -> {
+                        ExamWithDetailsDTO.SubmissionSummary summary = new ExamWithDetailsDTO.SubmissionSummary();
+                        summary.setId(submission.getId());
+                        summary.setStudentId(submission.getStudent().getId());
+                        summary.setScore(submission.getScore());
+                        summary.setSubmittedAt(submission.getSubmissionTime());
+                        return summary;
+                    })
+                    .collect(Collectors.toList());
+            dto.setSubmissions(submissionSummaries);
+        }
+
+        return dto;
+    }
+
+    public List<ExamWithDetailsDTO> mapToExamWithDetailsDTOList(List<Exam> exams, Map<Long, List<Submission>> submissionsByExam) {
+        return exams.stream()
+                .map(exam -> {
+                    List<Submission> examSubmissions = submissionsByExam.getOrDefault(exam.getId(), new ArrayList<>());
+                    return mapToExamWithDetailsDTO(exam, examSubmissions);
+                })
                 .collect(Collectors.toList());
     }
 }

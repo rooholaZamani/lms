@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.example.demo.dto.ExamWithDetailsDTO;
 
 @RestController
 @RequestMapping("/api/exams")
@@ -219,5 +220,33 @@ public class ExamController {
             
             return ResponseEntity.badRequest().body(errorResponse);
         }
+    }
+    @GetMapping("/teaching")
+    @Operation(
+            summary = "Get teacher's exams",
+            description = "Get all exams created by the authenticated teacher with lesson and submission details"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<List<ExamWithDetailsDTO>> getTeacherExams(Authentication authentication) {
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        // Get exams by teacher
+        List<Exam> exams = examService.getExamsByTeacher(teacher);
+
+        // Get submissions for these exams
+        Map<Long, List<Submission>> submissionsByExam = examService.getSubmissionsByExamsForTeacher(teacher);
+
+        // Convert to DTOs
+        List<ExamWithDetailsDTO> examDTOs = dtoMapperService.mapToExamWithDetailsDTOList(exams, submissionsByExam);
+
+        return ResponseEntity.ok(examDTOs);
     }
 }
