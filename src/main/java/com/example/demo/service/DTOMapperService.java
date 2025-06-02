@@ -746,4 +746,47 @@ public class DTOMapperService {
                 })
                 .collect(Collectors.toList());
     }
+    /**
+     * Maps Content entity to ContentDetailsDTO with enhanced information
+     */
+    public ContentDetailsDTO mapToContentDetailsDTO(Content content) {
+        if (content == null) {
+            return null;
+        }
+
+        ContentDetailsDTO dto = new ContentDetailsDTO();
+        dto.setId(content.getId());
+        dto.setTitle(content.getTitle());
+        dto.setType(content.getType());
+        dto.setTextContent(content.getTextContent());
+        dto.setOrderIndex(content.getOrderIndex());
+
+        // Handle file information
+        if (content.getFile() != null) {
+            dto.setFileId(content.getFile().getId());
+            dto.setFileUrl("/api/content/files/" + content.getFile().getId());
+        }
+
+        // Note: Content entity doesn't have createdAt/updatedAt fields
+        // If you need these, you'll need to add them to the Content entity with @CreationTimestamp and @UpdateTimestamp
+        dto.setCreatedAt(null); // You can add JPA auditing annotations to Content entity if needed
+        dto.setUpdatedAt(null); // You can add JPA auditing annotations to Content entity if needed
+
+        // Map lesson information
+        if (content.getLesson() != null) {
+            ContentDetailsDTO.LessonInfo lessonInfo = new ContentDetailsDTO.LessonInfo();
+            lessonInfo.setId(content.getLesson().getId());
+            lessonInfo.setTitle(content.getLesson().getTitle());
+
+            // Map course information
+            if (content.getLesson().getCourse() != null) {
+                lessonInfo.setCourseId(content.getLesson().getCourse().getId());
+                lessonInfo.setCourseTitle(content.getLesson().getCourse().getTitle());
+            }
+
+            dto.setLesson(lessonInfo);
+        }
+
+        return dto;
+    }
 }

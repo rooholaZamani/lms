@@ -1,24 +1,24 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.ContentDTO;
+import com.example.demo.dto.ContentDetailsDTO;
 import com.example.demo.model.*;
-import com.example.demo.service.ContentService;
-import com.example.demo.service.DTOMapperService;
-import com.example.demo.service.FileStorageService;
-import com.example.demo.service.LessonService;
+import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
-
 
 @RestController
 @RequestMapping("/api/content")
@@ -28,21 +28,93 @@ public class ContentController {
     private final LessonService lessonService;
     private final FileStorageService fileStorageService;
     private final DTOMapperService dtoMapperService;
+    private final UserService userService;
 
     public ContentController(
             ContentService contentService,
             LessonService lessonService,
             FileStorageService fileStorageService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService,
+            UserService userService) {
         this.contentService = contentService;
         this.lessonService = lessonService;
         this.fileStorageService = fileStorageService;
         this.dtoMapperService = dtoMapperService;
+        this.userService = userService;
+    }
+
+    @GetMapping("/{contentId}")
+    @Operation(
+            summary = "Get content by ID",
+            description = "Retrieve detailed information about a specific content item"
+    )
+    public ResponseEntity<?> getContentById(
+            @PathVariable Long contentId,
+            Authentication authentication) {
+
+        try {
+            // Get the content
+            Content content = contentService.getContentById(contentId);
+
+            // Get current user for security check
+            User currentUser = userService.findByUsername(authentication.getName());
+
+            // Security check: verify user has access to this content
+            if (!hasAccessToContent(currentUser, content)) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "You don't have permission to access this content");
+                return ResponseEntity.status(403).body(errorResponse);
+            }
+
+            // Map to enhanced DTO
+            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content);
+
+            return ResponseEntity.ok(contentDetails);
+
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("not found")) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Content not found with ID: " + contentId);
+                return ResponseEntity.status(404).body(errorResponse);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Check if user has access to the content
+     */
+    private boolean hasAccessToContent(User user, Content content) {
+        // Admin users have access to everything
+        boolean isAdmin = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            return true;
+        }
+
+        Course course = content.getLesson().getCourse();
+
+        // Teachers have access to their own course content
+        boolean isTeacher = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+        if (isTeacher && course.getTeacher().getId().equals(user.getId())) {
+            return true;
+        }
+
+        // Students have access if they're enrolled in the course
+        boolean isStudent = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+        if (isStudent && course.getEnrolledStudents().contains(user)) {
+            return true;
+        }
+
+        return false;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "آپلود محتوای فایل", description = "آپلود یک فایل به عنوان محتوا درس")
-
     public ResponseEntity<ContentDTO> uploadContent(
             @RequestParam("file") MultipartFile file,
             @RequestParam("lessonId") Long lessonId,
@@ -102,8 +174,6 @@ public class ContentController {
         return ResponseEntity.ok(contentDTOs);
     }
 
-
-
     @GetMapping("/files/{fileId}")
     public ResponseEntity<Resource> getFile(
             @PathVariable Long fileId,
@@ -141,6 +211,7 @@ public class ContentController {
         contentService.deleteContent(contentId);
         return ResponseEntity.ok().build();
     }
+
     @PutMapping("/lesson/{lessonId}")
     @Operation(summary = "Update lesson contents", description = "Update all contents of a lesson")
     public ResponseEntity<List<ContentDTO>> updateLessonContents(

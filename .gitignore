@@ -32,3 +32,4 @@ build/
 ### VS Code ###
 .vscode/
 lmsdb.mv.db
+lmsdb.trace.db
