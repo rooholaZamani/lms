@@ -19,4 +19,5 @@ public class ProgressDTO {
     private Integer totalLessons;
     private Integer completedLessonCount;
     private Double completionPercentage;
+    private Set<Long> completedContent = new HashSet<>();
 }

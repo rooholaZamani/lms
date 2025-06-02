@@ -275,6 +275,7 @@ public class DTOMapperService {
                 .collect(Collectors.toList());
     }
     public ProgressDTO mapToProgressDTO(Progress progress) {
+
         if (progress == null) {
             return null;
         }
@@ -298,7 +299,7 @@ public class DTOMapperService {
         dto.setTotalLessons(progress.getTotalLessons());
         dto.setCompletedLessonCount(progress.getCompletedLessonCount());
         dto.setCompletionPercentage(progress.getCompletionPercentage());
-
+        dto.setCompletedContent(progress.getCompletedContent());
         return dto;
     }
 

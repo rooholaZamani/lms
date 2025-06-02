@@ -114,4 +114,14 @@ public class ProgressController {
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
         return ResponseEntity.ok(progressDTO);
     }
+    @PostMapping("/content/{contentId}/complete")
+    public ResponseEntity<ProgressDTO> markContentComplete(
+            @PathVariable Long contentId,
+            Authentication authentication) {
+        User student = userService.findByUsername(authentication.getName());
+        Progress updatedProgress = progressService.markContentComplete(student, contentId);
+
+        ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
+        return ResponseEntity.ok(progressDTO);
+    }
 }

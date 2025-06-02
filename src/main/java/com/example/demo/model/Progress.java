@@ -44,4 +44,9 @@ public class Progress {
     private Integer totalLessons;
     private Integer completedLessonCount;
     private Double completionPercentage;
+    @ElementCollection
+    @CollectionTable(name = "completed_content",
+            joinColumns = @JoinColumn(name = "progress_id"))
+    @Column(name = "content_id")
+    private Set<Long> completedContent = new HashSet<>();
 }
