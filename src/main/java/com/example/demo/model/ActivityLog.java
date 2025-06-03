@@ -1,14 +1,13 @@
 package com.example.demo.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import com.example.demo.model.User;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 
 @Entity
@@ -20,11 +19,17 @@ public class ActivityLog {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
+    @ManyToOne  // Add this annotation
     private User user;
-    private String activityType; // LESSON_START, LESSON_COMPLETE, CONTENT_VIEW, etc.
-    private Long relatedEntityId; // lesson/content/exam ID
-    private LocalDateTime timestamp;
-    private Long timeSpent; // in minutes
-    private Map<String, Object> metadata; // additional data as JSON
 
+    private String activityType;
+    private Long relatedEntityId;
+    private LocalDateTime timestamp;
+    private Long timeSpent;
+
+    @ElementCollection  // Add this for Map storage
+    @CollectionTable(name = "activity_metadata")
+    @MapKeyColumn(name = "metadata_key")
+    @Column(name = "metadata_value")
+    private Map<String, String> metadata = new HashMap<>(); // Change to String,String for simplicity
 }
