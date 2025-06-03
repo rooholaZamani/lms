@@ -4,10 +4,7 @@ import com.example.demo.dto.ProgressDTO;
 import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
-import com.example.demo.service.CourseService;
-import com.example.demo.service.DTOMapperService;
-import com.example.demo.service.ProgressService;
-import com.example.demo.service.UserService;
+import com.example.demo.service.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -25,16 +22,18 @@ public class ProgressController {
     private final UserService userService;
     private final CourseService courseService;
     private final DTOMapperService dtoMapperService;
+    private final ActivityTrackingService activityTrackingService;
 
     public ProgressController(
             ProgressService progressService,
             UserService userService,
             CourseService courseService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
         this.progressService = progressService;
         this.userService = userService;
         this.courseService = courseService;
         this.dtoMapperService = dtoMapperService;
+        this.activityTrackingService = activityTrackingService;
     }
 
     @GetMapping
@@ -94,11 +93,18 @@ public class ProgressController {
     @PostMapping("/lesson/{lessonId}/complete")
     public ResponseEntity<ProgressDTO> markLessonComplete(
             @PathVariable Long lessonId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
             Authentication authentication) {
+
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markLessonComplete(student, lessonId);
-        
-        // 🔥 FIXED: Use DTO instead of entity
+
+        // ADD ACTIVITY TRACKING
+        activityTrackingService.logActivity(student, "LESSON_COMPLETION", lessonId, timeSpent);
+        if (timeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, timeSpent);
+        }
+
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
         return ResponseEntity.ok(progressDTO);
     }
@@ -106,20 +112,35 @@ public class ProgressController {
     @PostMapping("/content/{contentId}/view")
     public ResponseEntity<ProgressDTO> markContentViewed(
             @PathVariable Long contentId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
             Authentication authentication) {
+
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markContentViewed(student, contentId);
-        
-        // 🔥 FIXED: Use DTO instead of entity to prevent circular reference
+
+        // ADD ACTIVITY TRACKING
+        activityTrackingService.logActivity(student, "CONTENT_VIEW", contentId, timeSpent);
+        if (timeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, timeSpent);
+        }
+
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
         return ResponseEntity.ok(progressDTO);
     }
     @PostMapping("/content/{contentId}/complete")
     public ResponseEntity<ProgressDTO> markContentComplete(
             @PathVariable Long contentId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
             Authentication authentication) {
+
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markContentComplete(student, contentId);
+
+        // ADD ACTIVITY TRACKING
+        activityTrackingService.logActivity(student, "CONTENT_COMPLETION", contentId, timeSpent);
+        if (timeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, timeSpent);
+        }
 
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
         return ResponseEntity.ok(progressDTO);

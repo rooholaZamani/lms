@@ -4,6 +4,7 @@ import com.example.demo.dto.ExerciseDTO;
 import com.example.demo.dto.ExerciseSubmissionDTO;
 import com.example.demo.dto.QuestionDTO;
 import com.example.demo.model.*;
+import com.example.demo.service.ActivityTrackingService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExerciseService;
 import com.example.demo.service.UserService;
@@ -21,14 +22,16 @@ public class ExerciseController {
     private final ExerciseService exerciseService;
     private final UserService userService;
     private final DTOMapperService dtoMapperService;
+    private final ActivityTrackingService activityTrackingService;
 
     public ExerciseController(
             ExerciseService exerciseService,
             UserService userService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
         this.exerciseService = exerciseService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
+        this.activityTrackingService = activityTrackingService;
     }
 
     @PostMapping("/lesson/{lessonId}")
@@ -42,7 +45,16 @@ public class ExerciseController {
     }
 
     @GetMapping("/{exerciseId}")
-    public ResponseEntity<ExerciseDTO> getExercise(@PathVariable Long exerciseId) {
+    public ResponseEntity<ExerciseDTO> getExercise(
+            @PathVariable Long exerciseId,
+            Authentication authentication) { // ADD THIS
+
+        // ADD ACTIVITY TRACKING FOR EXERCISE ACCESS
+        if (authentication != null) {
+            User user = userService.findByUsername(authentication.getName());
+            activityTrackingService.logActivity(user, "EXERCISE_START", exerciseId, 0L);
+        }
+
         Exercise exercise = exerciseService.getExerciseById(exerciseId);
         return ResponseEntity.ok(dtoMapperService.mapToExerciseDTO(exercise));
     }
@@ -75,11 +87,28 @@ public class ExerciseController {
     @PostMapping("/{exerciseId}/submit")
     public ResponseEntity<ExerciseSubmissionDTO> submitExercise(
             @PathVariable Long exerciseId,
-            @RequestBody Map<Long, Long> answers,
-            @RequestParam Map<Long, Integer> answerTimes,
+            @RequestBody Map<String, Object> submissionData, // CHANGE THIS
             Authentication authentication) {
+
         User student = userService.findByUsername(authentication.getName());
+
+        // EXTRACT DATA FROM REQUEST
+        @SuppressWarnings("unchecked")
+        Map<Long, Long> answers = (Map<Long, Long>) submissionData.get("answers");
+        @SuppressWarnings("unchecked")
+        Map<Long, Integer> answerTimes = (Map<Long, Integer>) submissionData.get("answerTimes");
+
+        Long totalTimeSpent = answerTimes != null ?
+                answerTimes.values().stream().mapToLong(Integer::longValue).sum() : 0L;
+
         ExerciseSubmission submission = exerciseService.submitExercise(exerciseId, student, answers, answerTimes);
+
+        // ADD ACTIVITY TRACKING
+        activityTrackingService.logActivity(student, "EXERCISE_SUBMISSION", exerciseId, totalTimeSpent);
+        if (totalTimeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, totalTimeSpent);
+        }
+
         return ResponseEntity.ok(dtoMapperService.mapToExerciseSubmissionDTO(submission));
     }
 

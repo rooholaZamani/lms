@@ -4,6 +4,7 @@ import com.example.demo.dto.ExamDTO;
 import com.example.demo.dto.QuestionDTO;
 import com.example.demo.dto.SubmissionDTO;
 import com.example.demo.model.*;
+import com.example.demo.service.ActivityTrackingService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExamService;
 import com.example.demo.service.UserService;
@@ -30,14 +31,16 @@ public class ExamController {
     private final ExamService examService;
     private final UserService userService;
     private final DTOMapperService dtoMapperService;
+    private final ActivityTrackingService activityTrackingService;
 
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
+        this.activityTrackingService = activityTrackingService;
     }
 
     @PostMapping("/lesson/{lessonId}")
@@ -66,8 +69,16 @@ public class ExamController {
     }
 
     @GetMapping("/{examId}")
-    @Operation(summary = "Get exam details", description = "Retrieve detailed information about an exam")
-    public ResponseEntity<ExamDTO> getExam(@PathVariable Long examId) {
+    public ResponseEntity<ExamDTO> getExam(
+            @PathVariable Long examId,
+            Authentication authentication) { // ADD THIS
+
+        // ADD ACTIVITY TRACKING FOR EXAM ACCESS
+        if (authentication != null) {
+            User user = userService.findByUsername(authentication.getName());
+            activityTrackingService.logActivity(user, "EXAM_START", examId, 0L);
+        }
+
         Exam exam = examService.getExamById(examId);
         return ResponseEntity.ok(dtoMapperService.mapToExamDTO(exam));
     }
@@ -105,15 +116,30 @@ public class ExamController {
     }
 
     @PostMapping("/{examId}/submit")
-    @Operation(summary = "Submit exam", description = "Submit student answers for an exam")
-    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<SubmissionDTO> submitExam(
             @PathVariable Long examId,
-            @RequestBody Map<Long, Long> answers,
+            @RequestBody Map<String, Object> submissionData, // CHANGE THIS
             Authentication authentication) {
 
         User student = userService.findByUsername(authentication.getName());
+
+        // EXTRACT DATA FROM REQUEST
+        @SuppressWarnings("unchecked")
+        Map<Long, Long> answers = (Map<Long, Long>) submissionData.get("answers");
+        Long timeSpent = submissionData.get("timeSpent") != null ?
+                ((Number) submissionData.get("timeSpent")).longValue() : 0L;
+
         Submission submission = examService.submitExam(examId, student, answers);
+
+        // UPDATE SUBMISSION WITH TIME SPENT
+        submission.setTimeSpent(timeSpent);
+
+        // ADD ACTIVITY TRACKING
+        activityTrackingService.logActivity(student, "EXAM_SUBMISSION", examId, timeSpent);
+        if (timeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, timeSpent);
+        }
+
         return ResponseEntity.ok(dtoMapperService.mapToSubmissionDTO(submission));
     }
 

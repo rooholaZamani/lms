@@ -3,6 +3,7 @@ package com.example.demo.controller;
 import com.example.demo.model.LoginRequest;
 import com.example.demo.model.LoginResponse;
 import com.example.demo.model.User;
+import com.example.demo.service.ActivityTrackingService;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -32,10 +33,12 @@ public class AuthController {
 
     private final UserService userService;
     private final AuthenticationManager authenticationManager;
+    private final ActivityTrackingService activityTrackingService;
 
-    public AuthController(UserService userService, AuthenticationManager authenticationManager) {
+    public AuthController(UserService userService, AuthenticationManager authenticationManager , ActivityTrackingService activityTrackingService, ActivityTrackingService activityTrackingService1) {
         this.userService = userService;
         this.authenticationManager = authenticationManager;
+        this.activityTrackingService = activityTrackingService1;
     }
 
     @Operation(
@@ -72,6 +75,10 @@ public class AuthController {
 
             // Get user details
             User user = userService.findByUsername(username);
+
+            // ADD ACTIVITY TRACKING
+            activityTrackingService.logActivity(user, "LOGIN", user.getId(), 0L);
+            activityTrackingService.updateStreak(user);
 
             // Create session if one doesn't exist
             HttpSession session = request.getSession(true);

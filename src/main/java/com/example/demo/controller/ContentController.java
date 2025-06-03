@@ -29,37 +29,32 @@ public class ContentController {
     private final FileStorageService fileStorageService;
     private final DTOMapperService dtoMapperService;
     private final UserService userService;
+    private final ActivityTrackingService activityTrackingService;
 
     public ContentController(
             ContentService contentService,
             LessonService lessonService,
             FileStorageService fileStorageService,
             DTOMapperService dtoMapperService,
-            UserService userService) {
+            UserService userService, ActivityTrackingService activityTrackingService) {
         this.contentService = contentService;
         this.lessonService = lessonService;
         this.fileStorageService = fileStorageService;
         this.dtoMapperService = dtoMapperService;
         this.userService = userService;
+        this.activityTrackingService = activityTrackingService;
     }
 
     @GetMapping("/{contentId}")
-    @Operation(
-            summary = "Get content by ID",
-            description = "Retrieve detailed information about a specific content item"
-    )
     public ResponseEntity<?> getContentById(
             @PathVariable Long contentId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
             Authentication authentication) {
 
         try {
-            // Get the content
             Content content = contentService.getContentById(contentId);
-
-            // Get current user for security check
             User currentUser = userService.findByUsername(authentication.getName());
 
-            // Security check: verify user has access to this content
             if (!hasAccessToContent(currentUser, content)) {
                 Map<String, Object> errorResponse = new HashMap<>();
                 errorResponse.put("success", false);
@@ -67,9 +62,13 @@ public class ContentController {
                 return ResponseEntity.status(403).body(errorResponse);
             }
 
-            // Map to enhanced DTO
-            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content);
+            // ADD ACTIVITY TRACKING
+            activityTrackingService.logActivity(currentUser, "CONTENT_VIEW", contentId, timeSpent);
+            if (timeSpent > 0) {
+                activityTrackingService.updateStudyTime(currentUser, timeSpent);
+            }
 
+            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content);
             return ResponseEntity.ok(contentDetails);
 
         } catch (RuntimeException e) {
@@ -177,7 +176,16 @@ public class ContentController {
     @GetMapping("/files/{fileId}")
     public ResponseEntity<Resource> getFile(
             @PathVariable Long fileId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
+            Authentication authentication, // ADD THIS
             HttpServletRequest request) {
+
+        // ADD ACTIVITY TRACKING FOR FILE ACCESS
+        if (authentication != null && timeSpent > 0) {
+            User user = userService.findByUsername(authentication.getName());
+            activityTrackingService.logActivity(user, "FILE_ACCESS", fileId, timeSpent);
+            activityTrackingService.updateStudyTime(user, timeSpent);
+        }
 
         FileMetadata metadata = contentService.getFileMetadataById(fileId);
         Resource resource = fileStorageService.loadFileAsResource(metadata.getFilePath());

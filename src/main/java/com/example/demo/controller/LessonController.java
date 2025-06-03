@@ -5,10 +5,7 @@ import com.example.demo.dto.LessonDTO;
 import com.example.demo.model.Content;
 import com.example.demo.model.Lesson;
 import com.example.demo.model.User;
-import com.example.demo.service.CourseService;
-import com.example.demo.service.DTOMapperService;
-import com.example.demo.service.LessonService;
-import com.example.demo.service.UserService;
+import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -25,16 +22,18 @@ public class LessonController {
     private final CourseService courseService;
     private final UserService userService;
     private final DTOMapperService dtoMapperService;
+    private final ActivityTrackingService activityTrackingService;
 
     public LessonController(
             LessonService lessonService,
             CourseService courseService,
             UserService userService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
         this.lessonService = lessonService;
         this.courseService = courseService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
+        this.activityTrackingService = activityTrackingService;
     }
 
     @PostMapping("/course/{courseId}")
@@ -62,7 +61,18 @@ public class LessonController {
 
     @GetMapping("/{lessonId}")
     public ResponseEntity<LessonDTO> getLessonById(
-            @PathVariable Long lessonId) {
+            @PathVariable Long lessonId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
+            Authentication authentication) {
+
+        // ADD ACTIVITY TRACKING FOR LESSON ACCESS
+        if (authentication != null) {
+            User user = userService.findByUsername(authentication.getName());
+            activityTrackingService.logActivity(user, "LESSON_ACCESS", lessonId, timeSpent);
+            if (timeSpent > 0) {
+                activityTrackingService.updateStudyTime(user, timeSpent);
+            }
+        }
 
         Lesson lesson = lessonService.getLessonById(lessonId);
         return ResponseEntity.ok(dtoMapperService.mapToLessonDTO(lesson));
