@@ -49,4 +49,10 @@ public class Progress {
             joinColumns = @JoinColumn(name = "progress_id"))
     @Column(name = "content_id")
     private Set<Long> completedContent = new HashSet<>();
+
+    private Long totalStudyTime; // in minutes
+    private LocalDateTime lastLoginTime;
+    private Integer currentStreak;
+
+
 }

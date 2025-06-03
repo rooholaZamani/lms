@@ -44,4 +44,7 @@ public class Content {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = true)
     private LocalDateTime updatedAt;
+
+    private Long avgViewTime;
+
 }

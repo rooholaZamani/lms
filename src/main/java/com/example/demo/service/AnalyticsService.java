@@ -609,6 +609,38 @@ public class AnalyticsService {
 
         return recentActivities;
     }
+    // For student detailed analysis
+    public Map<String, Object> getStudentDetailedAnalysis(Long studentId, Long courseId);
+
+    // For activity timeline
+    public List<Map<String, Object>> getStudentActivityTimeline(Long studentId);
+
+    // For student exam performance
+    public List<Map<String, Object>> getStudentExamPerformance(Long studentId);
+
+    // For student time analysis
+    public List<Map<String, Object>> getStudentTimeAnalysis(Long studentId);
+
+    // For teacher system overview
+    public Map<String, Object> getSystemOverview(User teacher);
+
+    // For time analysis across content types
+    public List<Map<String, Object>> getTimeAnalysis(User teacher);
+
+    // For question difficulty analysis
+    public List<Map<String, Object>> getQuestionDifficultyAnalysis(User teacher);
+
+    // For lesson performance analysis
+    public List<Map<String, Object>> getLessonPerformanceAnalysis(User teacher);
+
+    // For engagement trends
+    public List<Map<String, Object>> getEngagementTrends(User teacher);
+
+    // For challenging questions
+    public List<Map<String, Object>> getChallengingQuestions(User teacher);
+
+    // For daily engagement stats
+    public Map<String, Object> getDailyEngagementStats(User teacher);
 
     private double calculatePercentile(double value, double[] values) {
         // Calculate what percentile the value falls into

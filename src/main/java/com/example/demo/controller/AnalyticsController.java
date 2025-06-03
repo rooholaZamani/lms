@@ -79,4 +79,15 @@ public class AnalyticsController {
         Map<String, Object> examDetails = analyticsService.getExamDetails(student, examId);
         return ResponseEntity.ok(examDetails);
     }
+    @GetMapping("/student/{studentId}/course/{courseId}/detailed")
+    @GetMapping("/student/{studentId}/activity-timeline")
+    @GetMapping("/student/{studentId}/exam-performance")
+    @GetMapping("/student/{studentId}/time-analysis")
+    @GetMapping("/teacher/system-overview")
+    @GetMapping("/teacher/time-analysis")
+    @GetMapping("/teacher/question-difficulty")
+    @GetMapping("/teacher/lesson-performance")
+    @GetMapping("/teacher/engagement-trends")
+    @GetMapping("/teacher/challenging-questions")
+    @GetMapping("/teacher/daily-engagement")
 }

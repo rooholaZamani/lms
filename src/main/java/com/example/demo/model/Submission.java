@@ -37,4 +37,7 @@ public class Submission {
     @MapKeyColumn(name = "question_id")
     @Column(name = "answer_id")
     private Map<Long, Long> answers = new HashMap<>();
+    private Long timeSpent; // time spent on exam in minutes
+
+
 }
