@@ -1,3 +1,4 @@
+// src/main/java/com/example/demo/model/Course.java
 package com.example.demo.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -23,6 +24,9 @@ public class Course {
     @Column(length = 1000)
     private String description;
 
+    @Column(length = 2000)
+    private String prerequisite; // Course prerequisite as text
+
     @ManyToOne
     private User teacher;
 
@@ -36,4 +40,11 @@ public class Course {
             inverseJoinColumns = @JoinColumn(name = "user_id")
     )
     private List<User> enrolledStudents = new ArrayList<>();
+
+    // Helper method to calculate total duration
+    public Integer getTotalDuration() {
+        return lessons.stream()
+                .mapToInt(lesson -> lesson.getDuration() != null ? lesson.getDuration() : 0)
+                .sum();
+    }
 }

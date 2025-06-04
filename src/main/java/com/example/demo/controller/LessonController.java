@@ -11,7 +11,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -23,17 +25,19 @@ public class LessonController {
     private final UserService userService;
     private final DTOMapperService dtoMapperService;
     private final ActivityTrackingService activityTrackingService;
+    private final LessonAccessService lessonAccessService;
 
     public LessonController(
             LessonService lessonService,
             CourseService courseService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, LessonAccessService lessonAccessService) {
         this.lessonService = lessonService;
         this.courseService = courseService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
+        this.lessonAccessService = lessonAccessService;
     }
 
     @PostMapping("/course/{courseId}")
@@ -59,15 +63,31 @@ public class LessonController {
         return ResponseEntity.ok(dtoMapperService.mapToLessonDTOList(lessons));
     }
 
+    // Update the getLessonById method in LessonController.java
     @GetMapping("/{lessonId}")
-    public ResponseEntity<LessonDTO> getLessonById(
+    public ResponseEntity<?> getLessonById(
             @PathVariable Long lessonId,
-            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent,
             Authentication authentication) {
 
-        // ADD ACTIVITY TRACKING FOR LESSON ACCESS
         if (authentication != null) {
             User user = userService.findByUsername(authentication.getName());
+
+            // Check if user is a student and validate access
+            boolean isStudent = user.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+            if (isStudent) {
+                LessonAccessService.LessonAccessInfo accessInfo = lessonAccessService.getLessonAccessInfo(user, lessonId);
+                if (!accessInfo.isCanAccess()) {
+                    Map<String, Object> errorResponse = new HashMap<>();
+                    errorResponse.put("success", false);
+                    errorResponse.put("message", accessInfo.getReason());
+                    errorResponse.put("canAccess", false);
+                    return ResponseEntity.status(403).body(errorResponse);
+                }
+            }
+
             activityTrackingService.logActivity(user, "LESSON_ACCESS", lessonId, timeSpent);
             if (timeSpent > 0) {
                 activityTrackingService.updateStudyTime(user, timeSpent);
@@ -75,7 +95,14 @@ public class LessonController {
         }
 
         Lesson lesson = lessonService.getLessonById(lessonId);
-        return ResponseEntity.ok(dtoMapperService.mapToLessonDTO(lesson));
+        LessonDTO lessonDTO = dtoMapperService.mapToLessonDTO(lesson);
+
+        // Add access info to response
+        Map<String, Object> response = new HashMap<>();
+        response.put("lesson", lessonDTO);
+        response.put("canAccess", true);
+
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{lessonId}")
@@ -126,5 +153,18 @@ public class LessonController {
         List<LessonDTO> lessonDTOs = dtoMapperService.mapToLessonDTOList(lessons);
 
         return ResponseEntity.ok(lessonDTOs);
+    }
+    @GetMapping("/{lessonId}/completion-status")
+    public ResponseEntity<LessonCompletionService.LessonCompletionStatus> getLessonCompletionStatus(
+            @PathVariable Long lessonId,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+        Lesson lesson = lessonService.getLessonById(lessonId);
+
+        LessonCompletionService.LessonCompletionStatus status =
+                lessonCompletionService.getLessonCompletionStatus(student, lesson);
+
+        return ResponseEntity.ok(status);
     }
 }

@@ -1,3 +1,4 @@
+// src/main/java/com/example/demo/model/Lesson.java
 package com.example.demo.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -5,6 +6,10 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,6 +17,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
 public class Lesson {
 
     @Id
@@ -24,6 +30,13 @@ public class Lesson {
     private String description;
 
     private Integer orderIndex; // For ordering lessons within a course
+
+    @Column(nullable = false)
+    private Integer duration; // Duration in minutes - required field
+
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     @ManyToOne
     private Course course;

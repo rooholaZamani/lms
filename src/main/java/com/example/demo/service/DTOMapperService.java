@@ -51,6 +51,8 @@ public class DTOMapperService {
         dto.setId(course.getId());
         dto.setTitle(course.getTitle());
         dto.setDescription(course.getDescription());
+        dto.setPrerequisite(course.getPrerequisite());
+        dto.setTotalDuration(course.getTotalDuration());
 
         // Map teacher
         if (course.getTeacher() != null) {
@@ -92,6 +94,8 @@ public class DTOMapperService {
         dto.setTitle(lesson.getTitle());
         dto.setDescription(lesson.getDescription());
         dto.setOrderIndex(lesson.getOrderIndex());
+        dto.setDuration(lesson.getDuration());
+        dto.setCreatedAt(lesson.getCreatedAt());
 
         if (lesson.getCourse() != null) {
             dto.setCourseId(lesson.getCourse().getId());
