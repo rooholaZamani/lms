@@ -785,9 +785,12 @@ public class DTOMapperService {
     }
 
     public List<UserDTO> mapToUserDTOList(List<User> users) {
-        List<UserDTO> dtos = new ArrayList<>();
+        if (users == null) {
+            return new ArrayList<>();
+        }
 
-            // please complete this
-        return  dtos;
+        return users.stream()
+                .map(this::mapToUserDTO)
+                .collect(Collectors.toList());
     }
 }
