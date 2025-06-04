@@ -51,7 +51,7 @@ public class AdminController {
     @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<List<CourseDTO>> getAllCourses() {
         List<Course> courses = courseService.getAllCourses();
-        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(courses);
         return ResponseEntity.ok(courseDTOs);
     }
 

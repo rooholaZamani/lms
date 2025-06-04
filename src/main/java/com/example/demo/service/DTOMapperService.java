@@ -42,7 +42,7 @@ public class DTOMapperService {
         return dto;
     }
 
-    public CourseDTO mapToCourseDTO(Course course) {
+    public CourseDTO mapToCourseDTO(Course course, boolean includeDetails) {
         if (course == null) {
             return null;
         }
@@ -51,38 +51,76 @@ public class DTOMapperService {
         dto.setId(course.getId());
         dto.setTitle(course.getTitle());
         dto.setDescription(course.getDescription());
-        dto.setPrerequisite(course.getPrerequisite());
-        dto.setTotalDuration(course.getTotalDuration());
 
-        // Map teacher
+        // Map teacher (always included)
         if (course.getTeacher() != null) {
             dto.setTeacher(mapToUserSummary(course.getTeacher()));
         }
 
-        // Map lessons
-        if (course.getLessons() != null) {
-            List<LessonSummaryDTO> lessonDTOs = course.getLessons().stream()
-                    .map(this::mapToLessonSummary)
-                    .collect(Collectors.toList());
-            dto.setLessons(lessonDTOs);
-        }
+        if (includeDetails) {
+            // Full details mapping
+            dto.setPrerequisite(course.getPrerequisite());
+            dto.setTotalDuration(course.getTotalDuration());
 
-        // Map enrolled students
-        if (course.getEnrolledStudents() != null) {
-            List<UserSummaryDTO> studentDTOs = course.getEnrolledStudents().stream()
-                    .map(this::mapToUserSummary)
-                    .collect(Collectors.toList());
-            dto.setEnrolledStudents(studentDTOs);
+            // Map lessons with full details
+            if (course.getLessons() != null) {
+                List<LessonSummaryDTO> lessonDTOs = course.getLessons().stream()
+                        .map(this::mapToLessonSummary)
+                        .collect(Collectors.toList());
+                dto.setLessons(lessonDTOs);
+            }
+
+            // Map enrolled students
+            if (course.getEnrolledStudents() != null) {
+                List<UserSummaryDTO> studentDTOs = course.getEnrolledStudents().stream()
+                        .map(this::mapToUserSummary)
+                        .collect(Collectors.toList());
+                dto.setEnrolledStudents(studentDTOs);
+            }
+        } else {
+            // Summary mapping (for list views)
+            // Only include lesson summaries without descriptions
+            if (course.getLessons() != null) {
+                List<LessonSummaryDTO> lessonSummaries = course.getLessons().stream()
+                        .map(lesson -> {
+                            LessonSummaryDTO summary = new LessonSummaryDTO();
+                            summary.setId(lesson.getId());
+                            summary.setTitle(lesson.getTitle());
+                            summary.setOrderIndex(lesson.getOrderIndex());
+                            summary.setHasExam(lesson.getExam() != null);
+                            summary.setHasExercise(lesson.getExercise() != null);
+                            // Don't include description to keep response smaller
+                            return summary;
+                        })
+                        .collect(Collectors.toList());
+                dto.setLessons(lessonSummaries);
+            }
+
+            // Don't include enrolled students for summary view
+            dto.setEnrolledStudents(new ArrayList<>());
         }
 
         return dto;
     }
 
+    // Add convenience method for backward compatibility
+    public CourseDTO mapToCourseDTO(Course course) {
+        return mapToCourseDTO(course, true); // Default to full details
+    }
+
+    // UPDATE the list mapping methods:
     public List<CourseDTO> mapToCourseDTOList(List<Course> courses) {
         return courses.stream()
-                .map(this::mapToCourseDTO)
+                .map(course -> mapToCourseDTO(course, true)) // Full details
                 .collect(Collectors.toList());
     }
+
+    public List<CourseDTO> mapToCourseDTOListSummary(List<Course> courses) {
+        return courses.stream()
+                .map(course -> mapToCourseDTO(course, false)) // Summary only
+                .collect(Collectors.toList());
+    }
+
 
     public LessonDTO mapToLessonDTO(Lesson lesson) {
         if (lesson == null) {
@@ -603,52 +641,6 @@ public class DTOMapperService {
 
         return dto;
     }
-    public CourseDTO mapToCourseDTOForList(Course course) {
-        if (course == null) {
-            return null;
-        }
-
-        CourseDTO dto = new CourseDTO();
-        dto.setId(course.getId());
-        dto.setTitle(course.getTitle());
-        dto.setDescription(course.getDescription());
-
-        // Map teacher (lightweight)
-        if (course.getTeacher() != null) {
-            dto.setTeacher(mapToUserSummary(course.getTeacher()));
-        }
-
-        // Only include lesson count and basic info, not full lesson details
-        if (course.getLessons() != null) {
-            List<LessonSummaryDTO> lessonSummaries = course.getLessons().stream()
-                    .map(lesson -> {
-                        LessonSummaryDTO summary = new LessonSummaryDTO();
-                        summary.setId(lesson.getId());
-                        summary.setTitle(lesson.getTitle());
-                        summary.setOrderIndex(lesson.getOrderIndex());
-                        summary.setHasExam(lesson.getExam() != null);
-                        summary.setHasExercise(lesson.getExercise() != null);
-                        // Don't include description to keep response smaller
-                        return summary;
-                    })
-                    .collect(Collectors.toList());
-            dto.setLessons(lessonSummaries);
-        }
-
-        // For list views, don't include enrolled students to reduce response size
-        // dto.setEnrolledStudents(new ArrayList<>());
-
-        return dto;
-    }
-    /**
-     * Maps list of courses to DTOs optimized for list views
-     */
-    public List<CourseDTO> mapToCourseDTOListOptimized(List<Course> courses) {
-        return courses.stream()
-                .map(this::mapToCourseDTOForList)
-                .collect(Collectors.toList());
-    }
-    // Add these methods to DTOMapperService.java
 
     public ExamWithDetailsDTO mapToExamWithDetailsDTO(Exam exam, List<Submission> submissions) {
         if (exam == null) {
@@ -790,5 +782,12 @@ public class DTOMapperService {
         }
 
         return dto;
+    }
+
+    public List<UserDTO> mapToUserDTOList(List<User> users) {
+        List<UserDTO> dtos = new ArrayList<>();
+
+            // please complete this
+        return  dtos;
     }
 }

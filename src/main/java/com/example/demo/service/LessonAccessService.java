@@ -11,16 +11,14 @@ public class LessonAccessService {
 
     private final LessonRepository lessonRepository;
     private final ProgressRepository progressRepository;
-    private final LessonAccessService lessonAccessService;
     private final LessonCompletionService lessonCompletionService; // Add this
 
     public LessonAccessService(
             LessonRepository lessonRepository,
-            ProgressRepository progressRepository, LessonAccessService lessonAccessService,
+            ProgressRepository progressRepository,
             LessonCompletionService lessonCompletionService) { // Add this parameter
         this.lessonRepository = lessonRepository;
         this.progressRepository = progressRepository;
-        this.lessonAccessService = lessonAccessService;
         this.lessonCompletionService = lessonCompletionService; // Add this
     }
 

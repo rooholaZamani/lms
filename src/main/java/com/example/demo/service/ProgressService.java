@@ -104,45 +104,9 @@ public class ProgressService {
         Progress updatedProgress = progressRepository.save(progress);
 
         // Check if lesson should be auto-completed
-        checkAndCompleteLessonIfReady(student, lesson);
+        lessonCompletionService.checkAndAutoCompleteLesson(student, lesson);
 
         return updatedProgress;
     }
 
-    private void checkAndCompleteLessonIfReady(User student, Lesson lesson) {
-        Course course = lesson.getCourse();
-        Progress progress = getOrCreateProgress(student, course);
-
-        // Get all content IDs in this lesson
-        List<Long> lessonContentIds = lesson.getContents().stream()
-                .map(Content::getId)
-                .collect(Collectors.toList());
-
-        // Check if all content is completed
-        boolean allContentCompleted = progress.getCompletedContent().containsAll(lessonContentIds);
-
-        // Check if lesson has exam and if it's completed
-        boolean examCompleted = true;
-        if (lesson.getExam() != null) {
-            // Check if student has passed the exam
-            examCompleted = submissionRepository.findByStudentAndExam(student, lesson.getExam())
-                    .map(Submission::isPassed)
-                    .orElse(false);
-        }
-
-        // Check if lesson has exercise and if it's completed
-        boolean exerciseCompleted = true;
-        if (lesson.getExercise() != null) {
-            // Check if student has passed the exercise
-            exerciseCompleted = exerciseSubmissionRepository.findByStudent(student).stream()
-                    .anyMatch(sub -> sub.getExercise().getId().equals(lesson.getExercise().getId()) && sub.isPassed());
-        }
-
-        // Auto-complete lesson if all requirements are met
-        if (allContentCompleted && examCompleted && exerciseCompleted) {
-            if (!progress.getCompletedLessons().contains(lesson.getId())) {
-                markLessonComplete(student, lesson.getId());
-            }
-        }
-    }
 }

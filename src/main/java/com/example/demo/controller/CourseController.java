@@ -52,7 +52,7 @@ public class CourseController {
     public ResponseEntity<List<CourseDTO>> getTeacherCourses(Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
         List<Course> courses = courseService.getTeacherCourses(teacher);
-        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(courses);
         return ResponseEntity.ok(courseDTOs);
     }
 
@@ -62,7 +62,7 @@ public class CourseController {
     public ResponseEntity<List<CourseDTO>> getEnrolledCourses(Authentication authentication) {
         User student = userService.findByUsername(authentication.getName());
         List<Course> courses = courseService.getEnrolledCourses(student);
-        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(courses);
         return ResponseEntity.ok(courseDTOs);
     }
 
@@ -78,7 +78,7 @@ public class CourseController {
         allCourses.removeAll(enrolledCourses);
 
         // Convert to DTOs
-        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(allCourses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(allCourses);
         return ResponseEntity.ok(courseDTOs);
     }
 
@@ -100,7 +100,7 @@ public class CourseController {
         User user = userService.findByUsername(authentication.getName());
         Course course = courseService.getCourseById(courseId);
 
-        CourseDTO courseDTO = dtoMapperService.mapToCourseDTO(course);
+        CourseDTO courseDTO = dtoMapperService.mapToCourseDTO(course, true);
 
         // Create detailed response
         CourseDetailsDTO response = new CourseDetailsDTO();
@@ -125,7 +125,7 @@ public class CourseController {
     @GetMapping("/all")
     public ResponseEntity<List<CourseDTO>> getAllCourses() {
         List<Course> courses = courseService.getAllCourses();
-        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(courses);
         return ResponseEntity.ok(courseDTOs);
     }
 }
