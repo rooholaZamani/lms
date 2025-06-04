@@ -26,18 +26,23 @@ public class LessonController {
     private final DTOMapperService dtoMapperService;
     private final ActivityTrackingService activityTrackingService;
     private final LessonAccessService lessonAccessService;
+    private final LessonCompletionService lessonCompletionService; // Add this field
 
     public LessonController(
             LessonService lessonService,
             CourseService courseService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, LessonAccessService lessonAccessService) {
+            DTOMapperService dtoMapperService, 
+            ActivityTrackingService activityTrackingService, 
+            LessonAccessService lessonAccessService,
+            LessonCompletionService lessonCompletionService) { // Add this parameter
         this.lessonService = lessonService;
         this.courseService = courseService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
         this.lessonAccessService = lessonAccessService;
+        this.lessonCompletionService = lessonCompletionService; // Initialize this field
     }
 
     @PostMapping("/course/{courseId}")
@@ -137,6 +142,7 @@ public class LessonController {
         lessonService.deleteLesson(lessonId);
         return ResponseEntity.ok().build();
     }
+    
     @GetMapping("/teaching")
     public ResponseEntity<List<LessonDTO>> getTeacherLessons(Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
@@ -154,6 +160,7 @@ public class LessonController {
 
         return ResponseEntity.ok(lessonDTOs);
     }
+    
     @GetMapping("/{lessonId}/completion-status")
     public ResponseEntity<LessonCompletionService.LessonCompletionStatus> getLessonCompletionStatus(
             @PathVariable Long lessonId,

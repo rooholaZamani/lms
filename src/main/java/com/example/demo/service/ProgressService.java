@@ -17,18 +17,20 @@ public class ProgressService {
     private final LessonRepository lessonRepository;
     private final ContentRepository contentRepository;
     private final SubmissionRepository submissionRepository;
+    private final LessonCompletionService lessonCompletionService;
     private final ExerciseSubmissionRepository exerciseSubmissionRepository;
 
     public ProgressService(
             ProgressRepository progressRepository,
             LessonRepository lessonRepository,
             ContentRepository contentRepository,
-            SubmissionRepository submissionRepository,
+            SubmissionRepository submissionRepository, LessonCompletionService lessonCompletionService,
             ExerciseSubmissionRepository exerciseSubmissionRepository) {
         this.progressRepository = progressRepository;
         this.lessonRepository = lessonRepository;
         this.contentRepository = contentRepository;
         this.submissionRepository = submissionRepository;
+        this.lessonCompletionService = lessonCompletionService;
         this.exerciseSubmissionRepository = exerciseSubmissionRepository;
     }
 
