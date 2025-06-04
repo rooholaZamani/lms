@@ -13,7 +13,7 @@ public class ExamWithDetailsDTO {
     private String description;
     private Long lessonId;
     private LessonSummary lesson;
-    private Integer duration; // timeLimit
+    private Integer duration = 0; // timeLimit
     private Integer passingScore;
     private String status;
     private LocalDateTime createdAt;

@@ -13,7 +13,7 @@ public class LessonDTO {
     private String title;
     private String description;
     private Integer orderIndex;
-    private Integer duration; // Add this field
+    private Integer duration = 0; // Add this field
     private LocalDateTime createdAt; // Add this field
     private Long courseId;
     private String courseTitle;

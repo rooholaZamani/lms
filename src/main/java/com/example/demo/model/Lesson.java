@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/model/Lesson.java
 package com.example.demo.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -31,8 +30,8 @@ public class Lesson {
 
     private Integer orderIndex; // For ordering lessons within a course
 
-    @Column(nullable = false)
-    private Integer duration; // Duration in minutes - required field
+    @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 0")
+    private Integer duration = 0; // Duration in minutes with default value
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -49,4 +48,14 @@ public class Lesson {
 
     @OneToOne(cascade = CascadeType.ALL)
     private Exercise exercise;
+
+    @PrePersist
+    private void setDefaultValues() {
+        if (this.duration == null) {
+            this.duration = 0;
+        }
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
+    }
 }
