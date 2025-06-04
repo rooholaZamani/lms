@@ -1,11 +1,8 @@
-// src/main/java/com/example/demo/service/LessonAccessService.java
 package com.example.demo.service;
 
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -14,18 +11,17 @@ public class LessonAccessService {
 
     private final LessonRepository lessonRepository;
     private final ProgressRepository progressRepository;
-    private final SubmissionRepository submissionRepository;
-    private final ExerciseSubmissionRepository exerciseSubmissionRepository;
+    private final LessonAccessService lessonAccessService;
+    private final LessonCompletionService lessonCompletionService; // Add this
 
     public LessonAccessService(
             LessonRepository lessonRepository,
-            ProgressRepository progressRepository,
-            SubmissionRepository submissionRepository,
-            ExerciseSubmissionRepository exerciseSubmissionRepository) {
+            ProgressRepository progressRepository, LessonAccessService lessonAccessService,
+            LessonCompletionService lessonCompletionService) { // Add this parameter
         this.lessonRepository = lessonRepository;
         this.progressRepository = progressRepository;
-        this.submissionRepository = submissionRepository;
-        this.exerciseSubmissionRepository = exerciseSubmissionRepository;
+        this.lessonAccessService = lessonAccessService;
+        this.lessonCompletionService = lessonCompletionService; // Add this
     }
 
     /**
@@ -41,15 +37,6 @@ public class LessonAccessService {
         if (!course.getEnrolledStudents().contains(student)) {
             return false;
         }
-
-        // Get student's progress in this course
-        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
-        if (progressOpt.isEmpty()) {
-            // No progress yet - can only access first lesson
-            return isFirstLesson(targetLesson);
-        }
-
-        Progress progress = progressOpt.get();
 
         // Get all lessons in the course ordered by orderIndex
         List<Lesson> allLessons = lessonRepository.findByCourseOrderByOrderIndex(course);
@@ -67,47 +54,20 @@ public class LessonAccessService {
             return false; // Lesson not found in course
         }
 
-        // Check if all previous lessons are completed
+        // First lesson is always accessible
+        if (targetIndex == 0) {
+            return true;
+        }
+
+        // Check if all previous lessons are completed using LessonCompletionService
         for (int i = 0; i < targetIndex; i++) {
             Lesson previousLesson = allLessons.get(i);
-            
-            // Check if previous lesson is completed
-            if (!progress.getCompletedLessons().contains(previousLesson.getId())) {
+            if (!lessonCompletionService.isLessonCompleted(student, previousLesson)) {
                 return false;
-            }
-
-            // Check if previous lesson's exam is passed (if exists)
-            if (previousLesson.getExam() != null) {
-                if (!isExamPassed(student, previousLesson.getExam())) {
-                    return false;
-                }
-            }
-
-            // Check if previous lesson's exercise is passed (if exists)
-            if (previousLesson.getExercise() != null) {
-                if (!isExercisePassed(student, previousLesson.getExercise())) {
-                    return false;
-                }
             }
         }
 
         return true;
-    }
-
-    private boolean isFirstLesson(Lesson lesson) {
-        List<Lesson> courseLessons = lessonRepository.findByCourseOrderByOrderIndex(lesson.getCourse());
-        return !courseLessons.isEmpty() && courseLessons.get(0).getId().equals(lesson.getId());
-    }
-
-    private boolean isExamPassed(User student, Exam exam) {
-        Optional<Submission> submission = submissionRepository.findByStudentAndExam(student, exam);
-        return submission.isPresent() && submission.get().isPassed();
-    }
-
-    private boolean isExercisePassed(User student, Exercise exercise) {
-        List<ExerciseSubmission> submissions = exerciseSubmissionRepository.findByStudent(student);
-        return submissions.stream()
-                .anyMatch(sub -> sub.getExercise().getId().equals(exercise.getId()) && sub.isPassed());
     }
 
     /**
@@ -138,13 +98,6 @@ public class LessonAccessService {
             return "You are not enrolled in this course";
         }
 
-        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
-        if (progressOpt.isEmpty()) {
-            if (!isFirstLesson(targetLesson)) {
-                return "You must start with the first lesson";
-            }
-        }
-
         return "You must complete previous lessons and their exams/exercises";
     }
 
@@ -159,26 +112,5 @@ public class LessonAccessService {
 
         public boolean isCanAccess() { return canAccess; }
         public String getReason() { return reason; }
-    }
-
-    @Transactional
-    public Lesson createLesson(Lesson lesson, Long courseId) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
-        // Validate duration is provided
-        if (lesson.getDuration() == null || lesson.getDuration() <= 0) {
-            throw new RuntimeException("Lesson duration must be provided and greater than 0");
-        }
-
-        lesson.setCourse(course);
-
-        // Set order index if not provided
-        if (lesson.getOrderIndex() == null) {
-            List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
-            lesson.setOrderIndex(lessons.size());
-        }
-
-        return lessonRepository.save(lesson);
     }
 }
