@@ -236,39 +236,6 @@ public class DTOMapperService {
         return dto;
     }
 
-//    public QuestionDTO mapToQuestionDTO(Question question) {
-//        if (question == null) {
-//            return null;
-//        }
-//
-//        QuestionDTO dto = new QuestionDTO();
-//        dto.setId(question.getId());
-//        dto.setText(question.getText());
-//        dto.setPoints(question.getPoints());
-//
-//        // Map answers
-//        if (question.getAnswers() != null) {
-//            List<AnswerDTO> answerDTOs = question.getAnswers().stream()
-//                    .map(this::mapToAnswerDTO)
-//                    .collect(Collectors.toList());
-//            dto.setAnswers(answerDTOs);
-//        }
-//
-//        return dto;
-//    }
-
-//    public AnswerDTO mapToAnswerDTO(Answer answer) {
-//        if (answer == null) {
-//            return null;
-//        }
-//
-//        AnswerDTO dto = new AnswerDTO();
-//        dto.setId(answer.getId());
-//        dto.setText(answer.getText());
-//        dto.setCorrect(answer.getCorrect());
-//
-//        return dto;
-//    }
     public List<LessonDTO> mapToLessonDTOList(List<Lesson> lessons) {
         return lessons.stream()
                 .map(this::mapToLessonDTO)
@@ -786,6 +753,36 @@ public class DTOMapperService {
             }
 
             dto.setLesson(lessonInfo);
+        }
+
+        return dto;
+    }
+    public UserDTO mapToUserDTO(User user) {
+        if (user == null) {
+            return null;
+        }
+
+        UserDTO dto = new UserDTO();
+        dto.setId(user.getId());
+        dto.setUsername(user.getUsername());
+        dto.setFirstName(user.getFirstName());
+        dto.setLastName(user.getLastName());
+        dto.setNationalId(user.getNationalId());
+        dto.setPhoneNumber(user.getPhoneNumber());
+        dto.setAge(user.getAge());
+        dto.setEmail(user.getEmail());
+
+        // Map roles
+        if (user.getRoles() != null) {
+            List<UserDTO.RoleDTO> roleDTOs = user.getRoles().stream()
+                    .map(role -> {
+                        UserDTO.RoleDTO roleDTO = new UserDTO.RoleDTO();
+                        roleDTO.setId(role.getId());
+                        roleDTO.setName(role.getName());
+                        return roleDTO;
+                    })
+                    .collect(Collectors.toList());
+            dto.setRoles(roleDTOs);
         }
 
         return dto;

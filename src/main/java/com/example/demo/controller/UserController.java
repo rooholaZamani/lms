@@ -1,6 +1,8 @@
 package com.example.demo.controller;
 
+import com.example.demo.dto.UserDTO;
 import com.example.demo.model.User;
+import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -14,18 +16,21 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
+    private final DTOMapperService dtoMapperService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, DTOMapperService dtoMapperService) {
         this.userService = userService;
+        this.dtoMapperService = dtoMapperService;
     }
 
     @GetMapping("/current")
-    public ResponseEntity<User> getCurrentUser(Authentication authentication) {
+    public ResponseEntity<UserDTO> getCurrentUser(Authentication authentication) {
         if (authentication == null) {
             return ResponseEntity.status(401).build();
         }
         User user = userService.findByUsername(authentication.getName());
-        return ResponseEntity.ok(user);
+        UserDTO userDTO = dtoMapperService.mapToUserDTO(user);
+        return ResponseEntity.ok(userDTO);
     }
 
     @GetMapping("/role")

@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.CourseDTO;
+import com.example.demo.dto.UserDTO;
 import com.example.demo.model.Course;
 import com.example.demo.model.User;
 import com.example.demo.service.CourseService;
@@ -39,9 +40,10 @@ public class AdminController {
     @GetMapping("/users")
     @Operation(summary = "Get all users", description = "Returns a list of all users in the system")
     @SecurityRequirement(name = "basicAuth")
-    public ResponseEntity<List<User>> getAllUsers() {
+    public ResponseEntity<List<UserDTO>> getAllUsers() {
         List<User> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
+        List<UserDTO> userDTOs = dtoMapperService.mapToUserDTOList(users);
+        return ResponseEntity.ok(userDTOs);
     }
 
     @GetMapping("/courses")
