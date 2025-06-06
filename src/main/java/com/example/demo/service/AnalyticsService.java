@@ -1174,6 +1174,10 @@ public class AnalyticsService {
                 return "Submitted exercise";
             case "LOGIN":
                 return "Logged in";
+            case "CHAT_MESSAGE_SEND":
+                return "Sent chat message";
+            case "CHAT_VIEW":
+                return "Viewed chat";
             default:
                 return activity.getActivityType();
         }
@@ -1189,6 +1193,10 @@ public class AnalyticsService {
                 return "آزمون‌ها";
             case "LESSON_COMPLETION":
                 return "درس‌ها";
+            case "CHAT_MESSAGE_SEND":
+                return "ارسال پیام چت";
+            case "CHAT_VIEW":
+                return "مشاهده چت";
             default:
                 return "سایر";
         }
