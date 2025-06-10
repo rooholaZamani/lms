@@ -8,6 +8,7 @@ import com.example.demo.repository.SubmissionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -306,5 +307,31 @@ public class ExamService {
         }
 
         return submissionsByExam;
+    }
+    /**
+     * Get available exams for a student
+     */
+    public List<Exam> getAvailableExamsForStudent(User student) {
+        // Get all courses the student is enrolled in
+        List<Course> enrolledCourses = courseRepository.findByEnrolledStudentsContaining(student);
+
+        List<Exam> availableExams = new ArrayList<>();
+
+        for (Course course : enrolledCourses) {
+            List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+
+            for (Lesson lesson : lessons) {
+                if (lesson.getExam() != null) {
+                    Exam exam = lesson.getExam();
+
+                    // Check if exam is available for students
+                    if (exam.isAvailableForStudents()) {
+                        availableExams.add(exam);
+                    }
+                }
+            }
+        }
+
+        return availableExams;
     }
 }

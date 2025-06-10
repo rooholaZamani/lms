@@ -275,4 +275,30 @@ public class ExamController {
 
         return ResponseEntity.ok(examDTOs);
     }
+    @GetMapping("/available")
+    @Operation(
+            summary = "Get available exams",
+            description = "Get all exams available for the authenticated student to take"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<List<ExamDTO>> getAvailableExams(Authentication authentication) {
+        User student = userService.findByUsername(authentication.getName());
+
+        // Verify user is a student
+        boolean isStudent = student.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        if (!isStudent) {
+            throw new RuntimeException("Access denied: Only students can access available exams");
+        }
+
+        List<Exam> availableExams = examService.getAvailableExamsForStudent(student);
+
+        // Map to DTOs without question details for security
+        List<ExamDTO> examDTOs = availableExams.stream()
+                .map(dtoMapperService::mapToExamDTOWithoutQuestions)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(examDTOs);
+    }
 }
