@@ -54,6 +54,7 @@ public class ExamService {
                 .orElseThrow(() -> new RuntimeException("Exam not found"));
     }
 
+
     public Exam getExamByLessonId(Long lessonId) {
         return examRepository.findByLessonId(lessonId)
                 .orElseThrow(() -> new RuntimeException("Exam not found for this lesson"));
