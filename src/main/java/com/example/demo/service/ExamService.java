@@ -1,10 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.model.*;
-import com.example.demo.repository.ExamRepository;
-import com.example.demo.repository.LessonRepository;
-import com.example.demo.repository.QuestionRepository;
-import com.example.demo.repository.SubmissionRepository;
+import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -20,16 +17,18 @@ public class ExamService {
     private final LessonRepository lessonRepository;
     private final QuestionRepository questionRepository;
     private final SubmissionRepository submissionRepository;
+    private final CourseRepository courseRepository;
 
     public ExamService(
             ExamRepository examRepository,
             LessonRepository lessonRepository,
             QuestionRepository questionRepository,
-            SubmissionRepository submissionRepository) {
+            SubmissionRepository submissionRepository, CourseRepository courseRepository) {
         this.examRepository = examRepository;
         this.lessonRepository = lessonRepository;
         this.questionRepository = questionRepository;
         this.submissionRepository = submissionRepository;
+        this.courseRepository = courseRepository;
     }
 
     @Transactional
