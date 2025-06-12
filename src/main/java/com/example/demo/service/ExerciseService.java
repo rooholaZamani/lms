@@ -1,14 +1,12 @@
 package com.example.demo.service;
 
 import com.example.demo.model.*;
-import com.example.demo.repository.ExerciseRepository;
-import com.example.demo.repository.ExerciseSubmissionRepository;
-import com.example.demo.repository.LessonRepository;
-import com.example.demo.repository.QuestionRepository;
+import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,16 +19,18 @@ public class ExerciseService {
     private final LessonRepository lessonRepository;
     private final QuestionRepository questionRepository;
     private final ExerciseSubmissionRepository submissionRepository;
+    private final CourseRepository courseRepository;
 
     public ExerciseService(
             ExerciseRepository exerciseRepository,
             LessonRepository lessonRepository,
             QuestionRepository questionRepository,
-            ExerciseSubmissionRepository submissionRepository) {
+            ExerciseSubmissionRepository submissionRepository, CourseRepository courseRepository) {
         this.exerciseRepository = exerciseRepository;
         this.lessonRepository = lessonRepository;
         this.questionRepository = questionRepository;
         this.submissionRepository = submissionRepository;
+        this.courseRepository = courseRepository;
     }
 
     @Transactional
@@ -38,8 +38,11 @@ public class ExerciseService {
         Lesson lesson = lessonRepository.findById(lessonId)
                 .orElseThrow(() -> new RuntimeException("Lesson not found"));
 
+        exercise.setLesson(lesson);
+
         // Save exercise first
         Exercise savedExercise = exerciseRepository.save(exercise);
+
 
         // Update lesson with exercise - here's where the type error might be occurring
         // Make sure lesson has a reference to the Exercise, not Exam
@@ -126,6 +129,27 @@ public class ExerciseService {
     public List<ExerciseSubmission> getExerciseSubmissions(Long exerciseId) {
         Exercise exercise = getExerciseById(exerciseId);
         return submissionRepository.findByExercise(exercise);
+    }
+    /**
+     * Get all exercises available to a student across all enrolled courses
+     */
+    public List<Exercise> getAvailableExercisesForStudent(User student) {
+        // Get all courses the student is enrolled in
+        List<Course> enrolledCourses = courseRepository.findByEnrolledStudentsContaining(student);
+
+        List<Exercise> availableExercises = new ArrayList<>();
+
+        for (Course course : enrolledCourses) {
+            List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+
+            for (Lesson lesson : lessons) {
+                if (lesson.getExercise() != null) {
+                    availableExercises.add(lesson.getExercise());
+                }
+            }
+        }
+
+        return availableExercises;
     }
 
     public Map<String, Object> calculateExerciseDifficulty(Long exerciseId) {

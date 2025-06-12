@@ -30,8 +30,10 @@ public class Exercise {
     private Boolean adaptiveDifficulty;
 
     @OneToOne
+    @JoinColumn(name = "lesson_id")
     private Lesson lesson;
 
     @OneToMany(mappedBy = "exercise", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Question> questions = new ArrayList<>();
+
 }

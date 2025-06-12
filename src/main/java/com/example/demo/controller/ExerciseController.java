@@ -8,6 +8,8 @@ import com.example.demo.service.ActivityTrackingService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExerciseService;
 import com.example.demo.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -132,5 +134,30 @@ public class ExerciseController {
     public ResponseEntity<Map<String, Object>> getExerciseDifficulty(@PathVariable Long exerciseId) {
         Map<String, Object> difficulty = exerciseService.calculateExerciseDifficulty(exerciseId);
         return ResponseEntity.ok(difficulty);
+    }
+    @GetMapping("/available")
+    @Operation(
+            summary = "Get available exercises",
+            description = "Get all exercises available for the authenticated student"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<List<ExerciseDTO>> getAvailableExercises(Authentication authentication) {
+        User student = userService.findByUsername(authentication.getName());
+
+        // Verify user is a student
+        boolean isStudent = student.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        if (!isStudent) {
+            throw new RuntimeException("Access denied: Only students can access available exercises");
+        }
+
+        List<Exercise> availableExercises = exerciseService.getAvailableExercisesForStudent(student);
+
+        List<ExerciseDTO> exerciseDTOs = availableExercises.stream()
+                .map(dtoMapperService::mapToExerciseDTO)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(exerciseDTOs);
     }
 }
