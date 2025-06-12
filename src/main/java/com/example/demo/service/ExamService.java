@@ -5,10 +5,7 @@ import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class ExamService {
@@ -86,6 +83,11 @@ public class ExamService {
             throw new RuntimeException("Exam is not available for submission");
         }
 
+        Optional<Submission> existingSubmission = submissionRepository.findByStudentAndExam(student, exam);
+        if (existingSubmission.isPresent()) {
+            throw new RuntimeException("You have already taken this exam. Multiple attempts are not allowed.");
+        }
+
         Submission submission = new Submission();
         submission.setStudent(student);
         submission.setExam(exam);
@@ -128,6 +130,21 @@ public class ExamService {
     public List<Submission> getExamSubmissions(Long examId) {
         Exam exam = getExamById(examId);
         return submissionRepository.findByExam(exam);
+    }
+    /**
+     * Check if student has already taken the exam
+     */
+    public boolean hasStudentTakenExam(Long examId, User student) {
+        Exam exam = getExamById(examId);
+        return submissionRepository.findByStudentAndExam(student, exam).isPresent();
+    }
+
+    /**
+     * Get student's submission for an exam (if exists)
+     */
+    public Optional<Submission> getStudentSubmission(Long examId, User student) {
+        Exam exam = getExamById(examId);
+        return submissionRepository.findByStudentAndExam(student, exam);
     }
 
     @Transactional

@@ -24,6 +24,11 @@ public class ExamDTO {
     // Lesson information
     private Long lessonId;
     private String lessonTitle;
+
+    private boolean hasStudentTaken; // آیا دانش‌آموز قبلاً شرکت کرده
+    private Integer studentScore; // نمره دانش‌آموز (اگر شرکت کرده)
+    private boolean studentPassed; // آیا دانش‌آموز قبول شده
+    private LocalDateTime studentSubmissionTime; // زمان شرکت دانش‌آموز
     
     // Questions (only included when specifically requested)
     private List<QuestionDTO> questions = new ArrayList<>();

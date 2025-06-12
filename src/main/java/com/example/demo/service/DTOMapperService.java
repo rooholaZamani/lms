@@ -4,10 +4,7 @@ import com.example.demo.dto.*;
 import com.example.demo.model.*;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -199,6 +196,26 @@ public class DTOMapperService {
         dto.setOriginalFilename(metadata.getOriginalFilename());
         dto.setContentType(metadata.getContentType());
         dto.setFileSize(metadata.getFileSize());
+
+        return dto;
+    }
+
+    public ExamDTO mapToExamDTO(Exam exam, User currentStudent) {
+        ExamDTO dto = mapToExamDTO(exam); // متد قبلی
+
+        // **اضافه شده**: اگر دانش‌آموز ارسال شده، وضعیت شرکت او را بررسی کن
+        if (currentStudent != null) {
+            Optional<Submission> submission = submissionRepository.findByStudentAndExam(currentStudent, exam);
+            if (submission.isPresent()) {
+                Submission sub = submission.get();
+                dto.setHasStudentTaken(true);
+                dto.setStudentScore(sub.getScore());
+                dto.setStudentPassed(sub.isPassed());
+                dto.setStudentSubmissionTime(sub.getSubmissionTime());
+            } else {
+                dto.setHasStudentTaken(false);
+            }
+        }
 
         return dto;
     }

@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import com.example.demo.dto.ExamWithDetailsDTO;
 
@@ -75,13 +76,16 @@ public class ExamController {
             Authentication authentication) { // ADD THIS
 
         // ADD ACTIVITY TRACKING FOR EXAM ACCESS
+        User user = null;
         if (authentication != null) {
-            User user = userService.findByUsername(authentication.getName());
+            user = userService.findByUsername(authentication.getName());
             activityTrackingService.logActivity(user, "EXAM_START", examId, 0L);
         }
 
         Exam exam = examService.getExamById(examId);
-        return ResponseEntity.ok(dtoMapperService.mapToExamDTO(exam));
+        ExamDTO examDTO = dtoMapperService.mapToExamDTO(exam, user);
+
+        return ResponseEntity.ok(examDTO);
     }
 
     // 🔥 FIX: این endpoint حالا از DTO استفاده می‌کند
@@ -125,6 +129,9 @@ public class ExamController {
 
         User student = userService.findByUsername(authentication.getName());
 
+        if (examService.hasStudentTakenExam(examId, student)) {
+            throw new RuntimeException("You have already submitted this exam");
+        }
         // FIX: Convert String keys to Long keys
         Map<Long, Long> answers = new HashMap<>();
         Object answersObj = submissionData.get("answers");
@@ -316,5 +323,29 @@ public class ExamController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(examDTOs);
+    }
+    @GetMapping("/{examId}/submission-status")
+    @Operation(summary = "Check exam submission status", description = "Check if student has already taken the exam")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getExamSubmissionStatus(
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+
+        Map<String, Object> status = new HashMap<>();
+        Optional<Submission> submission = examService.getStudentSubmission(examId, student);
+
+        if (submission.isPresent()) {
+            Submission sub = submission.get();
+            status.put("hasTaken", true);
+            status.put("score", sub.getScore());
+            status.put("passed", sub.isPassed());
+            status.put("submissionTime", sub.getSubmissionTime());
+        } else {
+            status.put("hasTaken", false);
+        }
+
+        return ResponseEntity.ok(status);
     }
 }
