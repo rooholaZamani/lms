@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
@@ -116,24 +117,39 @@ public class ExamController {
     }
 
     @PostMapping("/{examId}/submit")
+    @Transactional  // Add this annotation
     public ResponseEntity<SubmissionDTO> submitExam(
             @PathVariable Long examId,
-            @RequestBody Map<String, Object> submissionData, // CHANGE THIS
+            @RequestBody Map<String, Object> submissionData,
             Authentication authentication) {
 
         User student = userService.findByUsername(authentication.getName());
 
-        // EXTRACT DATA FROM REQUEST
-        @SuppressWarnings("unchecked")
-        Map<Long, Long> answers = (Map<Long, Long>) submissionData.get("answers");
+        // FIX: Convert String keys to Long keys
+        Map<Long, Long> answers = new HashMap<>();
+        Object answersObj = submissionData.get("answers");
+
+        if (answersObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> answersMap = (Map<String, Object>) answersObj;
+
+            for (Map.Entry<String, Object> entry : answersMap.entrySet()) {
+                Long questionId = Long.parseLong(entry.getKey());
+                Long answerId = ((Number) entry.getValue()).longValue();
+                answers.put(questionId, answerId);
+            }
+        }
+
         Long timeSpent = submissionData.get("timeSpent") != null ?
                 ((Number) submissionData.get("timeSpent")).longValue() : 0L;
 
+        // Submit exam with converted answers
         Submission submission = examService.submitExam(examId, student, answers);
 
-        // UPDATE SUBMISSION WITH TIME SPENT
-        submission.setTimeSpent(timeSpent);
-
+        // Update submission with time spent and save again
+//        submission.setTimeSpent(timeSpent);
+        // You'll need to add this method to ExamService or save here
+        submission = examService.updateSubmissionTimeSpent(submission, timeSpent);
         // ADD ACTIVITY TRACKING
         activityTrackingService.logActivity(student, "EXAM_SUBMISSION", examId, timeSpent);
         if (timeSpent > 0) {

@@ -334,4 +334,9 @@ public class ExamService {
 
         return availableExams;
     }
+    @Transactional
+    public Submission updateSubmissionTimeSpent(Submission submission, Long timeSpent) {
+        submission.setTimeSpent(timeSpent);
+        return submissionRepository.save(submission);
+    }
 }
