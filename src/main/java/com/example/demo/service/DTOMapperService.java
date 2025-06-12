@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.dto.*;
 import com.example.demo.model.*;
+import com.example.demo.repository.SubmissionRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -9,6 +10,11 @@ import java.util.stream.Collectors;
 
 @Service
 public class DTOMapperService {
+    private final SubmissionRepository submissionRepository;
+
+    public DTOMapperService(SubmissionRepository submissionRepository) {
+        this.submissionRepository = submissionRepository;
+    }
 
     public UserSummaryDTO mapToUserSummary(User user) {
         if (user == null) {
