@@ -165,4 +165,40 @@ public class AnalyticsController {
         Map<String, Object> stats = analyticsService.getDailyEngagementStats(teacher);
         return ResponseEntity.ok(stats);
     }
+    @GetMapping("/course/{courseId}/exam-scores")
+    public ResponseEntity<Map<String, Object>> getCourseExamScores(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            @RequestParam(required = false) Long examId,
+            @RequestParam(defaultValue = "false") boolean includeDetails,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Map<String, Object> scores = analyticsService.getCourseExamScores(courseId, period, examId, includeDetails);
+        return ResponseEntity.ok(scores);
+    }
+
+    @GetMapping("/course/{courseId}/time-distribution")
+    public ResponseEntity<Map<String, Object>> getCourseTimeDistribution(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            @RequestParam(defaultValue = "daily") String granularity,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Map<String, Object> timeDistribution = analyticsService.getCourseTimeDistribution(courseId, period, granularity);
+        return ResponseEntity.ok(timeDistribution);
+    }
+
+    @GetMapping("/course/{courseId}/activity-stats")
+    public ResponseEntity<Map<String, Object>> getCourseActivityStats(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            @RequestParam(defaultValue = "false") boolean includeTimeline,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Map<String, Object> activityStats = analyticsService.getCourseActivityStats(courseId, period, includeTimeline);
+        return ResponseEntity.ok(activityStats);
+    }
 }

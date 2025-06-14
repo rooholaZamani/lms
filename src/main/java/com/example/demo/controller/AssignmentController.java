@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/assignments")
@@ -95,11 +96,14 @@ public class AssignmentController {
     @PostMapping("/submissions/{submissionId}/grade")
     public ResponseEntity<AssignmentSubmissionDTO> gradeSubmission(
             @PathVariable Long submissionId,
-            @RequestParam("score") Integer score,
-            @RequestParam("feedback") String feedback,
+            @RequestBody Map<String, Object> gradeData,
             Authentication authentication) {
 
         User teacher = userService.findByUsername(authentication.getName());
+
+        Integer score = (Integer) gradeData.get("score");
+        String feedback = (String) gradeData.get("feedback");
+
         AssignmentSubmission gradedSubmission = assignmentService.gradeSubmission(submissionId, score, feedback, teacher);
         return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTO(gradedSubmission));
     }
