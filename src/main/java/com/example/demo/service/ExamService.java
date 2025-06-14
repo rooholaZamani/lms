@@ -358,4 +358,32 @@ public class ExamService {
         submission.setTimeSpent(timeSpent);
         return submissionRepository.save(submission);
     }
+    @Transactional
+    public void deleteExam(Long examId, User teacher) {
+        Exam exam = getExamById(examId);
+
+        // Security check: verify teacher owns the exam
+        if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Unauthorized: You can only delete your own exams");
+        }
+
+        // Business rule: only allow deletion of DRAFT exams
+        if (exam.getStatus() != ExamStatus.DRAFT) {
+            throw new RuntimeException("Cannot delete finalized exam. Only draft exams can be deleted.");
+        }
+
+        // Check if any students have submitted this exam
+        List<Submission> submissions = submissionRepository.findByExam(exam);
+        if (!submissions.isEmpty()) {
+            throw new RuntimeException("Cannot delete exam: " + submissions.size() + " student(s) have already submitted this exam");
+        }
+
+        // Remove exam reference from lesson
+        Lesson lesson = exam.getLesson();
+        lesson.setExam(null);
+        lessonRepository.save(lesson);
+
+        // Delete the exam (questions will be cascade deleted due to CascadeType.ALL)
+        examRepository.delete(exam);
+    }
 }

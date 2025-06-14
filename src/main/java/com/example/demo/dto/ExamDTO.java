@@ -20,6 +20,8 @@ public class ExamDTO {
     private Integer totalPossibleScore;
     private LocalDateTime availableFrom;
     private LocalDateTime availableTo;
+
+    private boolean canBeDeleted;
     
     // Lesson information
     private Long lessonId;

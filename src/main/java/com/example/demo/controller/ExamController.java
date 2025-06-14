@@ -348,4 +348,53 @@ public class ExamController {
 
         return ResponseEntity.ok(status);
     }
+    @DeleteMapping("/{examId}")
+    @Operation(
+            summary = "Delete exam",
+            description = "Delete an exam (only draft exams without submissions can be deleted)"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Exam successfully deleted"),
+            @ApiResponse(responseCode = "400", description = "Exam cannot be deleted (finalized or has submissions)"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - user not authenticated"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - user doesn't own this exam"),
+            @ApiResponse(responseCode = "404", description = "Exam not found")
+    })
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> deleteExam(
+            @Parameter(description = "ID of the exam to delete")
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // Verify user is a teacher
+            boolean isTeacher = teacher.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+            if (!isTeacher) {
+                throw new RuntimeException("Access denied: Only teachers can delete exams");
+            }
+
+            // Delete the exam
+            examService.deleteExam(examId, teacher);
+
+            // Prepare success response
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Exam deleted successfully");
+            response.put("examId", examId);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            // Handle business logic errors
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("examId", examId);
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 }
