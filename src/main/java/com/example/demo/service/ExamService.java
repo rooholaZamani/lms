@@ -35,6 +35,8 @@ public class ExamService {
 
         // Set default status to DRAFT
         exam.setStatus(ExamStatus.DRAFT);
+
+        exam.setLesson(lesson);
         
         // Save exam first
         Exam savedExam = examRepository.save(exam);
