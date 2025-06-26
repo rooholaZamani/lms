@@ -1984,5 +1984,263 @@ public class AnalyticsService {
 
         return result;
     }
+    /**
+     * Get overall progress statistics for all students in teacher's courses
+     */
+    public Map<String, Object> getStudentsProgressOverview(User teacher) {
+        Map<String, Object> overview = new HashMap<>();
+
+        // Get all teacher's courses
+        List<Course> teacherCourses = courseRepository.findByTeacher(teacher);
+
+        // Collect all students and their progress
+        List<Progress> allStudentProgress = new ArrayList<>();
+        Set<User> allStudents = new HashSet<>();
+
+        for (Course course : teacherCourses) {
+            List<Progress> courseProgress = progressRepository.findAll().stream()
+                    .filter(p -> p.getCourse().getId().equals(course.getId()))
+                    .collect(Collectors.toList());
+
+            allStudentProgress.addAll(courseProgress);
+            allStudents.addAll(course.getEnrolledStudents());
+        }
+
+        // Calculate statistics
+        int totalStudents = allStudents.size();
+        int activeStudents = (int) allStudentProgress.stream()
+                .filter(p -> p.getLastAccessed() != null &&
+                        p.getLastAccessed().isAfter(LocalDateTime.now().minusDays(7)))
+                .count();
+
+        double averageCompletion = allStudentProgress.stream()
+                .mapToDouble(Progress::getCompletionPercentage)
+                .average()
+                .orElse(0.0);
+
+        long completedStudents = allStudentProgress.stream()
+                .filter(p -> p.getCompletionPercentage() >= 100)
+                .count();
+
+        // Get exam statistics
+        List<Submission> allSubmissions = new ArrayList<>();
+        for (Course course : teacherCourses) {
+            List<Submission> courseSubmissions = submissionRepository.findAll().stream()
+                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
+                    .collect(Collectors.toList());
+            allSubmissions.addAll(courseSubmissions);
+        }
+
+        double averageExamScore = allSubmissions.stream()
+                .mapToDouble(Submission::getScore)
+                .average()
+                .orElse(0.0);
+
+        long passedExams = allSubmissions.stream()
+                .filter(Submission::isPassed)
+                .count();
+
+        // Build overview
+        overview.put("totalStudents", totalStudents);
+        overview.put("activeStudents", activeStudents);
+        overview.put("inactiveStudents", totalStudents - activeStudents);
+        overview.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
+        overview.put("completedStudents", completedStudents);
+        overview.put("totalCourses", teacherCourses.size());
+        overview.put("totalExamsTaken", allSubmissions.size());
+        overview.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
+        overview.put("examPassRate", allSubmissions.isEmpty() ? 0 :
+                Math.round((double) passedExams / allSubmissions.size() * 100 * 10.0) / 10.0);
+
+        // Activity levels
+        long highPerformers = allStudentProgress.stream()
+                .filter(p -> p.getCompletionPercentage() >= 80)
+                .count();
+        long struggling = allStudentProgress.stream()
+                .filter(p -> p.getCompletionPercentage() < 30)
+                .count();
+
+        overview.put("highPerformers", highPerformers);
+        overview.put("strugglingStudents", struggling);
+
+        return overview;
+    }
+
+    /**
+     * Get detailed performance analysis for a specific student from teacher's perspective
+     */
+    public Map<String, Object> getStudentPerformanceForTeacher(User teacher, Long studentId, Long courseId) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        Map<String, Object> performance = new HashMap<>();
+
+        // Verify student is in teacher's courses
+        List<Course> teacherCourses = courseRepository.findByTeacher(teacher);
+        List<Course> studentCourses = teacherCourses.stream()
+                .filter(course -> course.getEnrolledStudents().contains(student))
+                .collect(Collectors.toList());
+
+        if (studentCourses.isEmpty()) {
+            throw new RuntimeException("Student is not enrolled in any of your courses");
+        }
+
+        // If specific course is requested, filter to that course
+        if (courseId != null) {
+            studentCourses = studentCourses.stream()
+                    .filter(course -> course.getId().equals(courseId))
+                    .collect(Collectors.toList());
+
+            if (studentCourses.isEmpty()) {
+                throw new RuntimeException("Student is not enrolled in the specified course");
+            }
+        }
+
+        // Basic student info
+        performance.put("studentId", student.getId());
+        performance.put("studentName", student.getFirstName() + " " + student.getLastName());
+        performance.put("username", student.getUsername());
+
+        // Progress analysis
+        List<Course> finalStudentCourses = studentCourses;
+        List<Progress> studentProgress = progressRepository.findByStudent(student).stream()
+                .filter(p -> finalStudentCourses.stream().anyMatch(c -> c.getId().equals(p.getCourse().getId())))
+                .collect(Collectors.toList());
+
+        double averageCompletion = studentProgress.stream()
+                .mapToDouble(Progress::getCompletionPercentage)
+                .average()
+                .orElse(0.0);
+
+        long totalStudyTime = studentProgress.stream()
+                .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
+                .sum();
+
+        performance.put("enrolledCourses", studentCourses.size());
+        performance.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
+        performance.put("totalStudyTime", totalStudyTime);
+        performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 : totalStudyTime / studentCourses.size());
+
+        // Exam performance
+        List<Course> finalStudentCourses1 = studentCourses;
+        List<Submission> examSubmissions = submissionRepository.findByStudent(student).stream()
+                .filter(s -> finalStudentCourses1.stream().anyMatch(c ->
+                        c.getId().equals(s.getExam().getLesson().getCourse().getId())))
+                .collect(Collectors.toList());
+
+        double averageExamScore = examSubmissions.stream()
+                .mapToDouble(Submission::getScore)
+                .average()
+                .orElse(0.0);
+
+        long passedExams = examSubmissions.stream()
+                .filter(Submission::isPassed)
+                .count();
+
+        performance.put("examsTaken", examSubmissions.size());
+        performance.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
+        performance.put("examPassRate", examSubmissions.isEmpty() ? 0 :
+                Math.round((double) passedExams / examSubmissions.size() * 100 * 10.0) / 10.0);
+
+        // Recent activity
+        LocalDateTime oneWeekAgo = LocalDateTime.now().minusDays(7);
+        List<ActivityLog> recentActivities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, oneWeekAgo, LocalDateTime.now());
+
+        performance.put("recentActivityCount", recentActivities.size());
+        performance.put("lastAccessed", studentProgress.stream()
+                .map(Progress::getLastAccessed)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null));
+
+        // Course-specific details
+        List<Map<String, Object>> courseDetails = new ArrayList<>();
+        for (Course course : studentCourses) {
+            Map<String, Object> courseData = new HashMap<>();
+            courseData.put("courseId", course.getId());
+            courseData.put("courseName", course.getTitle());
+
+            Progress courseProgress = studentProgress.stream()
+                    .filter(p -> p.getCourse().getId().equals(course.getId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (courseProgress != null) {
+                courseData.put("completion", courseProgress.getCompletionPercentage());
+                courseData.put("studyTime", courseProgress.getTotalStudyTime());
+                courseData.put("lastAccessed", courseProgress.getLastAccessed());
+            }
+
+            courseDetails.add(courseData);
+        }
+
+        performance.put("courseDetails", courseDetails);
+
+        return performance;
+    }
+
+    /**
+     * Get summary of all students in a specific course
+     */
+    public List<Map<String, Object>> getCourseStudentsSummary(User teacher, Long courseId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // Verify teacher owns the course
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Unauthorized: You can only view your own courses");
+        }
+
+        List<Map<String, Object>> studentsSummary = new ArrayList<>();
+
+        for (User student : course.getEnrolledStudents()) {
+            Map<String, Object> studentData = new HashMap<>();
+
+            studentData.put("studentId", student.getId());
+            studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
+            studentData.put("username", student.getUsername());
+
+            // Progress
+            Progress progress = progressRepository.findByStudentAndCourse(student, course)
+                    .orElse(null);
+
+            if (progress != null) {
+                studentData.put("completion", progress.getCompletionPercentage());
+                studentData.put("studyTime", progress.getTotalStudyTime());
+                studentData.put("lastAccessed", progress.getLastAccessed());
+                studentData.put("completedLessons", progress.getCompletedLessons().size());
+            } else {
+                studentData.put("completion", 0.0);
+                studentData.put("studyTime", 0L);
+                studentData.put("lastAccessed", null);
+                studentData.put("completedLessons", 0);
+            }
+
+            // Exam performance
+            List<Submission> examSubmissions = submissionRepository.findByStudent(student).stream()
+                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+
+            double averageScore = examSubmissions.stream()
+                    .mapToDouble(Submission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+            studentData.put("examsTaken", examSubmissions.size());
+            studentData.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
+
+            studentsSummary.add(studentData);
+        }
+
+        // Sort by completion percentage (highest first)
+        studentsSummary.sort((s1, s2) -> {
+            Double completion1 = (Double) s1.get("completion");
+            Double completion2 = (Double) s2.get("completion");
+            return completion2.compareTo(completion1);
+        });
+
+        return studentsSummary;
+    }
 
 }

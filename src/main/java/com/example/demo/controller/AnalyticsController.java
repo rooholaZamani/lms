@@ -4,6 +4,8 @@ import com.example.demo.model.Course;
 import com.example.demo.model.User;
 import com.example.demo.service.AnalyticsService;
 import com.example.demo.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -210,5 +212,56 @@ public class AnalyticsController {
         User teacher = userService.findByUsername(authentication.getName());
         Map<String, Object> lessonProgress = analyticsService.getCourseLessonProgress(courseId, period);
         return ResponseEntity.ok(lessonProgress);
+    }
+    @GetMapping("/teacher/students-progress")
+    @Operation(summary = "Get students progress overview", description = "Get progress statistics for all students in teacher's courses")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentsProgressOverview(Authentication authentication) {
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        Map<String, Object> progressOverview = analyticsService.getStudentsProgressOverview(teacher);
+        return ResponseEntity.ok(progressOverview);
+    }
+
+    @GetMapping("/teacher/student/{studentId}/performance")
+    @Operation(summary = "Get specific student performance", description = "Get detailed performance analysis for a specific student")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentPerformanceForTeacher(
+            @PathVariable Long studentId,
+            @RequestParam(required = false) Long courseId,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        Map<String, Object> studentPerformance = analyticsService.getStudentPerformanceForTeacher(teacher, studentId, courseId);
+        return ResponseEntity.ok(studentPerformance);
+    }
+
+    @GetMapping("/teacher/course/{courseId}/students-summary")
+    @Operation(summary = "Get students summary for a course", description = "Get summary of all students progress in a specific course")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<List<Map<String, Object>>> getCourseStudentsSummary(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        List<Map<String, Object>> studentsSummary = analyticsService.getCourseStudentsSummary(teacher, courseId);
+        return ResponseEntity.ok(studentsSummary);
     }
 }
