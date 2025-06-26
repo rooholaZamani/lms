@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class AssignmentService {
@@ -194,5 +195,16 @@ public class AssignmentService {
     public FileMetadata getFileMetadataById(Long fileId) {
         return fileMetadataRepository.findById(fileId)
                 .orElseThrow(() -> new RuntimeException("File not found"));
+    }
+    /**
+     * Get student submissions visible to a specific teacher
+     */
+    public List<AssignmentSubmission> getStudentSubmissionsForTeacher(User student, User teacher) {
+        List<AssignmentSubmission> submissions = submissionRepository.findByStudent(student);
+
+        // Filter to only include assignments from teacher's courses
+        return submissions.stream()
+                .filter(submission -> submission.getAssignment().getTeacher().getId().equals(teacher.getId()))
+                .collect(Collectors.toList());
     }
 }

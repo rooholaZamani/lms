@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/assignments")
@@ -130,5 +131,40 @@ public class AssignmentController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
                 .body(resource);
+    }
+    @GetMapping("/submissions/student/{studentId}")
+    @Operation(
+            summary = "Get student submissions by student ID",
+            description = "Get all assignment submissions for a specific student (teacher access only)"
+    )
+    public ResponseEntity<List<AssignmentSubmissionDTO>> getStudentSubmissionsById(
+            @PathVariable Long studentId,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can view student submissions");
+        }
+
+        // Get the student
+        User student = userService.findByUsername(studentId.toString()); // اگر studentId همان username باشد
+        // یا اگر نیاز به repository دارید:
+        // User student = userRepository.findById(studentId)
+        //     .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        // Verify student is in teacher's courses
+        List<AssignmentSubmission> submissions = assignmentService.getStudentSubmissions(student);
+
+        // Filter submissions to only include assignments from teacher's courses
+        List<AssignmentSubmission> filteredSubmissions = submissions.stream()
+                .filter(submission -> submission.getAssignment().getTeacher().getId().equals(teacher.getId()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTOList(filteredSubmissions));
     }
 }

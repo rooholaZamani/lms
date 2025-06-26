@@ -26,7 +26,10 @@ public class UserService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    // Existing methods...
+    public User findById(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
+    }
 
     @Transactional
     public User changePassword(Long userId, String currentPassword, String newPassword) {
