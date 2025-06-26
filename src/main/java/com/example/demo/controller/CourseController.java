@@ -52,7 +52,7 @@ public class CourseController {
     public ResponseEntity<List<CourseDTO>> getTeacherCourses(Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
         List<Course> courses = courseService.getTeacherCourses(teacher);
-        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(courses);
+        List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOList(courses);
         return ResponseEntity.ok(courseDTOs);
     }
 
