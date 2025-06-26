@@ -201,4 +201,14 @@ public class AnalyticsController {
         Map<String, Object> activityStats = analyticsService.getCourseActivityStats(courseId, period, includeTimeline);
         return ResponseEntity.ok(activityStats);
     }
+    @GetMapping("/course/{courseId}/lesson-progress")
+    public ResponseEntity<Map<String, Object>> getCourseLessonProgress(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Map<String, Object> lessonProgress = analyticsService.getCourseLessonProgress(courseId, period);
+        return ResponseEntity.ok(lessonProgress);
+    }
 }

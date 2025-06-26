@@ -1898,5 +1898,91 @@ public class AnalyticsService {
 
         return trend;
     }
+    /**
+     * Get lesson progress analysis for a course
+     */
+    public Map<String, Object> getCourseLessonProgress(Long courseId, String period) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        Map<String, Object> result = new HashMap<>();
+
+        // Get all lessons for this course
+        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+
+        // Get all progress records for this course
+        List<Progress> allProgress = progressRepository.findAll().stream()
+                .filter(p -> p.getCourse().getId().equals(courseId))
+                .collect(Collectors.toList());
+
+        long totalStudents = course.getEnrolledStudents().size();
+
+        // Calculate lesson progress
+        List<Map<String, Object>> lessonProgressList = new ArrayList<>();
+
+        for (Lesson lesson : lessons) {
+            Map<String, Object> lessonData = new HashMap<>();
+
+            // Count students who completed this lesson
+            long completedStudents = allProgress.stream()
+                    .filter(p -> p.getCompletedLessons().contains(lesson.getId()))
+                    .count();
+
+            double completionRate = totalStudents > 0 ?
+                    (double) completedStudents / totalStudents * 100 : 0;
+
+            // Calculate average time spent on this lesson
+            LocalDateTime endDate = LocalDateTime.now();
+            LocalDateTime startDate = calculateStartDate(endDate, period);
+
+            List<ActivityLog> lessonActivities = activityLogRepository.findAll().stream()
+                    .filter(log -> "LESSON_COMPLETION".equals(log.getActivityType()) ||
+                            "LESSON_ACCESS".equals(log.getActivityType()))
+                    .filter(log -> log.getRelatedEntityId().equals(lesson.getId()))
+                    .filter(log -> log.getTimestamp().isAfter(startDate) &&
+                            log.getTimestamp().isBefore(endDate))
+                    .collect(Collectors.toList());
+
+            double averageTime = lessonActivities.stream()
+                    .mapToLong(ActivityLog::getTimeSpent)
+                    .average()
+                    .orElse(0.0);
+
+            lessonData.put("lessonId", lesson.getId());
+            lessonData.put("lessonTitle", lesson.getTitle());
+            lessonData.put("completionRate", Math.round(completionRate * 10.0) / 10.0);
+            lessonData.put("completedStudents", completedStudents);
+            lessonData.put("totalStudents", totalStudents);
+            lessonData.put("averageTime", Math.round(averageTime));
+
+            lessonProgressList.add(lessonData);
+        }
+
+        // Calculate distribution based on overall course progress
+        Map<String, Integer> distribution = new HashMap<>();
+        distribution.put("excellent", 0);
+        distribution.put("good", 0);
+        distribution.put("average", 0);
+        distribution.put("poor", 0);
+
+        for (Progress progress : allProgress) {
+            double completionPercentage = progress.getCompletionPercentage();
+
+            if (completionPercentage >= 80) {
+                distribution.merge("excellent", 1, Integer::sum);
+            } else if (completionPercentage >= 60) {
+                distribution.merge("good", 1, Integer::sum);
+            } else if (completionPercentage >= 40) {
+                distribution.merge("average", 1, Integer::sum);
+            } else {
+                distribution.merge("poor", 1, Integer::sum);
+            }
+        }
+
+        result.put("lessons", lessonProgressList);
+        result.put("distribution", distribution);
+
+        return result;
+    }
 
 }
