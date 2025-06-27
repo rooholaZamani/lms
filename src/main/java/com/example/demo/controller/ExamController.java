@@ -5,10 +5,7 @@ import com.example.demo.dto.QuestionDTO;
 import com.example.demo.dto.SubmissionDTO;
 import com.example.demo.model.*;
 import com.example.demo.repository.SubmissionRepository;
-import com.example.demo.service.ActivityTrackingService;
-import com.example.demo.service.DTOMapperService;
-import com.example.demo.service.ExamService;
-import com.example.demo.service.UserService;
+import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -37,16 +34,18 @@ public class ExamController {
     private final DTOMapperService dtoMapperService;
     private final ActivityTrackingService activityTrackingService;
     private final SubmissionRepository submissionRepository;
+    private final SubmissionService submissionService;
 
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
         this.submissionRepository = submissionRepository;
+        this.submissionService = submissionService;
     }
 
     @PostMapping("/lesson/{lessonId}")
@@ -401,7 +400,7 @@ public class ExamController {
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }
-    @GetMapping("/api/submissions/{submissionId}/answers")
+    @GetMapping("/submissions/{submissionId}/answers")
     public ResponseEntity<?> getSubmissionAnswers(@PathVariable Long submissionId, Authentication authentication) {
         try {
             User currentUser = userService.findByUsername(authentication.getName());
