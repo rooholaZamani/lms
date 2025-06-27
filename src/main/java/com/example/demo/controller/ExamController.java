@@ -401,6 +401,7 @@ public class ExamController {
         }
     }
     @GetMapping("/submissions/{submissionId}/answers")
+    @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<?> getSubmissionAnswers(@PathVariable Long submissionId, Authentication authentication) {
         try {
             User currentUser = userService.findByUsername(authentication.getName());
