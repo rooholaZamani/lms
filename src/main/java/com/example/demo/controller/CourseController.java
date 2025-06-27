@@ -15,7 +15,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/courses")
@@ -128,4 +130,34 @@ public class CourseController {
         List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(courses);
         return ResponseEntity.ok(courseDTOs);
     }
+    @GetMapping("/{courseId}/students")
+    @Operation(summary = "Get course students", description = "Get list of students enrolled in a specific course")
+    public ResponseEntity<List<Map<String, Object>>> getCourseStudents(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // بررسی که کاربر معلم باشد
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        // بررسی که دوره متعلق به معلم باشد
+        Course course = courseService.getCourseById(courseId);
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied: You can only view students of your own courses");
+        }
+
+        // دریافت لیست دانش‌آموزان
+        List<Map<String, Object>> students = courseService.getCourseStudentsWithProgress(courseId);
+
+        return ResponseEntity.ok(students);
+    }
+
+
+
 }

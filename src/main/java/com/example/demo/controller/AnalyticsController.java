@@ -229,18 +229,6 @@ public class AnalyticsController {
     }
 
 
-
-
-    @GetMapping("/student/{studentId}/course/{courseId}/detailed")
-    public ResponseEntity<Map<String, Object>> getStudentDetailedAnalytics(
-            @PathVariable Long studentId,
-            @PathVariable Long courseId,
-            Authentication authentication) {
-
-        Map<String, Object> analysis = analyticsService.getStudentDetailedAnalysis(studentId, courseId);
-        return ResponseEntity.ok(analysis);
-    }
-
     @GetMapping("/student/{studentId}/activity-timeline")
     public ResponseEntity<List<Map<String, Object>>> getStudentActivityTimeline(
             @PathVariable Long studentId,
