@@ -18,6 +18,9 @@ public class SubmissionDTO {
     private Integer score;
     private boolean passed;
     private Map<Long, Long> answers = new HashMap<>();
+    private Integer timeLimit;
+    private Long actualDuration;
+    private String courseTitle;
 
     // Getters and setters
 }

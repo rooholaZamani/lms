@@ -4,6 +4,7 @@ import com.example.demo.dto.ExamDTO;
 import com.example.demo.dto.QuestionDTO;
 import com.example.demo.dto.SubmissionDTO;
 import com.example.demo.model.*;
+import com.example.demo.repository.SubmissionRepository;
 import com.example.demo.service.ActivityTrackingService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExamService;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,15 +36,17 @@ public class ExamController {
     private final UserService userService;
     private final DTOMapperService dtoMapperService;
     private final ActivityTrackingService activityTrackingService;
+    private final SubmissionRepository submissionRepository;
 
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
+        this.submissionRepository = submissionRepository;
     }
 
     @PostMapping("/lesson/{lessonId}")
@@ -395,6 +399,23 @@ public class ExamController {
             errorResponse.put("message", e.getMessage());
             errorResponse.put("examId", examId);
             return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    @GetMapping("/api/submissions/{submissionId}/answers")
+    public ResponseEntity<?> getSubmissionAnswers(@PathVariable Long submissionId, Authentication authentication) {
+        try {
+            User currentUser = userService.findByUsername(authentication.getName());
+            Submission submission = submissionRepository.findById(submissionId)
+                    .orElseThrow(() -> new RuntimeException("Submission not found"));
+
+            // بررسی دسترسی
+            if (!submission.getStudent().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied");
+            }
+
+            return ResponseEntity.ok(submissionService.getSubmissionWithAnswers(submissionId));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error fetching answers");
         }
     }
 }

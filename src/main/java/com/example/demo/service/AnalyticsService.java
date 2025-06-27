@@ -2232,9 +2232,6 @@ public class AnalyticsService {
     }
 
 
-
-
-
     public Map<String, Object> getStudentComprehensiveReport(Long studentId, Long courseId, int days) {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
@@ -2252,10 +2249,9 @@ public class AnalyticsService {
         studentInfo.put("username", student.getUsername());
         studentInfo.put("email", student.getEmail());
 
-        // تاریخ آخرین دسترسی در دوره (به جای enrollmentDate)
         Progress progress = progressRepository.findByStudentAndCourse(student, course).orElse(null);
         if (progress != null) {
-            studentInfo.put("enrollmentDate", progress.getLastAccessed()); // استفاده از lastAccessed
+            studentInfo.put("enrollmentDate", progress.getLastAccessed());
         }
         report.put("studentInfo", studentInfo);
 
@@ -2263,8 +2259,8 @@ public class AnalyticsService {
         Map<String, Object> overallStats = calculateOverallStats(student, course, progress);
         report.put("overallStats", overallStats);
 
-        // 3. فعالیت هفتگی
-        List<Map<String, Object>> weeklyActivity = calculateWeeklyActivity(student, course, 7);
+        // 3. فعالیت هفتگی - استفاده از معامل days به جای 7 ثابت
+        List<Map<String, Object>> weeklyActivity = calculateWeeklyActivity(student, course, days);
         report.put("weeklyActivity", weeklyActivity);
 
         // 4. توزیع نمرات
@@ -2275,8 +2271,8 @@ public class AnalyticsService {
         List<Map<String, Object>> timeAnalysis = calculateDetailedTimeAnalysis(student, course, days);
         report.put("timeAnalysis", timeAnalysis);
 
-        // 6. فعالیت‌های اخیر - استفاده از متد موجود
-        List<Map<String, Object>> recentActivities = getStudentActivityTimelineFixed(studentId);
+        // 6. فعالیت‌های اخیر - استفاده از معامل days
+        List<Map<String, Object>> recentActivities = getStudentActivityTimelineWithDays(studentId, days);
         report.put("recentActivities", recentActivities);
 
         // 7. روند پیشرفت ماهانه
@@ -2286,7 +2282,33 @@ public class AnalyticsService {
         return report;
     }
 
+    private List<Map<String, Object>> getStudentActivityTimelineWithDays(Long studentId, int days) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
 
+        LocalDateTime startDate = LocalDateTime.now().minusDays(days); // استخدام معامل days
+
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now());
+
+        return activities.stream().map(activity -> {
+            Map<String, Object> activityData = new HashMap<>();
+            activityData.put("type", activity.getActivityType());
+            activityData.put("timestamp", activity.getTimestamp());
+            activityData.put("timeSpent", activity.getTimeSpent());
+            activityData.put("description", generateActivityDescription(activity));
+
+            if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
+                Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
+                submission.ifPresent(s -> activityData.put("score", s.getScore()));
+            } else if ("EXERCISE_SUBMISSION".equals(activity.getActivityType())) {
+                Optional<ExerciseSubmission> submission = exerciseSubmissionRepository.findById(activity.getRelatedEntityId());
+                submission.ifPresent(s -> activityData.put("score", s.getScore()));
+            }
+
+            return activityData;
+        }).collect(Collectors.toList());
+    }
 
 
 
@@ -2516,6 +2538,7 @@ public class AnalyticsService {
         }
     }
 
+
     private List<Map<String, Object>> calculateWeeklyActivity(User student, Course course, int days) {
         List<Map<String, Object>> weeklyData = new ArrayList<>();
         LocalDateTime endDate = LocalDateTime.now();
@@ -2527,7 +2550,7 @@ public class AnalyticsService {
             List<ActivityLog> dayActivities = activityLogRepository
                     .findByUserAndTimestampBetweenOrderByTimestampDesc(student, dayStart, dayEnd)
                     .stream()
-                    .filter(log -> isCourseRelatedActivity(log, course.getId())) // FIX: Use correct method name
+                    .filter(log -> isCourseRelatedActivity(log, course.getId()))
                     .collect(Collectors.toList());
 
             Map<String, Object> dayData = new HashMap<>();
@@ -2545,7 +2568,6 @@ public class AnalyticsService {
 
         return weeklyData;
     }
-
 
 
     private List<Map<String, Object>> calculateDetailedTimeAnalysis(User student, Course course, int days) {

@@ -353,12 +353,19 @@ public class DTOMapperService {
         if (submission.getExam() != null) {
             dto.setExamId(submission.getExam().getId());
             dto.setExamTitle(submission.getExam().getTitle());
+            dto.setTimeLimit(submission.getExam().getTimeLimit());
+
+            if (submission.getExam().getLesson() != null &&
+                    submission.getExam().getLesson().getCourse() != null) {
+                dto.setCourseTitle(submission.getExam().getLesson().getCourse().getTitle());
+            }
         }
 
         dto.setSubmissionTime(submission.getSubmissionTime());
         dto.setScore(submission.getScore());
         dto.setPassed(submission.isPassed());
         dto.setAnswers(submission.getAnswers());
+        dto.setActualDuration(submission.getTimeSpent());
 
         return dto;
     }
