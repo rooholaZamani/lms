@@ -27,6 +27,8 @@ public class DTOMapperService {
         dto.setFirstName(user.getFirstName());
         dto.setLastName(user.getLastName());
         dto.setEmail(user.getEmail());
+        dto.setPhoneNumber(user.getPhoneNumber());
+        dto.setNationalId(user.getNationalId());
         return dto;
     }
 
