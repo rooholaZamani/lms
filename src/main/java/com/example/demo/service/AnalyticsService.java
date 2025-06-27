@@ -2231,257 +2231,6 @@ public class AnalyticsService {
         return studentsSummary;
     }
 
-    public Map<String, Object> getStudentComprehensiveReport(Long studentId, Long courseId, int days) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
-        Map<String, Object> report = new HashMap<>();
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        LocalDateTime endDate = LocalDateTime.now();
-
-        // 1. اطلاعات پایه دانش‌آموز
-        Map<String, Object> studentInfo = new HashMap<>();
-        studentInfo.put("id", student.getId());
-        studentInfo.put("name", student.getFirstName() + " " + student.getLastName());
-        studentInfo.put("username", student.getUsername());
-        studentInfo.put("email", student.getEmail());
-
-        // تاریخ ثبت‌نام در دوره
-        Progress progress = progressRepository.findByStudentAndCourse(student, course).orElse(null);
-        if (progress != null) {
-            studentInfo.put("enrollmentDate", progress.getStartDate());
-        }
-        report.put("studentInfo", studentInfo);
-
-        // 2. آمار کلی عملکرد
-        Map<String, Object> overallStats = calculateOverallStats(student, course, progress);
-        report.put("overallStats", overallStats);
-
-        // 3. فعالیت هفتگی
-        List<Map<String, Object>> weeklyActivity = calculateWeeklyActivity(student, course, 7);
-        report.put("weeklyActivity", weeklyActivity);
-
-        // 4. توزیع نمرات
-        List<Map<String, Object>> scoreDistribution = calculateScoreDistribution(student, course);
-        report.put("scoreDistribution", scoreDistribution);
-
-        // 5. تحلیل زمان
-        List<Map<String, Object>> timeAnalysis = calculateDetailedTimeAnalysis(student, course, days);
-        report.put("timeAnalysis", timeAnalysis);
-
-        // 6. فعالیت‌های اخیر
-        List<Map<String, Object>> recentActivities = getStudentActivityTimeline(studentId)
-                .stream()
-                .limit(20)
-                .collect(Collectors.toList());
-        report.put("recentActivities", recentActivities);
-
-        // 7. روند پیشرفت ماهانه
-        List<Map<String, Object>> progressTrend = calculateProgressTrend(student, course, 6);
-        report.put("progressTrend", progressTrend);
-
-        return report;
-    }
-
-    /**
-     * محاسبه آمار کلی عملکرد
-     */
-    private Map<String, Object> calculateOverallStats(User student, Course course, Progress progress) {
-        Map<String, Object> stats = new HashMap<>();
-
-        // میانگین نمرات آزمون‌ها
-        List<Submission> examSubmissions = submissionRepository.findByStudent(student)
-                .stream()
-                .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
-                .collect(Collectors.toList());
-
-        double averageScore = examSubmissions.stream()
-                .mapToDouble(Submission::getScore)
-                .average()
-                .orElse(0.0);
-        stats.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
-
-        // درصد تکمیل دوره
-        int totalLessons = course.getLessons().size();
-        int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
-        double completionRate = totalLessons > 0 ? (double) completedLessons / totalLessons * 100 : 0;
-        stats.put("completionRate", Math.round(completionRate * 10.0) / 10.0);
-
-        // مجموع ساعات مطالعه
-        long totalStudyMinutes = activityLogRepository
-                .findByUserAndTimestampBetween(student, LocalDateTime.now().minusDays(90), LocalDateTime.now())
-                .stream()
-                .filter(log -> log.getRelatedEntityId() != null)
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
-        stats.put("totalStudyHours", Math.round(totalStudyMinutes / 60.0 * 10.0) / 10.0);
-
-        // امتیاز پایداری (بر اساس فعالیت روزانه)
-        double consistencyScore = calculateConsistencyScore(student, 30);
-        stats.put("consistencyScore", Math.round(consistencyScore * 10.0) / 10.0);
-
-        // رتبه در کلاس
-        List<Progress> allProgress = progressRepository.findAll()
-                .stream()
-                .filter(p -> p.getCourse().getId().equals(course.getId()))
-                .collect(Collectors.toList());
-
-        long betterStudents = allProgress.stream()
-                .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
-                .count();
-        stats.put("classRank", (int) (betterStudents + 1));
-        stats.put("totalStudents", allProgress.size());
-
-        // تعداد آزمون‌های شرکت‌کرده
-        stats.put("examsTaken", examSubmissions.size());
-
-        // تعداد تمرین‌های انجام‌شده
-        List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student)
-                .stream()
-                .filter(s -> s.getExercise().getLesson().getCourse().getId().equals(course.getId()))
-                .collect(Collectors.toList());
-        stats.put("exercisesDone", exerciseSubmissions.size());
-
-        return stats;
-    }
-
-    /**
-     * محاسبه فعالیت هفتگی
-     */
-    private List<Map<String, Object>> calculateWeeklyActivity(User student, Course course, int days) {
-        List<Map<String, Object>> weeklyData = new ArrayList<>();
-        LocalDateTime endDate = LocalDateTime.now();
-
-        for (int i = days - 1; i >= 0; i--) {
-            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withMinute(0).withSecond(0);
-            LocalDateTime dayEnd = dayStart.plusDays(1);
-
-            List<ActivityLog> dayActivities = activityLogRepository
-                    .findByUserAndTimestampBetween(student, dayStart, dayEnd)
-                    .stream()
-                    .filter(log -> isRelatedToCourse(log, course.getId()))
-                    .collect(Collectors.toList());
-
-            Map<String, Object> dayData = new HashMap<>();
-            dayData.put("date", dayStart.toLocalDate().toString());
-            dayData.put("dayName", getDayName(dayStart.getDayOfWeek()));
-            dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
-            dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "EXERCISE_SUBMISSION"));
-            dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
-            dayData.put("totalTime", dayActivities.stream()
-                    .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                    .sum());
-
-            weeklyData.add(dayData);
-        }
-
-        return weeklyData;
-    }
-
-
-    /**
-     * تحلیل جزئی زمان
-     */
-    private List<Map<String, Object>> calculateDetailedTimeAnalysis(User student, Course course, int days) {
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        List<ActivityLog> activities = activityLogRepository
-                .findByUserAndTimestampBetween(student, startDate, LocalDateTime.now())
-                .stream()
-                .filter(log -> isRelatedToCourse(log, course.getId()))
-                .collect(Collectors.toList());
-
-        Map<String, Long> timeByType = new HashMap<>();
-        timeByType.put("مطالعه محتوا", 0L);
-        timeByType.put("حل تمرین", 0L);
-        timeByType.put("شرکت در آزمون", 0L);
-        timeByType.put("گفتگو و بحث", 0L);
-
-        for (ActivityLog activity : activities) {
-            long timeSpent = activity.getTimeSpent() != null ? activity.getTimeSpent() : 0L;
-
-            switch (activity.getActivityType()) {
-                case "CONTENT_VIEW":
-                    timeByType.put("مطالعه محتوا", timeByType.get("مطالعه محتوا") + timeSpent);
-                    break;
-                case "EXERCISE_SUBMISSION":
-                    timeByType.put("حل تمرین", timeByType.get("حل تمرین") + timeSpent);
-                    break;
-                case "EXAM_SUBMISSION":
-                    timeByType.put("شرکت در آزمون", timeByType.get("شرکت در آزمون") + timeSpent);
-                    break;
-                case "CHAT_MESSAGE_SEND":
-                    timeByType.put("گفتگو و بحث", timeByType.get("گفتگو و بحث") + timeSpent);
-                    break;
-            }
-        }
-
-        return timeByType.entrySet().stream()
-                .filter(entry -> entry.getValue() > 0)
-                .map(entry -> {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("label", entry.getKey());
-                    item.put("value", entry.getValue());
-                    item.put("hours", Math.round(entry.getValue() / 60.0 * 10.0) / 10.0);
-                    return item;
-                })
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * محاسبه روند پیشرفت ماهانه
-     */
-    private List<Map<String, Object>> calculateProgressTrend(User student, Course course, int months) {
-        List<Map<String, Object>> trend = new ArrayList<>();
-        LocalDateTime current = LocalDateTime.now();
-
-        for (int i = months - 1; i >= 0; i--) {
-            LocalDateTime monthStart = current.minusMonths(i).withDayOfMonth(1).withHour(0).withMinute(0);
-            LocalDateTime monthEnd = monthStart.plusMonths(1);
-
-            List<ActivityLog> monthActivities = activityLogRepository
-                    .findByUserAndTimestampBetween(student, monthStart, monthEnd)
-                    .stream()
-                    .filter(log -> isRelatedToCourse(log, course.getId()))
-                    .collect(Collectors.toList());
-
-            Map<String, Object> monthData = new HashMap<>();
-            monthData.put("month", getMonthName(monthStart.getMonthValue()));
-            monthData.put("year", monthStart.getYear());
-            monthData.put("lessons", countActivitiesByType(monthActivities, "LESSON_COMPLETION"));
-            monthData.put("exams", countActivitiesByType(monthActivities, "EXAM_SUBMISSION"));
-            monthData.put("exercises", countActivitiesByType(monthActivities, "EXERCISE_SUBMISSION"));
-            monthData.put("totalActivities", monthActivities.size());
-
-            trend.add(monthData);
-        }
-
-        return trend;
-    }
-
-
-
-
-    private double calculateConsistencyScore(User student, int days) {
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        List<LocalDate> activeDays = activityLogRepository
-                .findByUserAndTimestampBetween(student, startDate, LocalDateTime.now())
-                .stream()
-                .map(log -> log.getTimestamp().toLocalDate())
-                .distinct()
-                .collect(Collectors.toList());
-
-        return (double) activeDays.size() / days * 100;
-    }
-
-
-
-
-
-
-
-
 
 
 
@@ -2539,130 +2288,9 @@ public class AnalyticsService {
 
 
 
-    /**
-     * محاسبه آمار کلی عملکرد
-     */
-    private Map<String, Object> calculateOverallStats(User student, Course course, Progress progress) {
-        Map<String, Object> stats = new HashMap<>();
-
-        // میانگین نمرات آزمون‌ها
-        List<Submission> examSubmissions = submissionRepository.findByStudent(student)
-                .stream()
-                .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
-                .collect(Collectors.toList());
-
-        double averageScore = examSubmissions.stream()
-                .mapToDouble(Submission::getScore)
-                .average()
-                .orElse(0.0);
-        stats.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
-
-        // درصد تکمیل دوره
-        int totalLessons = course.getLessons().size();
-        int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
-        double completionRate = totalLessons > 0 ? (double) completedLessons / totalLessons * 100 : 0;
-        stats.put("completionRate", Math.round(completionRate * 10.0) / 10.0);
-
-        // مجموع ساعات مطالعه
-        long totalStudyMinutes = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, LocalDateTime.now().minusDays(90), LocalDateTime.now())
-                .stream()
-                .filter(log -> log.getRelatedEntityId() != null)
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
-        stats.put("totalStudyHours", Math.round(totalStudyMinutes / 60.0 * 10.0) / 10.0);
-
-        // امتیاز پایداری (بر اساس فعالیت روزانه)
-        double consistencyScore = calculateConsistencyScore(student, 30);
-        stats.put("consistencyScore", Math.round(consistencyScore * 10.0) / 10.0);
-
-        // رتبه در کلاس
-        List<Progress> allProgress = progressRepository.findAll()
-                .stream()
-                .filter(p -> p.getCourse().getId().equals(course.getId()))
-                .collect(Collectors.toList());
-
-        long betterStudents = allProgress.stream()
-                .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
-                .count();
-        stats.put("classRank", (int) (betterStudents + 1));
-        stats.put("totalStudents", allProgress.size());
-
-        // تعداد آزمون‌های شرکت‌کرده
-        stats.put("examsTaken", examSubmissions.size());
-
-        // تعداد تمرین‌های انجام‌شده
-        List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student)
-                .stream()
-                .filter(s -> s.getExercise().getLesson().getCourse().getId().equals(course.getId()))
-                .collect(Collectors.toList());
-        stats.put("exercisesDone", exerciseSubmissions.size());
-
-        return stats;
-    }
 
 
 
-
-
-
-
-
-
-
-
-
-
-    public Map<String, Object> getStudentComprehensiveReport(Long studentId, Long courseId, int days) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
-        Map<String, Object> report = new HashMap<>();
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        LocalDateTime endDate = LocalDateTime.now();
-
-        // 1. اطلاعات پایه دانش‌آموز
-        Map<String, Object> studentInfo = new HashMap<>();
-        studentInfo.put("id", student.getId());
-        studentInfo.put("name", student.getFirstName() + " " + student.getLastName());
-        studentInfo.put("username", student.getUsername());
-        studentInfo.put("email", student.getEmail());
-
-        // تاریخ آخرین دسترسی در دوره (به جای enrollmentDate)
-        Progress progress = progressRepository.findByStudentAndCourse(student, course).orElse(null);
-        if (progress != null) {
-            studentInfo.put("enrollmentDate", progress.getLastAccessed()); // استفاده از lastAccessed
-        }
-        report.put("studentInfo", studentInfo);
-
-        // 2. آمار کلی عملکرد
-        Map<String, Object> overallStats = calculateOverallStats(student, course, progress);
-        report.put("overallStats", overallStats);
-
-        // 3. فعالیت هفتگی
-        List<Map<String, Object>> weeklyActivity = calculateWeeklyActivity(student, course, 7);
-        report.put("weeklyActivity", weeklyActivity);
-
-        // 4. توزیع نمرات
-        List<Map<String, Object>> scoreDistribution = calculateScoreDistribution(student, course);
-        report.put("scoreDistribution", scoreDistribution);
-
-        // 5. تحلیل زمان
-        List<Map<String, Object>> timeAnalysis = calculateDetailedTimeAnalysis(student, course, days);
-        report.put("timeAnalysis", timeAnalysis);
-
-        // 6. فعالیت‌های اخیر - استفاده از متد موجود
-        List<Map<String, Object>> recentActivities = getStudentActivityTimelineFixed(studentId);
-        report.put("recentActivities", recentActivities);
-
-        // 7. روند پیشرفت ماهانه
-        List<Map<String, Object>> progressTrend = calculateProgressTrend(student, course, 6);
-        report.put("progressTrend", progressTrend);
-
-        return report;
-    }
 
     /**
      * نسخه اصلاح شده متد getStudentActivityTimeline
@@ -2673,7 +2301,7 @@ public class AnalyticsService {
 
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
 
-        // استفاده از متد صحیح repository
+        // FIX: Use the correct method name
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, LocalDateTime.now());
 
@@ -2681,10 +2309,9 @@ public class AnalyticsService {
             Map<String, Object> activityData = new HashMap<>();
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
-            activityData.put("timeSpent", activity.getTimeSpent()); // استفاده مستقیم
+            activityData.put("timeSpent", activity.getTimeSpent());
             activityData.put("description", generateActivityDescription(activity));
 
-            // Add score if it's an exam or exercise submission
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
                 Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
                 submission.ifPresent(s -> activityData.put("score", s.getScore()));
@@ -2759,38 +2386,6 @@ public class AnalyticsService {
         return stats;
     }
 
-    /**
-     * محاسبه فعالیت هفتگی
-     */
-    private List<Map<String, Object>> calculateWeeklyActivity(User student, Course course, int days) {
-        List<Map<String, Object>> weeklyData = new ArrayList<>();
-        LocalDateTime endDate = LocalDateTime.now();
-
-        for (int i = days - 1; i >= 0; i--) {
-            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withMinute(0).withSecond(0);
-            LocalDateTime dayEnd = dayStart.plusDays(1);
-
-            List<ActivityLog> dayActivities = activityLogRepository
-                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, dayStart, dayEnd)
-                    .stream()
-                    .filter(log -> isRelatedToCourse(log, course.getId()))
-                    .collect(Collectors.toList());
-
-            Map<String, Object> dayData = new HashMap<>();
-            dayData.put("date", dayStart.toLocalDate().toString());
-            dayData.put("dayName", getDayName(dayStart.getDayOfWeek()));
-            dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
-            dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "EXERCISE_SUBMISSION"));
-            dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
-            dayData.put("totalTime", dayActivities.stream()
-                    .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                    .sum());
-
-            weeklyData.add(dayData);
-        }
-
-        return weeklyData;
-    }
 
     /**
      * محاسبه توزیع نمرات
@@ -2836,12 +2431,129 @@ public class AnalyticsService {
     /**
      * تحلیل جزئی زمان
      */
+
+
+    private List<Map<String, Object>> calculateProgressTrend(User student, Course course, int months) {
+        List<Map<String, Object>> trend = new ArrayList<>();
+        LocalDateTime current = LocalDateTime.now();
+
+        for (int i = months - 1; i >= 0; i--) {
+            LocalDateTime monthStart = current.minusMonths(i).withDayOfMonth(1).withHour(0).withMinute(0);
+            LocalDateTime monthEnd = monthStart.plusMonths(1);
+
+            List<ActivityLog> monthActivities = activityLogRepository
+                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, monthStart, monthEnd)
+                    .stream()
+                    .filter(log -> isCourseRelatedActivity(log, course.getId())) // FIX: Use correct method name
+                    .collect(Collectors.toList());
+
+            Map<String, Object> monthData = new HashMap<>();
+            monthData.put("month", getMonthName(monthStart.getMonthValue()));
+            monthData.put("year", monthStart.getYear());
+            monthData.put("lessons", countActivitiesByType(monthActivities, "LESSON_COMPLETION"));
+            monthData.put("exams", countActivitiesByType(monthActivities, "EXAM_SUBMISSION"));
+            monthData.put("exercises", countActivitiesByType(monthActivities, "EXERCISE_SUBMISSION"));
+            monthData.put("totalActivities", monthActivities.size());
+
+            trend.add(monthData);
+        }
+
+        return trend;
+    }
+
+
+    private long countActivitiesByType(List<ActivityLog> activities, String... types) {
+        return activities.stream()
+                .filter(activity -> Arrays.asList(types).contains(activity.getActivityType()))
+                .count();
+    }
+
+    private double calculateConsistencyScore(User student, int days) {
+        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+        List<LocalDate> activeDays = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now())
+                .stream()
+                .map(log -> log.getTimestamp().toLocalDate())
+                .distinct()
+                .collect(Collectors.toList());
+
+        return (double) activeDays.size() / days * 100;
+    }
+
+    private String getDayName(DayOfWeek dayOfWeek) {
+        String[] dayNames = {"یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه", "شنبه"};
+        return dayNames[dayOfWeek.getValue() % 7];
+    }
+
+    private String getMonthName(int month) {
+        String[] monthNames = {"فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"};
+        return monthNames[month - 1];
+    }
+
+    /**
+     * تولید توضیح فعالیت
+     */
+
+    private String generateActivityDescription(ActivityLog activity) {
+        switch (activity.getActivityType()) {
+            case "LOGIN":
+                return "ورود به سیستم";
+            case "CONTENT_VIEW":
+                return "مشاهده محتوا";
+            case "LESSON_COMPLETION":
+                return "تکمیل درس";
+            case "EXAM_SUBMISSION":
+                return "شرکت در آزمون";
+            case "EXERCISE_SUBMISSION":
+                return "ارسال تمرین";
+            case "CHAT_MESSAGE_SEND":
+                return "ارسال پیام در چت";
+            case "ASSIGNMENT_SUBMISSION":
+                return "ارسال تکلیف";
+            default:
+                return "فعالیت";
+        }
+    }
+
+    private List<Map<String, Object>> calculateWeeklyActivity(User student, Course course, int days) {
+        List<Map<String, Object>> weeklyData = new ArrayList<>();
+        LocalDateTime endDate = LocalDateTime.now();
+
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withMinute(0).withSecond(0);
+            LocalDateTime dayEnd = dayStart.plusDays(1);
+
+            List<ActivityLog> dayActivities = activityLogRepository
+                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, dayStart, dayEnd)
+                    .stream()
+                    .filter(log -> isCourseRelatedActivity(log, course.getId())) // FIX: Use correct method name
+                    .collect(Collectors.toList());
+
+            Map<String, Object> dayData = new HashMap<>();
+            dayData.put("date", dayStart.toLocalDate().toString());
+            dayData.put("dayName", getDayName(dayStart.getDayOfWeek()));
+            dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
+            dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "EXERCISE_SUBMISSION"));
+            dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
+            dayData.put("totalTime", dayActivities.stream()
+                    .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                    .sum());
+
+            weeklyData.add(dayData);
+        }
+
+        return weeklyData;
+    }
+
+
+
     private List<Map<String, Object>> calculateDetailedTimeAnalysis(User student, Course course, int days) {
         LocalDateTime startDate = LocalDateTime.now().minusDays(days);
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now())
                 .stream()
-                .filter(log -> isRelatedToCourse(log, course.getId()))
+                .filter(log -> isCourseRelatedActivity(log, course.getId())) // FIX: Use correct method name
                 .collect(Collectors.toList());
 
         Map<String, Long> timeByType = new HashMap<>();
@@ -2880,91 +2592,4 @@ public class AnalyticsService {
                 })
                 .collect(Collectors.toList());
     }
-
-    /**
-     * محاسبه روند پیشرفت ماهانه
-     */
-    private List<Map<String, Object>> calculateProgressTrend(User student, Course course, int months) {
-        List<Map<String, Object>> trend = new ArrayList<>();
-        LocalDateTime current = LocalDateTime.now();
-
-        for (int i = months - 1; i >= 0; i--) {
-            LocalDateTime monthStart = current.minusMonths(i).withDayOfMonth(1).withHour(0).withMinute(0);
-            LocalDateTime monthEnd = monthStart.plusMonths(1);
-
-            List<ActivityLog> monthActivities = activityLogRepository
-                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, monthStart, monthEnd)
-                    .stream()
-                    .filter(log -> isRelatedToCourse(log, course.getId()))
-                    .collect(Collectors.toList());
-
-            Map<String, Object> monthData = new HashMap<>();
-            monthData.put("month", getMonthName(monthStart.getMonthValue()));
-            monthData.put("year", monthStart.getYear());
-            monthData.put("lessons", countActivitiesByType(monthActivities, "LESSON_COMPLETION"));
-            monthData.put("exams", countActivitiesByType(monthActivities, "EXAM_SUBMISSION"));
-            monthData.put("exercises", countActivitiesByType(monthActivities, "EXERCISE_SUBMISSION"));
-            monthData.put("totalActivities", monthActivities.size());
-
-            trend.add(monthData);
-        }
-
-        return trend;
-    }
-
-    // متدهای کمکی
-    private boolean isRelatedToCourse(ActivityLog log, Long courseId) {
-        // پیاده‌سازی ساده - در حالت واقعی باید بررسی کند که آیا فعالیت مربوط به دوره است
-        return log.getRelatedEntityId() != null;
-    }
-
-    private long countActivitiesByType(List<ActivityLog> activities, String... types) {
-        return activities.stream()
-                .filter(activity -> Arrays.asList(types).contains(activity.getActivityType()))
-                .count();
-    }
-
-    private double calculateConsistencyScore(User student, int days) {
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        List<LocalDate> activeDays = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now())
-                .stream()
-                .map(log -> log.getTimestamp().toLocalDate())
-                .distinct()
-                .collect(Collectors.toList());
-
-        return (double) activeDays.size() / days * 100;
-    }
-
-    private String getDayName(DayOfWeek dayOfWeek) {
-        String[] dayNames = {"یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه", "شنبه"};
-        return dayNames[dayOfWeek.getValue() % 7];
-    }
-
-    private String getMonthName(int month) {
-        String[] monthNames = {"فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-                "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"};
-        return monthNames[month - 1];
-    }
-
-    /**
-     * تولید توضیح فعالیت
-     */
-    private String generateActivityDescription(ActivityLog activity) {
-        switch (activity.getActivityType()) {
-            case "CONTENT_VIEW":
-                return "مشاهده محتوا";
-            case "LESSON_COMPLETION":
-                return "تکمیل درس";
-            case "EXAM_SUBMISSION":
-                return "شرکت در آزمون";
-            case "EXERCISE_SUBMISSION":
-                return "ارسال تمرین";
-            case "CHAT_MESSAGE_SEND":
-                return "ارسال پیام در چت";
-            default:
-                return "فعالیت نامشخص";
-        }
-    }
-
 }
