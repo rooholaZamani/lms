@@ -1,7 +1,6 @@
 package com.example.demo.controller;
 
-import com.example.demo.model.Course;
-import com.example.demo.model.User;
+import com.example.demo.model.*;
 import com.example.demo.service.AnalyticsService;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -9,8 +8,12 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
-import java.util.Map;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/analytics")
@@ -264,4 +267,26 @@ public class AnalyticsController {
         List<Map<String, Object>> studentsSummary = analyticsService.getCourseStudentsSummary(teacher, courseId);
         return ResponseEntity.ok(studentsSummary);
     }
+
+    @GetMapping("/student/{studentId}/course/{courseId}/comprehensive-report")
+    public ResponseEntity<Map<String, Object>> getStudentComprehensiveReport(
+            @PathVariable Long studentId,
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "30") int days,
+            Authentication authentication) {
+
+        // بررسی دسترسی معلم به دانش‌آموز و دوره
+        User teacher = userService.findByUsername(authentication.getName());
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied");
+        }
+
+        Map<String, Object> report = analyticsService.getStudentComprehensiveReport(studentId, courseId, days);
+        return ResponseEntity.ok(report);
+    }
+
+
 }
