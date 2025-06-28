@@ -1460,10 +1460,10 @@ public class AnalyticsService {
 
         // Time distribution ranges
         List<Map<String, Object>> ranges = Arrays.asList(
-                createTimeRange("Low Activity (< 60 min)", 0L, 60L, times),
-                createTimeRange("Moderate Activity (60-180 min)", 60L, 180L, times),
-                createTimeRange("High Activity (180-300 min)", 180L, 300L, times),
-                createTimeRange("Very High Activity (> 300 min)", 300L, null, times)
+                createTimeRange("Low Activity (< 1 hour)", 0L, 3600L, times),        // کمتر از 1 ساعت
+                createTimeRange("Moderate Activity (1-3 hours)", 3600L, 10800L, times), // 1 تا 3 ساعت
+                createTimeRange("High Activity (3-5 hours)", 10800L, 18000L, times),     // 3 تا 5 ساعت
+                createTimeRange("Very High Activity (> 5 hours)", 18000L, null, times)   // بیشتر از 5 ساعت
         );
 
         // Timeline data
@@ -2609,7 +2609,7 @@ public class AnalyticsService {
                     Map<String, Object> item = new HashMap<>();
                     item.put("label", entry.getKey());
                     item.put("value", entry.getValue());
-                    item.put("hours", Math.round(entry.getValue() / 60.0 * 10.0) / 10.0);
+                    item.put("hours", Math.round(entry.getValue() / 3600.0 * 10.0) / 10.0);
                     return item;
                 })
                 .collect(Collectors.toList());
