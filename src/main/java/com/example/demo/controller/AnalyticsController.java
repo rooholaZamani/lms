@@ -1,7 +1,9 @@
 package com.example.demo.controller;
 
 import com.example.demo.model.*;
+import com.example.demo.repository.ActivityLogRepository;
 import com.example.demo.repository.CourseRepository;
+import com.example.demo.repository.ProgressRepository;
 import com.example.demo.service.AnalyticsService;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,11 +25,16 @@ public class AnalyticsController {
     private final AnalyticsService analyticsService;
     private final UserService userService;
     private final CourseRepository courseRepository;
+    private final ProgressRepository progressRepository;
+    private final ActivityLogRepository activityLogRepository;
 
-    public AnalyticsController(AnalyticsService analyticsService, UserService userService, CourseRepository courseRepository) {
+
+    public AnalyticsController(AnalyticsService analyticsService, UserService userService, CourseRepository courseRepository, ProgressRepository progressRepository, ActivityLogRepository activityLogRepository) {
         this.analyticsService = analyticsService;
         this.userService = userService;
         this.courseRepository = courseRepository;
+        this.progressRepository = progressRepository;
+        this.activityLogRepository = activityLogRepository;
     }
 
     @GetMapping("/student/performance")
@@ -304,5 +311,84 @@ public class AnalyticsController {
         User teacher = userService.findByUsername(authentication.getName());
         List<Map<String, Object>> lessonPerformance = analyticsService.getLessonPerformanceAnalysis(teacher);
         return ResponseEntity.ok(lessonPerformance);
+    }
+    // اضافه کردن به AnalyticsController.java
+
+    @GetMapping("/teacher/student/{studentId}/study-time")
+    @Operation(summary = "Debug study time calculation", description = "Compare study time from different sources")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> debugStudyTime(
+            @PathVariable Long studentId,
+            @RequestParam(required = false) Long courseId,
+            Authentication authentication) {
+
+        User student = userService.findById(studentId);
+        Map<String, Object> debug = new HashMap<>();
+
+        debug.put("studentId", studentId);
+        debug.put("studentName", student.getFirstName() + " " + student.getLastName());
+
+        if (courseId != null) {
+            Course course = courseRepository.findById(courseId).orElse(null);
+            if (course != null) {
+                debug.put("courseId", courseId);
+                debug.put("courseName", course.getTitle());
+
+                // زمان از Progress
+                Progress progress = progressRepository.findByStudentAndCourse(student, course).orElse(null);
+                Long progressTime = progress != null ? progress.getTotalStudyTime() : 0L;
+
+                // زمان از ActivityLog
+                Long activityTime = analyticsService.calculateCourseStudyTime(student, course);
+
+                debug.put("progressStudyTime", progressTime);
+                debug.put("progressStudyTimeHours", progressTime != null ? Math.round(progressTime / 3600.0 * 10.0) / 10.0 : 0);
+                debug.put("activityStudyTime", activityTime);
+                debug.put("activityStudyTimeHours", Math.round(activityTime / 3600.0 * 10.0) / 10.0);
+                debug.put("difference", Math.abs((progressTime != null ? progressTime : 0L) - activityTime));
+            }
+        } else {
+            // همه دوره‌ها
+            List<Progress> allProgress = progressRepository.findByStudent(student);
+
+            long totalProgressTime = allProgress.stream()
+                    .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
+                    .sum();
+
+            List<Course> studentCourses = allProgress.stream()
+                    .map(Progress::getCourse)
+                    .collect(Collectors.toList());
+
+            long totalActivityTime = analyticsService.calculateActualStudyTime(student, studentCourses);
+
+            debug.put("totalProgressTime", totalProgressTime);
+            debug.put("totalProgressTimeHours", Math.round(totalProgressTime / 3600.0 * 10.0) / 10.0);
+            debug.put("totalActivityTime", totalActivityTime);
+            debug.put("totalActivityTimeHours", Math.round(totalActivityTime / 3600.0 * 10.0) / 10.0);
+            debug.put("difference", Math.abs(totalProgressTime - totalActivityTime));
+        }
+
+        // آخرین فعالیت‌های مطالعه
+        LocalDateTime oneWeekAgo = LocalDateTime.now().minusDays(7);
+        List<ActivityLog> recentStudyActivities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, oneWeekAgo, LocalDateTime.now())
+                .stream()
+                .filter(log -> Arrays.asList("CONTENT_VIEW", "LESSON_COMPLETION", "EXAM_SUBMISSION").contains(log.getActivityType()))
+                .limit(10)
+                .collect(Collectors.toList());
+
+        List<Map<String, Object>> recentActivities = recentStudyActivities.stream()
+                .map(activity -> {
+                    Map<String, Object> actData = new HashMap<>();
+                    actData.put("type", activity.getActivityType());
+                    actData.put("timeSpent", activity.getTimeSpent());
+                    actData.put("timestamp", activity.getTimestamp());
+                    return actData;
+                })
+                .collect(Collectors.toList());
+
+        debug.put("recentStudyActivities", recentActivities);
+
+        return ResponseEntity.ok(debug);
     }
 }

@@ -4,6 +4,7 @@ import com.example.demo.dto.CourseDTO;
 import com.example.demo.dto.UserDTO;
 import com.example.demo.model.Course;
 import com.example.demo.model.User;
+import com.example.demo.service.AnalyticsService;
 import com.example.demo.service.CourseService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.UserService;
@@ -12,6 +13,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -27,14 +29,16 @@ public class AdminController {
     private final UserService userService;
     private final CourseService courseService;
     private final DTOMapperService dtoMapperService;
+    private final AnalyticsService analyticsService;
 
     public AdminController(
             UserService userService,
             CourseService courseService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService, AnalyticsService analyticsService) {
         this.userService = userService;
         this.courseService = courseService;
         this.dtoMapperService = dtoMapperService;
+        this.analyticsService = analyticsService;
     }
 
     @GetMapping("/users")
@@ -91,6 +95,31 @@ public class AdminController {
             response.put("success", true);
             response.put("message", "Admin registered successfully");
             response.put("userId", savedUser.getId());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+    // اضافه کردن به AdminController.java
+
+    @PostMapping("/recalculate-study-times")
+    @Operation(summary = "Recalculate study times", description = "Recalculate all study times from activity logs")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> recalculateStudyTimes(
+            Authentication authentication) {
+
+        try {
+            // Inject AnalyticsService to AdminController constructor
+            analyticsService.recalculateStudyTimes();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Study times recalculated successfully");
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
