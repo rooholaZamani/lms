@@ -656,10 +656,11 @@ public class AnalyticsService {
         long totalStudyTime = progress != null && progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L;
         int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
 
-        analysis.put("averageTimePerLesson", completedLessons > 0 ? totalStudyTime / completedLessons : 0);
+        analysis.put("averageTimePerLesson", completedLessons > 0 ?
+                Math.round((totalStudyTime / completedLessons) / 3600.0 * 10.0) / 10.0 : 0);
         analysis.put("averageTimePerExam", examSubmissions.isEmpty() ? 0 :
-                examSubmissions.stream().mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
-                        .average().orElse(0.0));
+                Math.round(examSubmissions.stream().mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
+                        .average().orElse(0.0) / 3600.0 * 10.0) / 10.0);
 
         // Calculate class rank
         List<Progress> allProgress = progressRepository.findAll().stream()
@@ -722,7 +723,9 @@ public class AnalyticsService {
 
             examData.put("examName", exam.getTitle());
             examData.put("score", submission.getScore());
-            examData.put("timeSpent", submission.getTimeSpent() != null ? submission.getTimeSpent() : 0);
+            examData.put("timeSpent", submission.getTimeSpent() != null ?
+                    Math.round(submission.getTimeSpent() / 3600.0 * 10.0) / 10.0 : 0.0);
+            examData.put("passed", submission.isPassed());
             examData.put("date", submission.getSubmissionTime());
 
             // Calculate class average for this exam
@@ -1460,10 +1463,10 @@ public class AnalyticsService {
 
         // Time distribution ranges
         List<Map<String, Object>> ranges = Arrays.asList(
-                createTimeRange("Low Activity (< 1 hour)", 0L, 3600L, times),        // کمتر از 1 ساعت
-                createTimeRange("Moderate Activity (1-3 hours)", 3600L, 10800L, times), // 1 تا 3 ساعت
-                createTimeRange("High Activity (3-5 hours)", 10800L, 18000L, times),     // 3 تا 5 ساعت
-                createTimeRange("Very High Activity (> 5 hours)", 18000L, null, times)   // بیشتر از 5 ساعت
+                createTimeRange("فعالیت کم (< 1 ساعت)", 0L, 3600L, times),
+                createTimeRange("فعالیت متوسط (1-3 ساعت)", 3600L, 10800L, times),
+                createTimeRange("فعالیت زیاد (3-5 ساعت)", 10800L, 18000L, times),
+                createTimeRange("فعالیت بسیار زیاد (> 5 ساعت)", 18000L, null, times)
         );
 
         // Timeline data
@@ -2106,8 +2109,9 @@ public class AnalyticsService {
 
         performance.put("enrolledCourses", studentCourses.size());
         performance.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
-        performance.put("totalStudyTime", totalStudyTime);
-        performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 : totalStudyTime / studentCourses.size());
+        performance.put("totalStudyTime", Math.round(totalStudyTime / 3600.0 * 10.0) / 10.0);
+        performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 :
+                Math.round((totalStudyTime / studentCourses.size()) / 3600.0 * 10.0) / 10.0);
 
         // Exam performance
         List<Course> finalStudentCourses1 = studentCourses;
@@ -2156,8 +2160,14 @@ public class AnalyticsService {
 
             if (courseProgress != null) {
                 courseData.put("completion", courseProgress.getCompletionPercentage());
-                courseData.put("studyTime", courseProgress.getTotalStudyTime());
+                // تبدیل ثانیه به ساعت:
+                courseData.put("studyTime", courseProgress.getTotalStudyTime() != null ?
+                        Math.round(courseProgress.getTotalStudyTime() / 3600.0 * 10.0) / 10.0 : 0.0);
                 courseData.put("lastAccessed", courseProgress.getLastAccessed());
+            } else {
+                courseData.put("completion", 0.0);
+                courseData.put("studyTime", 0.0);
+                courseData.put("lastAccessed", null);
             }
 
             courseDetails.add(courseData);
@@ -2295,7 +2305,9 @@ public class AnalyticsService {
             Map<String, Object> activityData = new HashMap<>();
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
-            activityData.put("timeSpent", activity.getTimeSpent());
+            // تبدیل ثانیه به ساعت:
+            activityData.put("timeSpent", activity.getTimeSpent() != null ?
+                    Math.round(activity.getTimeSpent() / 3600.0 * 10.0) / 10.0 : 0.0);
             activityData.put("description", generateActivityDescription(activity));
 
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
@@ -2559,9 +2571,9 @@ public class AnalyticsService {
             dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
             dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "EXERCISE_SUBMISSION"));
             dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
-            dayData.put("totalTime", dayActivities.stream()
+            dayData.put("totalTime", Math.round(dayActivities.stream()
                     .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                    .sum());
+                    .sum() / 3600.0 * 10.0) / 10.0);
 
             weeklyData.add(dayData);
         }
