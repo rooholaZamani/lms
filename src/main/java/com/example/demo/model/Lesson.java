@@ -34,7 +34,7 @@ public class Lesson {
     private Integer duration = 0; // Duration in minutes with default value
 
     @CreatedDate
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = true, updatable = false)
     private LocalDateTime createdAt;
 
     @ManyToOne
