@@ -46,9 +46,6 @@ public class Lesson {
     @OneToOne(cascade = CascadeType.ALL)
     private Exam exam;
 
-    @OneToOne(cascade = CascadeType.ALL)
-    private Exercise exercise;
-
     @PrePersist
     private void setDefaultValues() {
         if (this.duration == null) {

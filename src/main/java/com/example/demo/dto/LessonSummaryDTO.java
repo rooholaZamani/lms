@@ -10,6 +10,5 @@ public class LessonSummaryDTO {
     private String description;
     private Integer orderIndex;
     private boolean hasExam;
-    private boolean hasExercise;
 
 }

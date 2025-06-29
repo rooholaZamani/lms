@@ -19,9 +19,9 @@ public class LessonDTO {
     private String courseTitle;
     private List<ContentDTO> contents = new ArrayList<>();
     private ExamDTO exam;
-    private ExerciseDTO exercise;
+
     private boolean hasExam;
-    private boolean hasExercise;
+    private boolean hasAssignment;
     private CourseSummaryDTO course;
 
     @Data

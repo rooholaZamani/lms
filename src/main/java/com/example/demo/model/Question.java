@@ -43,9 +43,6 @@ public class Question {
     @ManyToOne
     private Exam exam;
 
-    @ManyToOne
-    private Exercise exercise;
-
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "question_id")
     private List<Answer> answers = new ArrayList<>();
