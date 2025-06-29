@@ -14,4 +14,6 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
     List<Question> findByInBankTrue();
     @Query("SELECT q FROM Question q WHERE q.exam.lesson.course.teacher = :teacher")
     List<Question> findByTeacher(@Param("teacher") User teacher);
+    @Query("SELECT q FROM Question q WHERE q.exam.lesson.course.id = :courseId")
+    List<Question> findByCourseId(@Param("courseId") Long courseId);
 }

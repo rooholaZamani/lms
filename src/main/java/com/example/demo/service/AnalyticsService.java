@@ -2765,4 +2765,478 @@ public class AnalyticsService {
             return false;
         }
     }
+    /**
+     * Get top performers for a course in different categories
+     */
+    public Map<String, List<Map<String, Object>>> getTopPerformers(Long courseId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        Map<String, List<Map<String, Object>>> topPerformers = new HashMap<>();
+
+        // Get all progress records for this course
+        List<Progress> allProgress = progressRepository.findAll().stream()
+                .filter(p -> p.getCourse().getId().equals(courseId))
+                .collect(Collectors.toList());
+
+        // Top by completion rate
+        List<Map<String, Object>> topByCompletion = allProgress.stream()
+                .sorted((p1, p2) -> Double.compare(p2.getCompletionPercentage(), p1.getCompletionPercentage()))
+                .limit(5)
+                .map(progress -> {
+                    Map<String, Object> studentData = new HashMap<>();
+                    User student = progress.getStudent();
+                    studentData.put("studentId", student.getId());
+                    studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
+                    studentData.put("value", progress.getCompletionPercentage());
+                    studentData.put("completedLessons", progress.getCompletedLessons().size());
+                    studentData.put("totalLessons", progress.getTotalLessons());
+                    return studentData;
+                })
+                .collect(Collectors.toList());
+
+        // Top by exam scores
+        List<Submission> allSubmissions = submissionRepository.findAll().stream()
+                .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
+                .collect(Collectors.toList());
+
+        Map<Long, Double> studentExamAverages = allSubmissions.stream()
+                .collect(Collectors.groupingBy(
+                        s -> s.getStudent().getId(),
+                        Collectors.averagingDouble(Submission::getScore)
+                ));
+
+        List<Map<String, Object>> topByExamScores = studentExamAverages.entrySet().stream()
+                .sorted((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()))
+                .limit(5)
+                .map(entry -> {
+                    Map<String, Object> studentData = new HashMap<>();
+                    User student = userRepository.findById(entry.getKey())
+                            .orElse(null);
+                    if (student != null) {
+                        studentData.put("studentId", student.getId());
+                        studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
+                        studentData.put("value", Math.round(entry.getValue() * 10.0) / 10.0);
+
+                        // Count exams taken
+                        long examsTaken = allSubmissions.stream()
+                                .filter(s -> s.getStudent().getId().equals(student.getId()))
+                                .count();
+                        studentData.put("examsTaken", examsTaken);
+                    }
+                    return studentData;
+                })
+                .filter(data -> data.get("studentName") != null)
+                .collect(Collectors.toList());
+
+        // Top by assignment scores
+        List<AssignmentSubmission> allAssignmentSubmissions = assignmentSubmissionRepository.findAll().stream()
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                .filter(as -> as.getScore() != null)
+                .collect(Collectors.toList());
+
+        Map<Long, Double> studentAssignmentAverages = allAssignmentSubmissions.stream()
+                .collect(Collectors.groupingBy(
+                        as -> as.getStudent().getId(),
+                        Collectors.averagingDouble(AssignmentSubmission::getScore)
+                ));
+
+        List<Map<String, Object>> topByAssignmentScores = studentAssignmentAverages.entrySet().stream()
+                .sorted((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()))
+                .limit(5)
+                .map(entry -> {
+                    Map<String, Object> studentData = new HashMap<>();
+                    User student = userRepository.findById(entry.getKey())
+                            .orElse(null);
+                    if (student != null) {
+                        studentData.put("studentId", student.getId());
+                        studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
+                        studentData.put("value", Math.round(entry.getValue() * 10.0) / 10.0);
+
+                        // Count assignments submitted
+                        long assignmentsSubmitted = allAssignmentSubmissions.stream()
+                                .filter(as -> as.getStudent().getId().equals(student.getId()))
+                                .count();
+                        studentData.put("assignmentsSubmitted", assignmentsSubmitted);
+                    }
+                    return studentData;
+                })
+                .filter(data -> data.get("studentName") != null)
+                .collect(Collectors.toList());
+
+        // Top by study time (from progress records)
+        List<Map<String, Object>> topByStudyTime = allProgress.stream()
+                .filter(p -> p.getTotalStudyTime() != null && p.getTotalStudyTime() > 0)
+                .sorted((p1, p2) -> Long.compare(
+                        p2.getTotalStudyTime() != null ? p2.getTotalStudyTime() : 0L,
+                        p1.getTotalStudyTime() != null ? p1.getTotalStudyTime() : 0L))
+                .limit(5)
+                .map(progress -> {
+                    Map<String, Object> studentData = new HashMap<>();
+                    User student = progress.getStudent();
+                    studentData.put("studentId", student.getId());
+                    studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
+                    studentData.put("value", Math.round(progress.getTotalStudyTime() / 3600.0 * 10.0) / 10.0); // Convert to hours
+                    studentData.put("totalMinutes", progress.getTotalStudyTime());
+                    return studentData;
+                })
+                .collect(Collectors.toList());
+
+        topPerformers.put("completion", topByCompletion);
+        topPerformers.put("examScores", topByExamScores);
+        topPerformers.put("assignmentScores", topByAssignmentScores);
+        topPerformers.put("studyTime", topByStudyTime);
+
+        return topPerformers;
+    }
+
+    /**
+     * Get challenging questions for a specific course
+     */
+    public Map<String, Object> getChallengingQuestionsForCourse(Long courseId, String period) {
+        Map<String, Object> result = new HashMap<>();
+
+        // Validate course exists
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // Calculate time range
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = calculateStartDate(endDate, period);
+
+        // Get all questions for this course
+        List<Question> courseQuestions = questionRepository.findByCourseId(courseId);
+
+        List<Map<String, Object>> challengingQuestions = new ArrayList<>();
+
+        // Statistics for summary
+        int totalDifficult = 0;
+        double totalDifficultyScore = 0.0;
+        int needsReview = 0;
+        double maxDifficulty = 0.0;
+
+        for (Question question : courseQuestions) {
+            // Get submissions for this question within time period
+            List<Submission> submissions = submissionRepository
+                    .findByExamAndSubmissionTimeBetween(question.getExam(), startDate, endDate);
+
+            if (submissions.isEmpty()) continue;
+
+            // Calculate error rate
+            long totalAnswers = submissions.size();
+            long incorrectAnswers = submissions.stream()
+                    .mapToLong(sub -> {
+                        // Count incorrect answers for this specific question
+                        return sub.getAnswers().getOrDefault(question.getId().toString(), "").isEmpty() ? 1 : 0;
+                    })
+                    .sum();
+
+            double errorRate = totalAnswers > 0 ? (double) incorrectAnswers / totalAnswers * 100 : 0;
+
+            // Calculate average time spent on this question
+            double averageTime = submissions.stream()
+                    .mapToDouble(sub -> {
+                        // Estimate time per question (total time / number of questions)
+                        int questionCount = sub.getExam().getQuestions().size();
+                        return questionCount > 0 ? (double) sub.getTimeSpent() / questionCount : 0;
+                    })
+                    .average()
+                    .orElse(0.0);
+
+            // Calculate difficulty score (based on error rate and time)
+            double difficultyScore = Math.min(100, errorRate + (averageTime / 60.0 * 10)); // Scale time to 0-100
+
+            // Only include challenging questions (difficulty > 60%)
+            if (difficultyScore > 60) {
+                Map<String, Object> questionData = new HashMap<>();
+                questionData.put("id", question.getId());
+                questionData.put("title", "سوال " + question.getId());
+                questionData.put("text", question.getQuestionText());
+                questionData.put("difficultyScore", Math.round(difficultyScore));
+                questionData.put("errorRate", Math.round(errorRate));
+                questionData.put("averageTime", Math.round(averageTime));
+                questionData.put("totalAnswers", totalAnswers);
+                questionData.put("examTitle", question.getExam().getTitle());
+
+                challengingQuestions.add(questionData);
+
+                totalDifficult++;
+                needsReview++;
+            }
+
+            totalDifficultyScore += difficultyScore;
+            maxDifficulty = Math.max(maxDifficulty, difficultyScore);
+        }
+
+        // Sort by difficulty score descending
+        challengingQuestions.sort((a, b) ->
+                Integer.compare((Integer) b.get("difficultyScore"), (Integer) a.get("difficultyScore")));
+
+        // Prepare statistics
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("mostDifficult", Math.round(maxDifficulty));
+        stats.put("averageDifficulty", courseQuestions.isEmpty() ? 0 : Math.round(totalDifficultyScore / courseQuestions.size()));
+        stats.put("needsReview", needsReview);
+
+        result.put("questions", challengingQuestions);
+        result.put("stats", stats);
+
+        return result;
+    }
+
+    /**
+     * Get at-risk students for a specific course
+     */
+    public Map<String, Object> getAtRiskStudents(Long courseId, String period) {
+        Map<String, Object> result = new HashMap<>();
+
+        // Validate course exists
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // Calculate time range
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = calculateStartDate(endDate, period);
+
+        // Get all students enrolled in this course
+        List<Progress> courseProgress = progressRepository.findByCourse(course);
+
+        List<Map<String, Object>> atRiskStudents = new ArrayList<>();
+
+        // Risk factor counters
+        int lowAttendanceCount = 0;
+        int poorPerformanceCount = 0;
+        int inactivityCount = 0;
+        int behavioralIssuesCount = 0;
+
+        for (Progress progress : courseProgress) {
+            User student = progress.getStudent();
+
+            // Calculate risk factors
+            Map<String, Object> factors = new HashMap<>();
+            Map<String, Boolean> riskFlags = new HashMap<>();
+            int riskLevel = 0;
+
+            // 1. Check attendance rate
+            List<ActivityLog> attendanceActivities = activityLogRepository
+                    .findByUserAndActivityTypeAndTimestampBetween(
+                            student, "LOGIN", startDate, endDate);
+
+            double attendanceRate = Math.min(100, (attendanceActivities.size() * 100.0) / ChronoUnit.DAYS.between(startDate.toLocalDate(), endDate.toLocalDate()));
+            factors.put("attendanceRate", Math.round(attendanceRate));
+
+            if (attendanceRate < 60) {
+                riskFlags.put("lowAttendance", true);
+                riskLevel++;
+                lowAttendanceCount++;
+            } else {
+                riskFlags.put("lowAttendance", false);
+            }
+
+            // 2. Check academic performance
+            List<Submission> submissions = submissionRepository.findByStudentAndSubmissionTimeBetween(student, startDate, endDate);
+            double averageScore = submissions.stream()
+                    .mapToDouble(Submission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+            factors.put("averageScore", Math.round(averageScore));
+
+            if (averageScore < 50) {
+                riskFlags.put("poorPerformance", true);
+                riskLevel++;
+                poorPerformanceCount++;
+            } else {
+                riskFlags.put("poorPerformance", false);
+            }
+
+            // 3. Check activity level
+            List<ActivityLog> recentActivities = activityLogRepository
+                    .findByUserAndTimestampBetween(student, endDate.minusDays(7), endDate);
+
+            long daysSinceLastActivity = recentActivities.isEmpty() ? 7 :
+                    ChronoUnit.DAYS.between(
+                            recentActivities.get(0).getTimestamp().toLocalDate(),
+                            endDate.toLocalDate());
+
+            factors.put("daysSinceLastActivity", daysSinceLastActivity);
+
+            if (daysSinceLastActivity > 3) {
+                riskFlags.put("inactivity", true);
+                riskLevel++;
+                inactivityCount++;
+            } else {
+                riskFlags.put("inactivity", false);
+            }
+
+            // 4. Check for behavioral issues (based on late submissions)
+            List<AssignmentSubmission> lateSubmissions = assignmentSubmissionRepository
+                    .findByStudentAndSubmittedAtBetween(student, startDate, endDate)
+                    .stream()
+                    .filter(sub -> sub.getSubmittedAt().isAfter(sub.getAssignment().getDueDate()))
+                    .collect(Collectors.toList());
+
+            if (lateSubmissions.size() > 2) {
+                riskFlags.put("behavioralIssues", true);
+                riskLevel++;
+                behavioralIssuesCount++;
+            } else {
+                riskFlags.put("behavioralIssues", false);
+            }
+
+            // Only include students with at least one risk factor
+            if (riskLevel > 0) {
+                Map<String, Object> studentData = new HashMap<>();
+                studentData.put("id", student.getId());
+                studentData.put("firstName", student.getFirstName());
+                studentData.put("lastName", student.getLastName());
+                studentData.put("username", student.getUsername());
+                studentData.put("email", student.getEmail());
+
+                // Determine risk level
+                String riskLevelText;
+                if (riskLevel >= 3) {
+                    riskLevelText = "high";
+                } else if (riskLevel == 2) {
+                    riskLevelText = "medium";
+                } else {
+                    riskLevelText = "low";
+                }
+                studentData.put("riskLevel", riskLevelText);
+                studentData.put("factors", riskFlags);
+
+                // Add detailed factor data
+                factors.forEach(studentData::put);
+
+                atRiskStudents.add(studentData);
+            }
+        }
+
+        // Sort by risk level (high to low)
+        atRiskStudents.sort((a, b) -> {
+            String levelA = (String) a.get("riskLevel");
+            String levelB = (String) b.get("riskLevel");
+            Map<String, Integer> priority = Map.of("high", 3, "medium", 2, "low", 1);
+            return priority.get(levelB).compareTo(priority.get(levelA));
+        });
+
+        // Prepare risk factors summary
+        Map<String, Integer> riskFactors = new HashMap<>();
+        riskFactors.put("lowAttendance", lowAttendanceCount);
+        riskFactors.put("poorPerformance", poorPerformanceCount);
+        riskFactors.put("inactivity", inactivityCount);
+        riskFactors.put("behavioralIssues", behavioralIssuesCount);
+
+        result.put("students", atRiskStudents);
+        result.put("riskFactors", riskFactors);
+
+        return result;
+    }
+
+    /**
+     * Get trend analysis for a specific course
+     */
+    public Map<String, Object> getTrendAnalysis(Long courseId, String period) {
+        Map<String, Object> result = new HashMap<>();
+
+        // Validate course exists
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // Calculate time range
+        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime startDate = calculateStartDate(endDate, period);
+
+        // Determine data points based on period
+        int dataPoints;
+        ChronoUnit intervalUnit;
+
+        switch (period.toLowerCase()) {
+            case "week":
+                dataPoints = 7;
+                intervalUnit = ChronoUnit.DAYS;
+                break;
+            case "quarter":
+                dataPoints = 12;
+                intervalUnit = ChronoUnit.WEEKS;
+                break;
+            case "semester":
+                dataPoints = 24;
+                intervalUnit = ChronoUnit.WEEKS;
+                break;
+            case "month":
+            default:
+                dataPoints = 30;
+                intervalUnit = ChronoUnit.DAYS;
+                break;
+        }
+
+        List<Map<String, Object>> trends = new ArrayList<>();
+
+        for (int i = dataPoints - 1; i >= 0; i--) {
+            LocalDateTime periodEnd = endDate.minus(i, intervalUnit);
+            LocalDateTime periodStart = periodEnd.minus(1, intervalUnit);
+
+            // Format date for display
+            String dateLabel;
+            if (intervalUnit == ChronoUnit.DAYS) {
+                dateLabel = periodEnd.toLocalDate().toString();
+            } else {
+                dateLabel = "هفته " + (dataPoints - i);
+            }
+
+            // Calculate metrics for this period
+
+            // 1. Average scores
+            List<Submission> periodSubmissions = submissionRepository
+                    .findByTimestampBetweenAndExam_Course(periodStart, periodEnd, course);
+
+            double averageScore = periodSubmissions.stream()
+                    .mapToDouble(Submission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+            // 2. Attendance rate
+            List<Progress> courseProgress = progressRepository.findByCourse(course);
+            long totalStudents = courseProgress.size();
+
+            long activeStudents = courseProgress.stream()
+                    .mapToLong(progress -> {
+                        List<ActivityLog> studentActivities = activityLogRepository
+                                .findByUserAndTimestampBetween(progress.getStudent(), periodStart, periodEnd);
+                        return studentActivities.isEmpty() ? 0 : 1;
+                    })
+                    .sum();
+
+            double attendanceRate = totalStudents > 0 ? (double) activeStudents / totalStudents * 100 : 0;
+
+            // 3. Activity level (based on total activities)
+            List<ActivityLog> allActivities = activityLogRepository
+                    .findByTimestampBetween(periodStart, periodEnd)
+                    .stream()
+                    .filter(activity -> {
+                        // Filter activities related to this course
+                        return courseProgress.stream()
+                                .anyMatch(progress -> progress.getStudent().getId().equals(activity.getUser().getId()));
+                    })
+                    .collect(Collectors.toList());
+
+            double activityLevel = totalStudents > 0 ? (double) allActivities.size() / totalStudents * 10 : 0; // Scale to 0-100
+            activityLevel = Math.min(100, activityLevel);
+
+            Map<String, Object> trendPoint = new HashMap<>();
+            trendPoint.put("date", dateLabel);
+            trendPoint.put("averageScore", Math.round(averageScore * 100.0) / 100.0);
+            trendPoint.put("attendanceRate", Math.round(attendanceRate * 100.0) / 100.0);
+            trendPoint.put("activityLevel", Math.round(activityLevel * 100.0) / 100.0);
+
+            trends.add(trendPoint);
+        }
+
+        result.put("trends", trends);
+        result.put("period", period);
+        result.put("dataPoints", dataPoints);
+
+        return result;
+    }
 }

@@ -12,4 +12,13 @@ import java.util.List;
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
     List<ActivityLog> findByUserAndTimestampBetweenOrderByTimestampDesc(User user, LocalDateTime start, LocalDateTime end);
     List<ActivityLog> findByActivityTypeAndTimestampBetween(String activityType, LocalDateTime start, LocalDateTime end);
+    List<ActivityLog> findByUserAndActivityTypeAndTimestampBetween(User user, String activityType, LocalDateTime start, LocalDateTime end);
+
+    List<ActivityLog> findByUserAndTimestampBetween(User user, LocalDateTime start, LocalDateTime end);
+
+    List<ActivityLog> findByTimestampBetween(LocalDateTime start, LocalDateTime end);
+
+    List<ActivityLog> findByActivityType(String activityType);
+
+    List<ActivityLog> findByUserOrderByTimestampDesc(User user);
 }

@@ -390,4 +390,70 @@ public class AnalyticsController {
 
         return ResponseEntity.ok(debug);
     }
+
+    @GetMapping("/course/{courseId}/challenging-questions")
+    @Operation(summary = "Get challenging questions for a course", description = "Get questions with high error rates and difficulty scores")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getChallengingQuestionsForCourse(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        Map<String, Object> challengingQuestions = analyticsService.getChallengingQuestionsForCourse(courseId, period);
+        return ResponseEntity.ok(challengingQuestions);
+    }
+
+    @GetMapping("/course/{courseId}/at-risk-students")
+    @Operation(summary = "Get at-risk students for a course", description = "Get students who are at risk based on various factors")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getAtRiskStudents(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        Map<String, Object> atRiskStudents = analyticsService.getAtRiskStudents(courseId, period);
+        return ResponseEntity.ok(atRiskStudents);
+    }
+
+    @GetMapping("/course/{courseId}/trend-analysis")
+    @Operation(summary = "Get trend analysis for a course", description = "Get performance trends over time for a course")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getTrendAnalysis(
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "month") String period,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        }
+
+        Map<String, Object> trendAnalysis = analyticsService.getTrendAnalysis(courseId, period);
+        return ResponseEntity.ok(trendAnalysis);
+    }
 }
