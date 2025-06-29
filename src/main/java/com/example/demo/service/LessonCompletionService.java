@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/service/LessonCompletionService.java
 package com.example.demo.service;
 
 import com.example.demo.model.*;
@@ -16,18 +15,21 @@ public class LessonCompletionService {
 
     private final ProgressRepository progressRepository;
     private final SubmissionRepository submissionRepository;
-    private final ExerciseSubmissionRepository exerciseSubmissionRepository;
     private final ContentRepository contentRepository;
+    private final AssignmentRepository assignmentRepository;
+    private final AssignmentSubmissionRepository assignmentSubmissionRepository;
 
     public LessonCompletionService(
             ProgressRepository progressRepository,
             SubmissionRepository submissionRepository,
-            ExerciseSubmissionRepository exerciseSubmissionRepository,
-            ContentRepository contentRepository) {
+            ContentRepository contentRepository,
+            AssignmentRepository assignmentRepository,
+            AssignmentSubmissionRepository assignmentSubmissionRepository) {
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
-        this.exerciseSubmissionRepository = exerciseSubmissionRepository;
         this.contentRepository = contentRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.assignmentSubmissionRepository = assignmentSubmissionRepository;
     }
 
     /**
@@ -35,17 +37,17 @@ public class LessonCompletionService {
      */
     public LessonCompletionStatus getLessonCompletionStatus(User student, Lesson lesson) {
         Course course = lesson.getCourse();
-        
+
         Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
         Progress progress = progressOpt.orElse(null);
-        
+
         // Get all contents in this lesson
         List<Content> lessonContents = contentRepository.findByLessonOrderByOrderIndex(lesson);
-        
+
         // Check content completion
         int totalContents = lessonContents.size();
         int completedContents = 0;
-        
+
         if (progress != null) {
             for (Content content : lessonContents) {
                 if (progress.getCompletedContent().contains(content.getId())) {
@@ -53,42 +55,43 @@ public class LessonCompletionService {
                 }
             }
         }
-        
+
         // Check exam status
         boolean hasExam = lesson.getExam() != null;
         boolean examPassed = false;
         if (hasExam) {
             examPassed = isExamPassed(student, lesson.getExam());
         }
-        
-        // Check exercise status
-        boolean hasExercise = lesson.getExercise() != null;
-        boolean exercisePassed = false;
-        if (hasExercise) {
-            exercisePassed = isExercisePassed(student, lesson.getExercise());
+
+        // Check assignment status (replacing exercise logic)
+        List<Assignment> lessonAssignments = assignmentRepository.findByLessonId(lesson.getId());
+        boolean hasAssignment = !lessonAssignments.isEmpty();
+        boolean assignmentCompleted = false;
+        if (hasAssignment) {
+            assignmentCompleted = areAllAssignmentsCompleted(student, lessonAssignments);
         }
-        
+
         // Overall completion status
         boolean isCompleted = progress != null && progress.getCompletedLessons().contains(lesson.getId());
-        
+
         // Calculate completion percentage
-        int totalRequirements = totalContents + (hasExam ? 1 : 0) + (hasExercise ? 1 : 0);
-        int completedRequirements = completedContents + (examPassed ? 1 : 0) + (exercisePassed ? 1 : 0);
-        
-        double completionPercentage = totalRequirements > 0 ? 
-            (double) completedRequirements / totalRequirements * 100 : 100.0;
-        
+        int totalRequirements = totalContents + (hasExam ? 1 : 0) + (hasAssignment ? 1 : 0);
+        int completedRequirements = completedContents + (examPassed ? 1 : 0) + (assignmentCompleted ? 1 : 0);
+
+        double completionPercentage = totalRequirements > 0 ?
+                (double) completedRequirements / totalRequirements * 100 : 100.0;
+
         return new LessonCompletionStatus(
-            isCompleted,
-            completionPercentage,
-            totalContents,
-            completedContents,
-            hasExam,
-            examPassed,
-            hasExercise,
-            exercisePassed,
-            totalRequirements,
-            completedRequirements
+                isCompleted,
+                completionPercentage,
+                totalContents,
+                completedContents,
+                hasExam,
+                examPassed,
+                hasAssignment, // Using assignment instead of exercise
+                assignmentCompleted, // Using assignment completion instead of exercise
+                totalRequirements,
+                completedRequirements
         );
     }
 
@@ -97,19 +100,19 @@ public class LessonCompletionService {
      */
     public boolean isLessonCompleted(User student, Lesson lesson) {
         Course course = lesson.getCourse();
-        
+
         Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
         if (progressOpt.isEmpty()) {
             return false;
         }
-        
+
         Progress progress = progressOpt.get();
-        
+
         // Check if lesson is marked as completed in progress
         if (!progress.getCompletedLessons().contains(lesson.getId())) {
             return false;
         }
-        
+
         // Validate that completion requirements are actually met
         return validateLessonCompletion(student, lesson, progress);
     }
@@ -122,14 +125,19 @@ public class LessonCompletionService {
                 return false;
             }
         }
-        
+
         // 2. Check exam is passed (if exists)
         if (lesson.getExam() != null && !isExamPassed(student, lesson.getExam())) {
             return false;
         }
-        
-        // 3. Check exercise is passed (if exists)
-        return lesson.getExercise() == null || isExercisePassed(student, lesson.getExercise());
+
+        // 3. Check all assignments are completed (if any exist)
+        List<Assignment> lessonAssignments = assignmentRepository.findByLessonId(lesson.getId());
+        if (!lessonAssignments.isEmpty() && !areAllAssignmentsCompleted(student, lessonAssignments)) {
+            return false;
+        }
+
+        return true;
     }
 
     private boolean isExamPassed(User student, Exam exam) {
@@ -137,10 +145,22 @@ public class LessonCompletionService {
         return submission.isPresent() && submission.get().isPassed();
     }
 
-    private boolean isExercisePassed(User student, Exercise exercise) {
-        List<ExerciseSubmission> submissions = exerciseSubmissionRepository.findByStudent(student);
-        return submissions.stream()
-                .anyMatch(sub -> sub.getExercise().getId().equals(exercise.getId()) && sub.isPassed());
+    /**
+     * Check if all assignments in a lesson are completed by the student
+     */
+    private boolean areAllAssignmentsCompleted(User student, List<Assignment> assignments) {
+        for (Assignment assignment : assignments) {
+            List<AssignmentSubmission> submissions = assignmentSubmissionRepository.findByAssignment(assignment);
+
+            // Check if student has submitted this assignment
+            boolean hasSubmitted = submissions.stream()
+                    .anyMatch(submission -> submission.getStudent().getId().equals(student.getId()));
+
+            if (!hasSubmitted) {
+                return false; // At least one assignment is not submitted
+            }
+        }
+        return true; // All assignments are submitted
     }
 
     private boolean shouldAutoComplete(User student, Lesson lesson) {
@@ -175,15 +195,15 @@ public class LessonCompletionService {
                     .orElse(false);
         }
 
-        // Check if lesson has exercise and if it's completed
-        boolean exerciseCompleted = true;
-        if (lesson.getExercise() != null) {
-            exerciseCompleted = exerciseSubmissionRepository.findByStudent(student).stream()
-                    .anyMatch(sub -> sub.getExercise().getId().equals(lesson.getExercise().getId()) && sub.isPassed());
+        // Check if all assignments are completed
+        boolean assignmentsCompleted = true;
+        List<Assignment> lessonAssignments = assignmentRepository.findByLessonId(lesson.getId());
+        if (!lessonAssignments.isEmpty()) {
+            assignmentsCompleted = areAllAssignmentsCompleted(student, lessonAssignments);
         }
 
         // Should auto-complete if all requirements are met
-        return allContentCompleted && examCompleted && exerciseCompleted;
+        return allContentCompleted && examCompleted && assignmentsCompleted;
     }
 
     @Transactional
@@ -219,24 +239,24 @@ public class LessonCompletionService {
         private final int completedContents;
         private final boolean hasExam;
         private final boolean examPassed;
-        private final boolean hasExercise;
-        private final boolean exercisePassed;
+        private final boolean hasAssignment; // Changed from hasExercise
+        private final boolean assignmentCompleted; // Changed from exercisePassed
         private final int totalRequirements;
         private final int completedRequirements;
 
         public LessonCompletionStatus(boolean isCompleted, double completionPercentage,
-                                    int totalContents, int completedContents,
-                                    boolean hasExam, boolean examPassed,
-                                    boolean hasExercise, boolean exercisePassed,
-                                    int totalRequirements, int completedRequirements) {
+                                      int totalContents, int completedContents,
+                                      boolean hasExam, boolean examPassed,
+                                      boolean hasAssignment, boolean assignmentCompleted,
+                                      int totalRequirements, int completedRequirements) {
             this.isCompleted = isCompleted;
             this.completionPercentage = completionPercentage;
             this.totalContents = totalContents;
             this.completedContents = completedContents;
             this.hasExam = hasExam;
             this.examPassed = examPassed;
-            this.hasExercise = hasExercise;
-            this.exercisePassed = exercisePassed;
+            this.hasAssignment = hasAssignment;
+            this.assignmentCompleted = assignmentCompleted;
             this.totalRequirements = totalRequirements;
             this.completedRequirements = completedRequirements;
         }
@@ -248,8 +268,8 @@ public class LessonCompletionService {
         public int getCompletedContents() { return completedContents; }
         public boolean isHasExam() { return hasExam; }
         public boolean isExamPassed() { return examPassed; }
-        public boolean isHasExercise() { return hasExercise; }
-        public boolean isExercisePassed() { return exercisePassed; }
+        public boolean isHasAssignment() { return hasAssignment; } // Changed from isHasExercise
+        public boolean isAssignmentCompleted() { return assignmentCompleted; } // Changed from isExercisePassed
         public int getTotalRequirements() { return totalRequirements; }
         public int getCompletedRequirements() { return completedRequirements; }
     }

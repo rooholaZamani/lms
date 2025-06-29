@@ -1,4 +1,3 @@
-// src/main/java/com/example/demo/service/ProgressService.java
 package com.example.demo.service;
 
 import com.example.demo.model.*;
@@ -7,8 +6,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
-
 
 @Service
 public class ProgressService {
@@ -18,20 +15,18 @@ public class ProgressService {
     private final ContentRepository contentRepository;
     private final SubmissionRepository submissionRepository;
     private final LessonCompletionService lessonCompletionService;
-    private final ExerciseSubmissionRepository exerciseSubmissionRepository;
 
     public ProgressService(
             ProgressRepository progressRepository,
             LessonRepository lessonRepository,
             ContentRepository contentRepository,
-            SubmissionRepository submissionRepository, LessonCompletionService lessonCompletionService,
-            ExerciseSubmissionRepository exerciseSubmissionRepository) {
+            SubmissionRepository submissionRepository,
+            LessonCompletionService lessonCompletionService) {
         this.progressRepository = progressRepository;
         this.lessonRepository = lessonRepository;
         this.contentRepository = contentRepository;
         this.submissionRepository = submissionRepository;
         this.lessonCompletionService = lessonCompletionService;
-        this.exerciseSubmissionRepository = exerciseSubmissionRepository;
     }
 
     public List<Progress> getProgressByStudent(User student) {
@@ -89,6 +84,7 @@ public class ProgressService {
 
         return progressRepository.save(progress);
     }
+
     @Transactional
     public Progress markContentComplete(User student, Long contentId) {
         Content content = contentRepository.findById(contentId)
@@ -110,5 +106,4 @@ public class ProgressService {
 
         return updatedProgress;
     }
-
 }

@@ -1,8 +1,8 @@
 package com.example.demo.service;
 
 import com.example.demo.model.*;
+import com.example.demo.repository.AssignmentSubmissionRepository;
 import com.example.demo.repository.CourseRepository;
-import com.example.demo.repository.ExerciseSubmissionRepository;
 import com.example.demo.repository.ProgressRepository;
 import com.example.demo.repository.SubmissionRepository;
 import org.springframework.stereotype.Service;
@@ -15,16 +15,18 @@ public class CourseService {
 
     private final CourseRepository courseRepository;
     private final ProgressRepository progressRepository;
-    private final ExerciseSubmissionRepository exerciseSubmissionRepository;
     private final SubmissionRepository submissionRepository;
+    private final AssignmentSubmissionRepository assignmentSubmissionRepository;
 
     public CourseService(
             CourseRepository courseRepository,
-            ProgressRepository progressRepository, ExerciseSubmissionRepository exerciseSubmissionRepository, SubmissionRepository submissionRepository) {
+            ProgressRepository progressRepository,
+            SubmissionRepository submissionRepository,
+            AssignmentSubmissionRepository assignmentSubmissionRepository) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
-        this.exerciseSubmissionRepository = exerciseSubmissionRepository;
         this.submissionRepository = submissionRepository;
+        this.assignmentSubmissionRepository = assignmentSubmissionRepository;
     }
 
     // اضافه کردن این متد
@@ -72,7 +74,6 @@ public class CourseService {
         return courseRepository.findById(courseId)
                 .orElseThrow(() -> new RuntimeException("Course not found"));
     }
-
 
     /**
      * دریافت لیست دانش‌آموزان دوره همراه با پیشرفت
@@ -131,13 +132,20 @@ public class CourseService {
             studentData.put("examsTaken", examSubmissions.size());
             studentData.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
 
-            // آمار تمرین‌ها
-            List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student)
+            // آمار تکالیف (تغییر از exercise به assignment)
+            List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student)
                     .stream()
-                    .filter(s -> s.getExercise().getLesson().getCourse().getId().equals(courseId))
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
                     .collect(Collectors.toList());
 
-            studentData.put("exercisesDone", exerciseSubmissions.size());
+            double averageAssignmentScore = assignmentSubmissions.stream()
+                    .filter(as -> as.getScore() != null)
+                    .mapToInt(AssignmentSubmission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+            studentData.put("assignmentsDone", assignmentSubmissions.size()); // Changed from exercisesDone
+            studentData.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0) / 10.0); // New field
 
             // وضعیت فعالیت
             boolean isActive = progressOpt.isPresent() &&

@@ -29,7 +29,7 @@ public class Question {
     @Column(length = 1000)
     private String explanation; // توضیح سوال
 
-    @Column(length = 2000) 
+    @Column(length = 2000)
     private String hint; // راهنمایی
 
     // برای سوالات جای خالی - متن با {} برای نشان دادن جای خالی
@@ -54,7 +54,7 @@ public class Question {
 
     // برای سوالات matching
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    @JoinColumn(name = "question_id") 
+    @JoinColumn(name = "question_id")
     private List<MatchingPair> matchingPairs = new ArrayList<>();
 
     @Column(name = "in_bank")

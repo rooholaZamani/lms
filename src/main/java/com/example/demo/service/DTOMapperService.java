@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.dto.*;
 import com.example.demo.model.*;
+import com.example.demo.repository.AssignmentRepository;
 import com.example.demo.repository.SubmissionRepository;
 import org.springframework.stereotype.Service;
 
@@ -11,9 +12,11 @@ import java.util.stream.Collectors;
 @Service
 public class DTOMapperService {
     private final SubmissionRepository submissionRepository;
+    private final AssignmentRepository assignmentRepository;
 
-    public DTOMapperService(SubmissionRepository submissionRepository) {
+    public DTOMapperService(SubmissionRepository submissionRepository, AssignmentRepository assignmentRepository) {
         this.submissionRepository = submissionRepository;
+        this.assignmentRepository = assignmentRepository;
     }
 
     public UserSummaryDTO mapToUserSummary(User user) {
@@ -43,7 +46,11 @@ public class DTOMapperService {
         dto.setDescription(lesson.getDescription());
         dto.setOrderIndex(lesson.getOrderIndex());
         dto.setHasExam(lesson.getExam() != null);
-        dto.setHasExercise(lesson.getExercise() != null);
+
+        // Check if lesson has assignments
+        List<Assignment> assignments = assignmentRepository.findByLessonId(lesson.getId());
+        dto.setHasAssignment(!assignments.isEmpty());
+
         return dto;
     }
 
@@ -84,7 +91,6 @@ public class DTOMapperService {
             }
         } else {
             // Summary mapping (for list views)
-            // Only include lesson summaries without descriptions
             if (course.getLessons() != null) {
                 List<LessonSummaryDTO> lessonSummaries = course.getLessons().stream()
                         .map(lesson -> {
@@ -93,8 +99,11 @@ public class DTOMapperService {
                             summary.setTitle(lesson.getTitle());
                             summary.setOrderIndex(lesson.getOrderIndex());
                             summary.setHasExam(lesson.getExam() != null);
-                            summary.setHasExercise(lesson.getExercise() != null);
-                            // Don't include description to keep response smaller
+
+                            // Check assignments for this lesson
+                            List<Assignment> assignments = assignmentRepository.findByLessonId(lesson.getId());
+                            summary.setHasAssignment(!assignments.isEmpty());
+
                             return summary;
                         })
                         .collect(Collectors.toList());
@@ -126,7 +135,6 @@ public class DTOMapperService {
                 .collect(Collectors.toList());
     }
 
-
     public LessonDTO mapToLessonDTO(Lesson lesson) {
         if (lesson == null) {
             return null;
@@ -144,7 +152,7 @@ public class DTOMapperService {
             dto.setCourseId(lesson.getCourse().getId());
             dto.setCourseTitle(lesson.getCourse().getTitle());
 
-            // اضافه کردن course object
+            // Add course object
             LessonDTO.CourseSummaryDTO courseSummary = new LessonDTO.CourseSummaryDTO();
             courseSummary.setId(lesson.getCourse().getId());
             courseSummary.setTitle(lesson.getCourse().getTitle());
@@ -152,7 +160,10 @@ public class DTOMapperService {
         }
 
         dto.setHasExam(lesson.getExam() != null);
-        dto.setHasExercise(lesson.getExercise() != null);
+
+        // Check if lesson has assignments
+        List<Assignment> assignments = assignmentRepository.findByLessonId(lesson.getId());
+        dto.setHasAssignment(!assignments.isEmpty());
 
         // Map content
         if (lesson.getContents() != null) {
@@ -165,11 +176,6 @@ public class DTOMapperService {
         // Map exam if present
         if (lesson.getExam() != null) {
             dto.setExam(mapToExamDTO(lesson.getExam()));
-        }
-
-        // Map exercise if present
-        if (lesson.getExercise() != null) {
-            dto.setExercise(mapToExerciseDTO(lesson.getExercise()));
         }
 
         return dto;
@@ -209,9 +215,9 @@ public class DTOMapperService {
     }
 
     public ExamDTO mapToExamDTO(Exam exam, User currentStudent) {
-        ExamDTO dto = mapToExamDTO(exam); // متد قبلی
+        ExamDTO dto = mapToExamDTO(exam); // Previous method
 
-        // **اضافه شده**: اگر دانش‌آموز ارسال شده، وضعیت شرکت او را بررسی کن
+        // **Added**: If student is provided, check their participation status
         if (currentStudent != null) {
             Optional<Submission> submission = submissionRepository.findByStudentAndExam(currentStudent, exam);
             if (submission.isPresent()) {
@@ -287,29 +293,13 @@ public class DTOMapperService {
         return dto;
     }
 
-    public ExerciseDTO mapToExerciseDTO(Exercise exercise) {
-        if (exercise == null) {
-            return null;
-        }
-
-        ExerciseDTO dto = new ExerciseDTO();
-        dto.setId(exercise.getId());
-        dto.setTitle(exercise.getTitle());
-        dto.setDescription(exercise.getDescription());
-        dto.setTimeLimit(exercise.getTimeLimit());
-        dto.setPassingScore(exercise.getPassingScore());
-        dto.setAdaptiveDifficulty(exercise.getAdaptiveDifficulty());
-
-        return dto;
-    }
-
     public List<LessonDTO> mapToLessonDTOList(List<Lesson> lessons) {
         return lessons.stream()
                 .map(this::mapToLessonDTO)
                 .collect(Collectors.toList());
     }
-    public ProgressDTO mapToProgressDTO(Progress progress) {
 
+    public ProgressDTO mapToProgressDTO(Progress progress) {
         if (progress == null) {
             return null;
         }
@@ -369,6 +359,7 @@ public class DTOMapperService {
 
         return dto;
     }
+
     public ChatMessageDTO mapToChatMessageDTO(ChatMessage message) {
         if (message == null) {
             return null;
@@ -391,36 +382,6 @@ public class DTOMapperService {
         dto.setContent(message.getContent());
         dto.setSentAt(message.getSentAt());
         dto.setReadBy(message.getReadBy());
-
-        return dto;
-    }
-
-    public ExerciseSubmissionDTO mapToExerciseSubmissionDTO(ExerciseSubmission submission) {
-        if (submission == null) {
-            return null;
-        }
-
-        ExerciseSubmissionDTO dto = new ExerciseSubmissionDTO();
-        dto.setId(submission.getId());
-
-        if (submission.getStudent() != null) {
-            dto.setStudentId(submission.getStudent().getId());
-            dto.setStudentName(submission.getStudent().getFirstName() + " " +
-                    submission.getStudent().getLastName());
-        }
-
-        if (submission.getExercise() != null) {
-            dto.setExerciseId(submission.getExercise().getId());
-            dto.setExerciseTitle(submission.getExercise().getTitle());
-        }
-
-        dto.setSubmissionTime(submission.getSubmissionTime());
-        dto.setScore(submission.getScore());
-        dto.setTimeBonus(submission.getTimeBonus());
-        dto.setTotalScore(submission.getTotalScore());
-        dto.setPassed(submission.isPassed());
-        dto.setAnswers(submission.getAnswers());
-        dto.setAnswerTimes(submission.getAnswerTimes());
 
         return dto;
     }
@@ -495,13 +456,6 @@ public class DTOMapperService {
         return dto;
     }
 
-
-    public List<ExerciseSubmissionDTO> mapToExerciseSubmissionDTOList(List<ExerciseSubmission> submissions) {
-        return submissions.stream()
-                .map(this::mapToExerciseSubmissionDTO)
-                .collect(Collectors.toList());
-    }
-
     /**
      * Maps a list of Assignments to DTOs
      */
@@ -525,6 +479,7 @@ public class DTOMapperService {
                 .map(this::mapToChatMessageDTO)
                 .collect(Collectors.toList());
     }
+
     public ExamDTO mapToExamDTOWithoutQuestions(Exam exam) {
         if (exam == null) {
             return null;
@@ -567,6 +522,7 @@ public class DTOMapperService {
 
         return dto;
     }
+
     public QuestionDTO mapToQuestionDTO(Question question) {
         if (question == null) {
             return null;
@@ -742,6 +698,7 @@ public class DTOMapperService {
                 })
                 .collect(Collectors.toList());
     }
+
     /**
      * Maps Content entity to ContentDetailsDTO with enhanced information
      */
@@ -764,9 +721,8 @@ public class DTOMapperService {
         }
 
         // Note: Content entity doesn't have createdAt/updatedAt fields
-        // If you need these, you'll need to add them to the Content entity with @CreationTimestamp and @UpdateTimestamp
-        dto.setCreatedAt(null); // You can add JPA auditing annotations to Content entity if needed
-        dto.setUpdatedAt(null); // You can add JPA auditing annotations to Content entity if needed
+        dto.setCreatedAt(null);
+        dto.setUpdatedAt(null);
 
         // Map lesson information
         if (content.getLesson() != null) {
@@ -785,6 +741,7 @@ public class DTOMapperService {
 
         return dto;
     }
+
     public UserDTO mapToUserDTO(User user) {
         if (user == null) {
             return null;
