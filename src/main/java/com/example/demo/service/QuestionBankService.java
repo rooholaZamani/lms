@@ -24,7 +24,7 @@ public class QuestionBankService {
     public Question createBankQuestion(Question question) {
         question.setInBank(true);
         question.setExam(null);
-        question.setExercise(null);
+        // حذف شده: question.setExercise(null); - این متد وجود ندارد
         return questionRepository.save(question);
     }
 

@@ -2063,8 +2063,8 @@ public class AnalyticsService {
     public List<Map<String, Object>> getDifficultLessons(Long courseId) {
         List<Map<String, Object>> difficultLessons = new ArrayList<>();
 
-        // Get all lessons for this course
-        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(courseId);
+        // Fix: Use the correct repository method that accepts Long courseId
+        List<Lesson> lessons = lessonRepository.findByCourseIdOrderByOrderIndex(courseId);
 
         for (Lesson lesson : lessons) {
             Map<String, Object> lessonData = new HashMap<>();
@@ -2104,7 +2104,7 @@ public class AnalyticsService {
                 lessonData.put("examSubmissions", examSubmissions.size());
             }
 
-            // Check assignment performance for this lesson (instead of exercise)
+            // Check assignment performance for this lesson
             List<Assignment> lessonAssignments = assignmentRepository.findByLessonId(lesson.getId());
             if (!lessonAssignments.isEmpty()) {
                 List<AssignmentSubmission> assignmentSubmissions = new ArrayList<>();
