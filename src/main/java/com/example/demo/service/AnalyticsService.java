@@ -755,7 +755,7 @@ public class AnalyticsService {
                 questionData.put("difficulty", 100 - correctRate);
                 questionData.put("correctRate", correctRate);
                 questionData.put("attempts", submissions.size());
-                questionData.put("topic", "General"); // Placeholder
+                questionData.put("topic", "General");
 
                 // Calculate average time spent on this question
                 double avgTime = submissions.stream()
@@ -764,7 +764,6 @@ public class AnalyticsService {
                         .orElse(0.0);
 
                 questionData.put("avgTime", avgTime);
-
                 challengingQuestions.add(questionData);
             }
         }
@@ -2926,8 +2925,15 @@ public class AnalyticsService {
             long totalAnswers = submissions.size();
             long incorrectAnswers = submissions.stream()
                     .mapToLong(sub -> {
-                        // Count incorrect answers for this specific question
-                        return sub.getAnswers().getOrDefault(question.getId().toString(), "").isEmpty() ? 1 : 0;
+                        // Check if student answered this question correctly
+                        Long answerId = sub.getAnswers().get(question.getId());
+                        if (answerId == null) return 1; // No answer = incorrect
+
+                        return question.getAnswers().stream()
+                                .filter(a -> a.getId().equals(answerId))
+                                .findFirst()
+                                .map(Answer::getCorrect)
+                                .orElse(false) ? 0 : 1; // Correct = 0, Incorrect = 1
                     })
                     .sum();
 
@@ -2944,14 +2950,14 @@ public class AnalyticsService {
                     .orElse(0.0);
 
             // Calculate difficulty score (based on error rate and time)
-            double difficultyScore = Math.min(100, errorRate + (averageTime / 60.0 * 10)); // Scale time to 0-100
+            double difficultyScore = Math.min(100, errorRate + (averageTime / 60.0 * 10));
 
             // Only include challenging questions (difficulty > 60%)
             if (difficultyScore > 60) {
                 Map<String, Object> questionData = new HashMap<>();
                 questionData.put("id", question.getId());
                 questionData.put("title", "سوال " + question.getId());
-                questionData.put("text", question.getQuestionText());
+                questionData.put("text", question.getText());
                 questionData.put("difficultyScore", Math.round(difficultyScore));
                 questionData.put("errorRate", Math.round(errorRate));
                 questionData.put("averageTime", Math.round(averageTime));

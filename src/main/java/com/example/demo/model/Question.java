@@ -89,4 +89,7 @@ public class Question {
             this.isRequired = true;
         }
     }
+    public String getQuestionText() {
+        return this.text;
+    }
 }
