@@ -1218,123 +1218,7 @@ public class AnalyticsService {
         return studentsSummary;
     }
 
-    // Study time calculation methods
-    public long calculateActualStudyTime(User student, List<Course> courses) {
-        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
 
-        List<ActivityLog> studyActivities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
-                .stream()
-                .filter(log -> isStudyActivity(log.getActivityType()))
-                .filter(log -> isCourseRelatedActivityForCourses(log, courses))
-                .collect(Collectors.toList());
-
-        return studyActivities.stream()
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
-    }
-
-    public long calculateCourseStudyTime(User student, Course course) {
-        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
-
-        List<ActivityLog> courseActivities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
-                .stream()
-                .filter(log -> isStudyActivity(log.getActivityType()))
-                .filter(log -> isCourseRelatedActivity(log, course.getId()))
-                .collect(Collectors.toList());
-
-        return courseActivities.stream()
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
-    }
-
-
-    private boolean isCourseRelatedActivityForCourses(ActivityLog log, List<Course> courses) {
-        for (Course course : courses) {
-            if (isCourseRelatedActivity(log, course.getId())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    private boolean isContentRelatedToCourse(Long entityId, Long courseId, String activityType) {
-        try {
-            if ("FILE_ACCESS".equals(activityType)) {
-                Optional<Content> contentOpt = contentRepository.findAll().stream()
-                        .filter(content -> content.getFile() != null && content.getFile().getId().equals(entityId))
-                        .findFirst();
-
-                if (contentOpt.isPresent()) {
-                    Content content = contentOpt.get();
-                    return content.getLesson() != null &&
-                            content.getLesson().getCourse() != null &&
-                            content.getLesson().getCourse().getId().equals(courseId);
-                }
-                return false;
-            } else {
-                Optional<Content> contentOpt = contentRepository.findById(entityId);
-
-                if (contentOpt.isPresent()) {
-                    Content content = contentOpt.get();
-                    return content.getLesson() != null &&
-                            content.getLesson().getCourse() != null &&
-                            content.getLesson().getCourse().getId().equals(courseId);
-                }
-                return false;
-            }
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isLessonRelatedToCourse(Long lessonId, Long courseId) {
-        try {
-            Optional<Lesson> lessonOpt = lessonRepository.findById(lessonId);
-
-            if (lessonOpt.isPresent()) {
-                Lesson lesson = lessonOpt.get();
-                return lesson.getCourse() != null && lesson.getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isExamRelatedToCourse(Long examId, Long courseId) {
-        try {
-            Optional<Exam> examOpt = examRepository.findById(examId);
-
-            if (examOpt.isPresent()) {
-                Exam exam = examOpt.get();
-                return exam.getLesson() != null &&
-                        exam.getLesson().getCourse() != null &&
-                        exam.getLesson().getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isAssignmentRelatedToCourse(Long assignmentId, Long courseId) {
-        try {
-            Optional<Assignment> assignmentOpt = assignmentRepository.findById(assignmentId);
-
-            if (assignmentOpt.isPresent()) {
-                Assignment assignment = assignmentOpt.get();
-                return assignment.getLesson() != null &&
-                        assignment.getLesson().getCourse() != null &&
-                        assignment.getLesson().getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     @Transactional
     public void recalculateStudyTimes() {
@@ -2714,5 +2598,171 @@ public class AnalyticsService {
         stats.put("assignmentTrend", calculateTrend(assignmentSubmissions, 30)); // Changed from exercise
 
         return stats;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * Calculate study time for a specific course
+     */
+    public long calculateCourseStudyTime(User student, Course course) {
+        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
+
+        List<ActivityLog> courseActivities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
+                .stream()
+                .filter(log -> isStudyActivity(log.getActivityType()))
+                .filter(log -> isCourseRelatedActivity(log, course.getId()))
+                .collect(Collectors.toList());
+
+        return courseActivities.stream()
+                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                .sum();
+    }
+
+    /**
+     * Calculate actual study time across multiple courses
+     */
+    public long calculateActualStudyTime(User student, List<Course> courses) {
+        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
+
+        List<ActivityLog> studyActivities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
+                .stream()
+                .filter(log -> isStudyActivity(log.getActivityType()))
+                .filter(log -> isCourseRelatedActivityForCourses(log, courses))
+                .collect(Collectors.toList());
+
+        return studyActivities.stream()
+                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                .sum();
+    }
+
+    /**
+     * Check if activity is related to any of the given courses
+     */
+    private boolean isCourseRelatedActivityForCourses(ActivityLog log, List<Course> courses) {
+        for (Course course : courses) {
+            if (isCourseRelatedActivity(log, course.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Helper method to check if assignment is related to course
+     */
+    private boolean isAssignmentRelatedToCourse(Long assignmentId, Long courseId) {
+        try {
+            Optional<Assignment> assignmentOpt = assignmentRepository.findById(assignmentId);
+
+            if (assignmentOpt.isPresent()) {
+                Assignment assignment = assignmentOpt.get();
+                return assignment.getLesson() != null &&
+                        assignment.getLesson().getCourse() != null &&
+                        assignment.getLesson().getCourse().getId().equals(courseId);
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Helper method to check if exam is related to course
+     */
+    private boolean isExamRelatedToCourse(Long examId, Long courseId) {
+        try {
+            Optional<Exam> examOpt = examRepository.findById(examId);
+
+            if (examOpt.isPresent()) {
+                Exam exam = examOpt.get();
+                return exam.getLesson() != null &&
+                        exam.getLesson().getCourse() != null &&
+                        exam.getLesson().getCourse().getId().equals(courseId);
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Helper method to check if lesson is related to course
+     */
+    private boolean isLessonRelatedToCourse(Long lessonId, Long courseId) {
+        try {
+            Optional<Lesson> lessonOpt = lessonRepository.findById(lessonId);
+
+            if (lessonOpt.isPresent()) {
+                Lesson lesson = lessonOpt.get();
+                return lesson.getCourse() != null && lesson.getCourse().getId().equals(courseId);
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Helper method to check if content is related to course
+     */
+    private boolean isContentRelatedToCourse(Long entityId, Long courseId, String activityType) {
+        try {
+            if ("FILE_ACCESS".equals(activityType)) {
+                Optional<Content> contentOpt = contentRepository.findAll().stream()
+                        .filter(content -> content.getFile() != null && content.getFile().getId().equals(entityId))
+                        .findFirst();
+
+                if (contentOpt.isPresent()) {
+                    Content content = contentOpt.get();
+                    return content.getLesson() != null &&
+                            content.getLesson().getCourse() != null &&
+                            content.getLesson().getCourse().getId().equals(courseId);
+                }
+                return false;
+            } else {
+                Optional<Content> contentOpt = contentRepository.findById(entityId);
+
+                if (contentOpt.isPresent()) {
+                    Content content = contentOpt.get();
+                    return content.getLesson() != null &&
+                            content.getLesson().getCourse() != null &&
+                            content.getLesson().getCourse().getId().equals(courseId);
+                }
+                return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
