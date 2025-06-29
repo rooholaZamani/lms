@@ -11,15 +11,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Optional;
-
-
 import java.util.Set;
-import java.util.Collections;
 
 @Service
 public class AnalyticsService {
@@ -27,7 +19,7 @@ public class AnalyticsService {
     private final CourseRepository courseRepository;
     private final ProgressRepository progressRepository;
     private final SubmissionRepository submissionRepository;
-    private final ExerciseSubmissionRepository exerciseSubmissionRepository;
+    private final AssignmentSubmissionRepository assignmentSubmissionRepository;
     private final LessonRepository lessonRepository;
     private final ExamRepository examRepository;
     private final QuestionRepository questionRepository;
@@ -35,24 +27,23 @@ public class AnalyticsService {
     private final ActivityLogRepository activityLogRepository;
     private final ContentRepository contentRepository;
     private final AssignmentRepository assignmentRepository;
-    private final ExerciseRepository exerciseRepository;
-
-
 
     public AnalyticsService(
             CourseRepository courseRepository,
             ProgressRepository progressRepository,
             SubmissionRepository submissionRepository,
-            ExerciseSubmissionRepository exerciseSubmissionRepository,
+            AssignmentSubmissionRepository assignmentSubmissionRepository,
             LessonRepository lessonRepository,
             ExamRepository examRepository,
             QuestionRepository questionRepository,
             UserRepository userRepository,
-            ActivityLogRepository activityLogRepository, ContentRepository contentRepository, AssignmentRepository assignmentRepository, ExerciseRepository exerciseRepository) {
+            ActivityLogRepository activityLogRepository,
+            ContentRepository contentRepository,
+            AssignmentRepository assignmentRepository) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
-        this.exerciseSubmissionRepository = exerciseSubmissionRepository;
+        this.assignmentSubmissionRepository = assignmentSubmissionRepository;
         this.lessonRepository = lessonRepository;
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
@@ -60,7 +51,6 @@ public class AnalyticsService {
         this.activityLogRepository = activityLogRepository;
         this.contentRepository = contentRepository;
         this.assignmentRepository = assignmentRepository;
-        this.exerciseRepository = exerciseRepository;
     }
 
     /**
@@ -75,8 +65,8 @@ public class AnalyticsService {
         // Get all exam submissions
         List<Submission> examSubmissions = submissionRepository.findByStudent(student);
 
-        // Get all exercise submissions if they exist in the system
-        List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student);
+        // Get all assignment submissions
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student);
 
         // Calculate average completion rate
         double averageCompletion = progressList.stream()
@@ -90,9 +80,10 @@ public class AnalyticsService {
                 .average()
                 .orElse(0.0);
 
-        // Calculate average exercise score if applicable
-        double averageExerciseScore = exerciseSubmissions.stream()
-                .mapToDouble(ExerciseSubmission::getScore)
+        // Calculate average assignment score
+        double averageAssignmentScore = assignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .mapToInt(AssignmentSubmission::getScore)
                 .average()
                 .orElse(0.0);
 
@@ -106,6 +97,11 @@ public class AnalyticsService {
                 .filter(Submission::isPassed)
                 .count();
 
+        // Count graded assignments
+        long gradedAssignments = assignmentSubmissions.stream()
+                .filter(AssignmentSubmission::isGraded)
+                .count();
+
         // Prepare response
         performance.put("totalCourses", progressList.size());
         performance.put("completedCourses", completedCourses);
@@ -113,8 +109,9 @@ public class AnalyticsService {
         performance.put("examsTaken", examSubmissions.size());
         performance.put("passedExams", passedExams);
         performance.put("averageExamScore", averageExamScore);
-        performance.put("exercisesTaken", exerciseSubmissions.size());
-        performance.put("averageExerciseScore", averageExerciseScore);
+        performance.put("assignmentsSubmitted", assignmentSubmissions.size());
+        performance.put("averageAssignmentScore", averageAssignmentScore);
+        performance.put("gradedAssignments", gradedAssignments);
 
         // Add time-based metrics like recent activity
         performance.put("recentActivity", getRecentActivity(student));
@@ -168,6 +165,17 @@ public class AnalyticsService {
                 .average()
                 .orElse(0.0);
 
+        // Get student's assignment submissions for this course
+        List<AssignmentSubmission> studentAssignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                .collect(Collectors.toList());
+
+        double studentAssignmentAverage = studentAssignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .mapToInt(AssignmentSubmission::getScore)
+                .average()
+                .orElse(0.0);
+
         // Build comparison data
         comparison.put("studentCompletion", studentProgress.getCompletionPercentage());
         comparison.put("classAverageCompletion", averageCompletion);
@@ -179,66 +187,10 @@ public class AnalyticsService {
         comparison.put("examPercentile", calculatePercentile(studentExamAverage,
                 allSubmissions.stream().mapToDouble(Submission::getScore).toArray()));
 
+        comparison.put("studentAssignmentAverage", studentAssignmentAverage);
+        comparison.put("assignmentSubmissions", studentAssignmentSubmissions.size());
+
         return comparison;
-    }
-
-    /**
-     * Get top performing students in a course
-     */
-    public Map<String, List<Map<String, Object>>> getTopPerformers(Long courseId) {
-        Map<String, List<Map<String, Object>>> topPerformers = new HashMap<>();
-
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
-        // Get all progress records for this course
-        List<Progress> allProgress = progressRepository.findAll().stream()
-                .filter(p -> p.getCourse().getId().equals(courseId))
-                .collect(Collectors.toList());
-
-        // Top students by completion percentage
-        List<Map<String, Object>> topByCompletion = allProgress.stream()
-                .sorted(Comparator.comparing(Progress::getCompletionPercentage).reversed())
-                .limit(5)
-                .map(p -> {
-                    Map<String, Object> studentData = new HashMap<>();
-                    studentData.put("studentId", p.getStudent().getId());
-                    studentData.put("studentName", p.getStudent().getFirstName() + " " + p.getStudent().getLastName());
-                    studentData.put("completionPercentage", p.getCompletionPercentage());
-                    return studentData;
-                })
-                .collect(Collectors.toList());
-
-        // Get all exam submissions for this course
-        List<Submission> allSubmissions = submissionRepository.findAll().stream()
-                .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
-                .collect(Collectors.toList());
-
-        // Calculate average score per student
-        Map<User, Double> studentScores = new HashMap<>();
-        for (Submission submission : allSubmissions) {
-            User student = submission.getStudent();
-            studentScores.merge(student, (double) submission.getScore(), (oldValue, newValue) ->
-                    (oldValue + newValue) / 2);
-        }
-
-        // Top students by exam scores
-        List<Map<String, Object>> topByExams = studentScores.entrySet().stream()
-                .sorted(Map.Entry.<User, Double>comparingByValue().reversed())
-                .limit(5)
-                .map(entry -> {
-                    Map<String, Object> studentData = new HashMap<>();
-                    studentData.put("studentId", entry.getKey().getId());
-                    studentData.put("studentName", entry.getKey().getFirstName() + " " + entry.getKey().getLastName());
-                    studentData.put("averageScore", entry.getValue());
-                    return studentData;
-                })
-                .collect(Collectors.toList());
-
-        topPerformers.put("topByCompletion", topByCompletion);
-        topPerformers.put("topByExamScores", topByExams);
-
-        return topPerformers;
     }
 
     /**
@@ -278,6 +230,17 @@ public class AnalyticsService {
                 .filter(Submission::isPassed)
                 .count();
 
+        // Get all assignment submissions for this course
+        List<AssignmentSubmission> allAssignmentSubmissions = assignmentSubmissionRepository.findAll().stream()
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                .collect(Collectors.toList());
+
+        double averageAssignmentScore = allAssignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .mapToInt(AssignmentSubmission::getScore)
+                .average()
+                .orElse(0.0);
+
         // Build performance data
         performance.put("totalStudents", course.getEnrolledStudents().size());
         performance.put("activeStudents", allProgress.size());
@@ -287,6 +250,8 @@ public class AnalyticsService {
         performance.put("passedExams", passedExams);
         performance.put("averageExamScore", averageExamScore);
         performance.put("passRate", allSubmissions.isEmpty() ? 0 : (double) passedExams / allSubmissions.size() * 100);
+        performance.put("assignmentSubmissions", allAssignmentSubmissions.size());
+        performance.put("averageAssignmentScore", averageAssignmentScore);
 
         return performance;
     }
@@ -336,6 +301,24 @@ public class AnalyticsService {
                 lessonData.put("examPassRate", passRate);
                 lessonData.put("examAverageScore", averageScore);
                 lessonData.put("examSubmissions", examSubmissions.size());
+            }
+
+            // Check assignment performance for this lesson
+            List<Assignment> lessonAssignments = assignmentRepository.findByLessonId(lesson.getId());
+            if (!lessonAssignments.isEmpty()) {
+                List<AssignmentSubmission> assignmentSubmissions = new ArrayList<>();
+                for (Assignment assignment : lessonAssignments) {
+                    assignmentSubmissions.addAll(assignmentSubmissionRepository.findByAssignment(assignment));
+                }
+
+                double avgAssignmentScore = assignmentSubmissions.stream()
+                        .filter(as -> as.getScore() != null)
+                        .mapToInt(AssignmentSubmission::getScore)
+                        .average()
+                        .orElse(0.0);
+
+                lessonData.put("assignmentAverageScore", avgAssignmentScore);
+                lessonData.put("assignmentSubmissions", assignmentSubmissions.size());
             }
 
             // Calculate difficulty score (lower completion and pass rates = higher difficulty)
@@ -406,6 +389,20 @@ public class AnalyticsService {
             studentData.put("examsTaken", studentSubmissions.size());
             studentData.put("failedExams", failedExams);
 
+            // Get student's assignment submissions for this course
+            List<AssignmentSubmission> studentAssignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+
+            double averageAssignmentScore = studentAssignmentSubmissions.stream()
+                    .filter(as -> as.getScore() != null)
+                    .mapToInt(AssignmentSubmission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+            studentData.put("averageAssignmentScore", averageAssignmentScore);
+            studentData.put("assignmentSubmissions", studentAssignmentSubmissions.size());
+
             // Calculate struggle score (lower completion and scores = higher struggle)
             double struggleScore = 100 - progress.getCompletionPercentage();
             if (!studentSubmissions.isEmpty()) {
@@ -458,19 +455,19 @@ public class AnalyticsService {
                 studentData.put("lastAccessed", null);
             }
 
-            // Get student's exam/exercise activity
+            // Get student's exam/assignment activity
             List<Submission> examSubmissions = submissionRepository.findByStudent(student).stream()
                     .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
                     .collect(Collectors.toList());
 
             studentData.put("examsTaken", examSubmissions.size());
 
-            // Get exercise submissions if they exist
-            List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student).stream()
-                    .filter(s -> s.getExercise().getLesson().getCourse().getId().equals(courseId))
+            // Get assignment submissions
+            List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
                     .collect(Collectors.toList());
 
-            studentData.put("exercisesTaken", exerciseSubmissions.size());
+            studentData.put("assignmentSubmissions", assignmentSubmissions.size());
 
             // Calculate overall participation score
             int totalItems = 0;
@@ -494,6 +491,16 @@ public class AnalyticsService {
 
             // Count taken exams
             participatedItems += examSubmissions.size();
+
+            // Count assignments
+            int totalAssignments = course.getLessons().stream()
+                    .flatMap(lesson -> assignmentRepository.findByLessonId(lesson.getId()).stream())
+                    .collect(Collectors.toList())
+                    .size();
+            totalItems += totalAssignments;
+
+            // Count submitted assignments
+            participatedItems += assignmentSubmissions.size();
 
             // Calculate participation rate
             double participationRate = totalItems > 0 ?
@@ -611,8 +618,6 @@ public class AnalyticsService {
         return examDetails;
     }
 
-    // NEW METHODS IMPLEMENTATION
-
     /**
      * Get detailed analysis for a specific student in a course
      */
@@ -652,12 +657,16 @@ public class AnalyticsService {
         analysis.put("averageExamScore", examSubmissions.stream()
                 .mapToDouble(Submission::getScore).average().orElse(0.0));
 
-        // Get exercise submissions
-        List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student).stream()
-                .filter(s -> s.getExercise().getLesson().getCourse().getId().equals(courseId))
+        // Get assignment submissions
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
                 .collect(Collectors.toList());
 
-        analysis.put("exercisesTaken", exerciseSubmissions.size());
+        analysis.put("assignmentSubmissions", assignmentSubmissions.size());
+        analysis.put("averageAssignmentScore", assignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .mapToInt(AssignmentSubmission::getScore)
+                .average().orElse(0.0));
 
         // Calculate average time per lesson and exam
         long totalStudyTime = progress != null && progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L;
@@ -702,12 +711,12 @@ public class AnalyticsService {
             activityData.put("timeSpent", activity.getTimeSpent());
             activityData.put("description", generateActivityDescription(activity));
 
-            // Add score if it's an exam or exercise submission
+            // Add score if it's an exam or assignment submission
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
                 Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
                 submission.ifPresent(s -> activityData.put("score", s.getScore()));
-            } else if ("EXERCISE_SUBMISSION".equals(activity.getActivityType())) {
-                Optional<ExerciseSubmission> submission = exerciseSubmissionRepository.findById(activity.getRelatedEntityId());
+            } else if ("ASSIGNMENT_SUBMISSION".equals(activity.getActivityType())) {
+                Optional<AssignmentSubmission> submission = assignmentSubmissionRepository.findById(activity.getRelatedEntityId());
                 submission.ifPresent(s -> activityData.put("score", s.getScore()));
             }
 
@@ -835,6 +844,15 @@ public class AnalyticsService {
                 .average()
                 .orElse(0.0);
 
+        // Get all assignment submissions for teacher's courses
+        List<AssignmentSubmission> allAssignmentSubmissions = new ArrayList<>();
+        for (Course course : teacherCourses) {
+            List<AssignmentSubmission> courseAssignments = assignmentSubmissionRepository.findAll().stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
+                    .collect(Collectors.toList());
+            allAssignmentSubmissions.addAll(courseAssignments);
+        }
+
         // Calculate total study hours
         long totalHours = allProgress.stream()
                 .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
@@ -847,9 +865,7 @@ public class AnalyticsService {
         overview.put("totalHours", totalHours);
         overview.put("avgTimePerStudent", totalStudents > 0 ? (double) totalHours / totalStudents : 0);
         overview.put("totalExams", allSubmissions.size());
-
-        // Count assignments (if assignment repository exists)
-        overview.put("totalAssignments", 0); // Placeholder
+        overview.put("totalAssignments", allAssignmentSubmissions.size());
 
         // Calculate engagement and retention rates
         overview.put("engagementRate", calculateEngagementRate(allProgress));
@@ -1052,8 +1068,11 @@ public class AnalyticsService {
 
             dayData.put("examSubmissions", examSubmissions.size());
 
-            // Placeholder for discussion posts
-            dayData.put("discussionPosts", 0);
+            // Count assignment submissions
+            List<ActivityLog> assignmentSubmissions = activityLogRepository
+                    .findByActivityTypeAndTimestampBetween("ASSIGNMENT_SUBMISSION", startOfDay, endOfDay);
+
+            dayData.put("assignmentSubmissions", assignmentSubmissions.size());
 
             // Calculate average session time
             double avgSessionTime = dayActivities.stream()
@@ -1151,6 +1170,9 @@ public class AnalyticsService {
         List<ActivityLog> examSubmissions = activityLogRepository
                 .findByActivityTypeAndTimestampBetween("EXAM_SUBMISSION", thirtyDaysAgo, now);
 
+        List<ActivityLog> assignmentSubmissions = activityLogRepository
+                .findByActivityTypeAndTimestampBetween("ASSIGNMENT_SUBMISSION", thirtyDaysAgo, now);
+
         stats.put("avgDailyLogins", loginActivities.size() / 30);
         stats.put("loginTrend", calculateTrend(loginActivities, 30));
 
@@ -1160,13 +1182,13 @@ public class AnalyticsService {
         stats.put("avgExamSubmissions", examSubmissions.size() / 30);
         stats.put("examTrend", calculateTrend(examSubmissions, 30));
 
-        stats.put("avgDiscussions", 0); // Placeholder
-        stats.put("discussionTrend", 0); // Placeholder
+        stats.put("avgAssignmentSubmissions", assignmentSubmissions.size() / 30);
+        stats.put("assignmentTrend", calculateTrend(assignmentSubmissions, 30));
 
         return stats;
     }
 
-    // Helper methods
+    // Helper methods (remaining the same as before with exercise references removed)
     private List<Map<String, Object>> getRecentActivity(User student) {
         List<Map<String, Object>> recentActivities = new ArrayList<>();
 
@@ -1185,14 +1207,12 @@ public class AnalyticsService {
         return recentActivities;
     }
 
-
-
     private String getContentTypeLabel(String activityType) {
         switch (activityType) {
             case "CONTENT_VIEW":
                 return "ویدیوهای آموزشی";
-            case "EXERCISE_SUBMISSION":
-                return "تمرین‌های عملی";
+            case "ASSIGNMENT_SUBMISSION":
+                return "تکالیف";
             case "EXAM_SUBMISSION":
                 return "آزمون‌ها";
             case "LESSON_COMPLETION":
@@ -1208,11 +1228,10 @@ public class AnalyticsService {
 
     private double calculateEfficiency(String activityType, double avgTime) {
         // Simple efficiency calculation based on activity type and time
-        // This is a placeholder - you'd implement based on your business logic
         switch (activityType) {
             case "CONTENT_VIEW":
                 return avgTime < 20 ? 95 : (avgTime < 40 ? 85 : 70);
-            case "EXERCISE_SUBMISSION":
+            case "ASSIGNMENT_SUBMISSION":
                 return avgTime < 30 ? 90 : (avgTime < 60 ? 80 : 65);
             default:
                 return 80.0;
@@ -1336,11 +1355,26 @@ public class AnalyticsService {
         return (double) count / values.length * 100;
     }
 
+    private String generateActivityDescription(ActivityLog activity) {
+        switch (activity.getActivityType()) {
+            case "LOGIN":
+                return "ورود به سیستم";
+            case "CONTENT_VIEW":
+                return "مشاهده محتوا";
+            case "LESSON_COMPLETION":
+                return "تکمیل درس";
+            case "EXAM_SUBMISSION":
+                return "شرکت در آزمون";
+            case "ASSIGNMENT_SUBMISSION":
+                return "ارسال تکلیف";
+            case "CHAT_MESSAGE_SEND":
+                return "ارسال پیام در چت";
+            default:
+                return "فعالیت";
+        }
+    }
 
-    /**
-     * Get course time distribution for students
-     */
-
+    // Additional required methods for complete functionality
 
     public Map<String, Object> getStudentPerformanceForTeacher(User teacher, Long studentId, Long courseId) {
         User student = userRepository.findById(studentId)
@@ -1385,12 +1419,12 @@ public class AnalyticsService {
                 .average()
                 .orElse(0.0);
 
-        // ⭐ FIX: محاسبه زمان مطالعه از ActivityLog به جای Progress.totalStudyTime
+        // Calculate study time from ActivityLog
         long totalStudyTimeFromActivities = calculateActualStudyTime(student, studentCourses);
 
         performance.put("enrolledCourses", studentCourses.size());
         performance.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
-        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities / 3600.0 * 10.0) / 10.0); // تبدیل ثانیه به ساعت
+        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities / 3600.0 * 10.0) / 10.0); // Convert seconds to hours
         performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 :
                 Math.round((totalStudyTimeFromActivities / studentCourses.size()) / 3600.0 * 10.0) / 10.0);
 
@@ -1414,6 +1448,21 @@ public class AnalyticsService {
         performance.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
         performance.put("examPassRate", examSubmissions.isEmpty() ? 0 :
                 Math.round((double) passedExams / examSubmissions.size() * 100 * 10.0) / 10.0);
+
+        // Assignment performance
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                .filter(as -> finalStudentCourses1.stream().anyMatch(c ->
+                        c.getId().equals(as.getAssignment().getLesson().getCourse().getId())))
+                .collect(Collectors.toList());
+
+        double averageAssignmentScore = assignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .mapToInt(AssignmentSubmission::getScore)
+                .average()
+                .orElse(0.0);
+
+        performance.put("assignmentSubmissions", assignmentSubmissions.size());
+        performance.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0) / 10.0);
 
         // Recent activity
         LocalDateTime oneWeekAgo = LocalDateTime.now().minusDays(7);
@@ -1447,7 +1496,7 @@ public class AnalyticsService {
                 courseData.put("lastAccessed", null);
             }
 
-            // ⭐ FIX: محاسبه زمان مطالعه برای هر دوره از ActivityLog
+            // Calculate study time for each course from ActivityLog
             long courseStudyTime = calculateCourseStudyTime(student, course);
             courseData.put("studyTime", Math.round(courseStudyTime / 3600.0 * 10.0) / 10.0);
 
@@ -1459,227 +1508,6 @@ public class AnalyticsService {
         return performance;
     }
 
-
-
-
-
-
-
-
-
-    // ⭐ NEW: متد برای محاسبه مجدد و به‌روزرسانی زمان مطالعه در Progress
-    @Transactional
-    public void recalculateStudyTimes() {
-        List<Progress> allProgress = progressRepository.findAll();
-
-        for (Progress progress : allProgress) {
-            User student = progress.getStudent();
-            Course course = progress.getCourse();
-
-            // محاسبه زمان واقعی از ActivityLog
-            long actualStudyTime = calculateCourseStudyTime(student, course);
-
-            // به‌روزرسانی Progress
-            progress.setTotalStudyTime(actualStudyTime);
-            progressRepository.save(progress);
-        }
-    }
-
-
-
-
-
-
-    private boolean isCourseRelatedActivity(ActivityLog log, Long courseId) {
-        if (log.getRelatedEntityId() == null) {
-            return false;
-        }
-
-        try {
-            switch (log.getActivityType()) {
-                case "CONTENT_VIEW":
-                case "CONTENT_COMPLETION":
-                case "FILE_ACCESS":
-                    // relatedEntityId = contentId یا fileId
-                    return isContentRelatedToCourse(log.getRelatedEntityId(), courseId, log.getActivityType());
-
-                case "LESSON_COMPLETION":
-                case "LESSON_ACCESS":
-                    // relatedEntityId = lessonId
-                    return isLessonRelatedToCourse(log.getRelatedEntityId(), courseId);
-
-                case "EXAM_SUBMISSION":
-                case "EXAM_START":
-                    // relatedEntityId = examId
-                    return isExamRelatedToCourse(log.getRelatedEntityId(), courseId);
-
-                case "EXERCISE_SUBMISSION":
-                case "EXERCISE_START":
-                    // relatedEntityId = exerciseId
-                    return isExerciseRelatedToCourse(log.getRelatedEntityId(), courseId);
-
-                case "CHAT_MESSAGE_SEND":
-                case "CHAT_VIEW":
-                    // relatedEntityId = courseId
-                    return log.getRelatedEntityId().equals(courseId);
-
-                case "ASSIGNMENT_SUBMISSION":
-                case "ASSIGNMENT_VIEW":
-                    // relatedEntityId = assignmentId
-                    return isAssignmentRelatedToCourse(log.getRelatedEntityId(), courseId);
-
-                case "LOGIN":
-                    // Login activities are not course-specific
-                    return false;
-
-                default:
-                    // برای activity types ناشناخته، به طور پیش‌فرض false برمی‌گردانیم
-                    return false;
-            }
-        } catch (Exception e) {
-            // اگر خطایی در بررسی داشته باشیم، false برمی‌گردانیم
-            return false;
-        }
-    }
-
-// Helper methods
-
-    private boolean isContentRelatedToCourse(Long entityId, Long courseId, String activityType) {
-        try {
-            if ("FILE_ACCESS".equals(activityType)) {
-                // برای FILE_ACCESS، entityId یک fileId است
-                // باید از content که این file را دارد، lesson و course را پیدا کنیم
-                Optional<Content> contentOpt = contentRepository.findAll().stream()
-                        .filter(content -> content.getFile() != null && content.getFile().getId().equals(entityId))
-                        .findFirst();
-
-                if (contentOpt.isPresent()) {
-                    Content content = contentOpt.get();
-                    return content.getLesson() != null &&
-                            content.getLesson().getCourse() != null &&
-                            content.getLesson().getCourse().getId().equals(courseId);
-                }
-                return false;
-            } else {
-                // برای CONTENT_VIEW و CONTENT_COMPLETION، entityId یک contentId است
-                Optional<Content> contentOpt = contentRepository.findById(entityId);
-
-                if (contentOpt.isPresent()) {
-                    Content content = contentOpt.get();
-                    return content.getLesson() != null &&
-                            content.getLesson().getCourse() != null &&
-                            content.getLesson().getCourse().getId().equals(courseId);
-                }
-                return false;
-            }
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isLessonRelatedToCourse(Long lessonId, Long courseId) {
-        try {
-            Optional<Lesson> lessonOpt = lessonRepository.findById(lessonId);
-
-            if (lessonOpt.isPresent()) {
-                Lesson lesson = lessonOpt.get();
-                return lesson.getCourse() != null && lesson.getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isExamRelatedToCourse(Long examId, Long courseId) {
-        try {
-            Optional<Exam> examOpt = examRepository.findById(examId);
-
-            if (examOpt.isPresent()) {
-                Exam exam = examOpt.get();
-                return exam.getLesson() != null &&
-                        exam.getLesson().getCourse() != null &&
-                        exam.getLesson().getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isExerciseRelatedToCourse(Long exerciseId, Long courseId) {
-        try {
-            Optional<Exercise> exerciseOpt = exerciseRepository.findById(exerciseId);
-
-            if (exerciseOpt.isPresent()) {
-                Exercise exercise = exerciseOpt.get();
-                return exercise.getLesson() != null &&
-                        exercise.getLesson().getCourse() != null &&
-                        exercise.getLesson().getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isAssignmentRelatedToCourse(Long assignmentId, Long courseId) {
-        try {
-            // اگر AssignmentRepository موجود باشد
-            Optional<Assignment> assignmentOpt = assignmentRepository.findById(assignmentId);
-
-            if (assignmentOpt.isPresent()) {
-                Assignment assignment = assignmentOpt.get();
-                return assignment.getLesson() != null &&
-                        assignment.getLesson().getCourse() != null &&
-                        assignment.getLesson().getCourse().getId().equals(courseId);
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-
-
-
-    private Map<String, Object> createContentStudyMetrics(List<ActivityLog> contentActivities, long totalStudents, Long courseId) {
-        Set<Long> uniqueStudents = contentActivities.stream()
-                .map(log -> log.getUser().getId())
-                .collect(Collectors.toSet());
-
-        double participationRate = totalStudents > 0 ? (double) uniqueStudents.size() / totalStudents * 100 : 0;
-
-        Map<String, Object> metrics = new HashMap<>();
-        metrics.put("participationRate", Math.round(participationRate));
-        metrics.put("totalViews", contentActivities.size());
-        metrics.put("averageViewsPerStudent", totalStudents > 0 ? (double) contentActivities.size() / totalStudents : 0);
-        metrics.put("completionRate", 78); // Placeholder - نیاز به محاسبه دقیق‌تر
-
-        return metrics;
-    }
-
-    private Map<String, Object> createChatActivityMetrics(List<ActivityLog> chatActivities, long totalStudents) {
-        Set<Long> uniqueStudents = chatActivities.stream()
-                .map(log -> log.getUser().getId())
-                .collect(Collectors.toSet());
-
-        double participationRate = totalStudents > 0 ? (double) uniqueStudents.size() / totalStudents * 100 : 0;
-
-        Map<String, Object> metrics = new HashMap<>();
-        metrics.put("participationRate", Math.round(participationRate));
-        metrics.put("totalMessages", chatActivities.size());
-        metrics.put("averageMessagesPerStudent", totalStudents > 0 ? (double) chatActivities.size() / totalStudents : 0);
-        metrics.put("activeParticipants", uniqueStudents.size());
-
-        return metrics;
-    }
-
-
-
-    /**
-     * Get overall progress statistics for all students in teacher's courses
-     */
     public Map<String, Object> getStudentsProgressOverview(User teacher) {
         Map<String, Object> overview = new HashMap<>();
 
@@ -1733,6 +1561,15 @@ public class AnalyticsService {
                 .filter(Submission::isPassed)
                 .count();
 
+        // Get assignment statistics
+        List<AssignmentSubmission> allAssignmentSubmissions = new ArrayList<>();
+        for (Course course : teacherCourses) {
+            List<AssignmentSubmission> courseAssignments = assignmentSubmissionRepository.findAll().stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
+                    .collect(Collectors.toList());
+            allAssignmentSubmissions.addAll(courseAssignments);
+        }
+
         // Build overview
         overview.put("totalStudents", totalStudents);
         overview.put("activeStudents", activeStudents);
@@ -1744,6 +1581,7 @@ public class AnalyticsService {
         overview.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
         overview.put("examPassRate", allSubmissions.isEmpty() ? 0 :
                 Math.round((double) passedExams / allSubmissions.size() * 100 * 10.0) / 10.0);
+        overview.put("totalAssignmentSubmissions", allAssignmentSubmissions.size());
 
         // Activity levels
         long highPerformers = allStudentProgress.stream()
@@ -1759,10 +1597,6 @@ public class AnalyticsService {
         return overview;
     }
 
-
-    /**
-     * Get summary of all students in a specific course
-     */
     public List<Map<String, Object>> getCourseStudentsSummary(User teacher, Long courseId) {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new RuntimeException("Course not found"));
@@ -1810,6 +1644,13 @@ public class AnalyticsService {
             studentData.put("examsTaken", examSubmissions.size());
             studentData.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
 
+            // Assignment performance
+            List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+
+            studentData.put("assignmentSubmissions", assignmentSubmissions.size());
+
             studentsSummary.add(studentData);
         }
 
@@ -1823,7 +1664,191 @@ public class AnalyticsService {
         return studentsSummary;
     }
 
+    // Study time calculation methods
+    public long calculateActualStudyTime(User student, List<Course> courses) {
+        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
 
+        List<ActivityLog> studyActivities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
+                .stream()
+                .filter(log -> isStudyActivity(log.getActivityType()))
+                .filter(log -> isCourseRelatedActivityForCourses(log, courses))
+                .collect(Collectors.toList());
+
+        return studyActivities.stream()
+                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                .sum();
+    }
+
+    public long calculateCourseStudyTime(User student, Course course) {
+        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
+
+        List<ActivityLog> courseActivities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
+                .stream()
+                .filter(log -> isStudyActivity(log.getActivityType()))
+                .filter(log -> isCourseRelatedActivity(log, course.getId()))
+                .collect(Collectors.toList());
+
+        return courseActivities.stream()
+                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                .sum();
+    }
+
+    private boolean isStudyActivity(String activityType) {
+        return Arrays.asList(
+                "CONTENT_VIEW",
+                "CONTENT_COMPLETION",
+                "LESSON_ACCESS",
+                "LESSON_COMPLETION",
+                "EXAM_SUBMISSION",
+                "ASSIGNMENT_SUBMISSION",
+                "FILE_ACCESS"
+        ).contains(activityType);
+    }
+
+    private boolean isCourseRelatedActivityForCourses(ActivityLog log, List<Course> courses) {
+        for (Course course : courses) {
+            if (isCourseRelatedActivity(log, course.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isCourseRelatedActivity(ActivityLog log, Long courseId) {
+        if (log.getRelatedEntityId() == null) {
+            return false;
+        }
+
+        try {
+            switch (log.getActivityType()) {
+                case "CONTENT_VIEW":
+                case "CONTENT_COMPLETION":
+                case "FILE_ACCESS":
+                    return isContentRelatedToCourse(log.getRelatedEntityId(), courseId, log.getActivityType());
+
+                case "LESSON_COMPLETION":
+                case "LESSON_ACCESS":
+                    return isLessonRelatedToCourse(log.getRelatedEntityId(), courseId);
+
+                case "EXAM_SUBMISSION":
+                case "EXAM_START":
+                    return isExamRelatedToCourse(log.getRelatedEntityId(), courseId);
+
+                case "ASSIGNMENT_SUBMISSION":
+                case "ASSIGNMENT_VIEW":
+                    return isAssignmentRelatedToCourse(log.getRelatedEntityId(), courseId);
+
+                case "CHAT_MESSAGE_SEND":
+                case "CHAT_VIEW":
+                    return log.getRelatedEntityId().equals(courseId);
+
+                case "LOGIN":
+                    return false;
+
+                default:
+                    return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isContentRelatedToCourse(Long entityId, Long courseId, String activityType) {
+        try {
+            if ("FILE_ACCESS".equals(activityType)) {
+                Optional<Content> contentOpt = contentRepository.findAll().stream()
+                        .filter(content -> content.getFile() != null && content.getFile().getId().equals(entityId))
+                        .findFirst();
+
+                if (contentOpt.isPresent()) {
+                    Content content = contentOpt.get();
+                    return content.getLesson() != null &&
+                            content.getLesson().getCourse() != null &&
+                            content.getLesson().getCourse().getId().equals(courseId);
+                }
+                return false;
+            } else {
+                Optional<Content> contentOpt = contentRepository.findById(entityId);
+
+                if (contentOpt.isPresent()) {
+                    Content content = contentOpt.get();
+                    return content.getLesson() != null &&
+                            content.getLesson().getCourse() != null &&
+                            content.getLesson().getCourse().getId().equals(courseId);
+                }
+                return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isLessonRelatedToCourse(Long lessonId, Long courseId) {
+        try {
+            Optional<Lesson> lessonOpt = lessonRepository.findById(lessonId);
+
+            if (lessonOpt.isPresent()) {
+                Lesson lesson = lessonOpt.get();
+                return lesson.getCourse() != null && lesson.getCourse().getId().equals(courseId);
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isExamRelatedToCourse(Long examId, Long courseId) {
+        try {
+            Optional<Exam> examOpt = examRepository.findById(examId);
+
+            if (examOpt.isPresent()) {
+                Exam exam = examOpt.get();
+                return exam.getLesson() != null &&
+                        exam.getLesson().getCourse() != null &&
+                        exam.getLesson().getCourse().getId().equals(courseId);
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isAssignmentRelatedToCourse(Long assignmentId, Long courseId) {
+        try {
+            Optional<Assignment> assignmentOpt = assignmentRepository.findById(assignmentId);
+
+            if (assignmentOpt.isPresent()) {
+                Assignment assignment = assignmentOpt.get();
+                return assignment.getLesson() != null &&
+                        assignment.getLesson().getCourse() != null &&
+                        assignment.getLesson().getCourse().getId().equals(courseId);
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Transactional
+    public void recalculateStudyTimes() {
+        List<Progress> allProgress = progressRepository.findAll();
+
+        for (Progress progress : allProgress) {
+            User student = progress.getStudent();
+            Course course = progress.getCourse();
+
+            // محاسبه زمان واقعی از ActivityLog
+            long actualStudyTime = calculateCourseStudyTime(student, course);
+
+            // به‌روزرسانی Progress
+            progress.setTotalStudyTime(actualStudyTime);
+            progressRepository.save(progress);
+        }
+    }
+
+    // Additional methods for comprehensive report and other analytics
     public Map<String, Object> getStudentComprehensiveReport(Long studentId, Long courseId, int days) {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
@@ -1851,7 +1876,7 @@ public class AnalyticsService {
         Map<String, Object> overallStats = calculateOverallStats(student, course, progress);
         report.put("overallStats", overallStats);
 
-        // 3. فعالیت هفتگی - استفاده از معامل days به جای 7 ثابت
+        // 3. فعالیت هفتگی
         List<Map<String, Object>> weeklyActivity = calculateWeeklyActivity(student, course, days);
         report.put("weeklyActivity", weeklyActivity);
 
@@ -1863,7 +1888,7 @@ public class AnalyticsService {
         List<Map<String, Object>> timeAnalysis = calculateDetailedTimeAnalysis(student, course, days);
         report.put("timeAnalysis", timeAnalysis);
 
-        // 6. فعالیت‌های اخیر - استفاده از معامل days
+        // 6. فعالیت‌های اخیر
         List<Map<String, Object>> recentActivities = getStudentActivityTimelineWithDays(studentId, days);
         report.put("recentActivities", recentActivities);
 
@@ -1878,7 +1903,7 @@ public class AnalyticsService {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days); // استخدام معامل days
+        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
 
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now());
@@ -1887,7 +1912,6 @@ public class AnalyticsService {
             Map<String, Object> activityData = new HashMap<>();
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
-            // تبدیل ثانیه به ساعت:
             activityData.put("timeSpent", activity.getTimeSpent() != null ?
                     Math.round(activity.getTimeSpent() / 3600.0 * 10.0) / 10.0 : 0.0);
             activityData.put("description", generateActivityDescription(activity));
@@ -1895,8 +1919,8 @@ public class AnalyticsService {
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
                 Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
                 submission.ifPresent(s -> activityData.put("score", s.getScore()));
-            } else if ("EXERCISE_SUBMISSION".equals(activity.getActivityType())) {
-                Optional<ExerciseSubmission> submission = exerciseSubmissionRepository.findById(activity.getRelatedEntityId());
+            } else if ("ASSIGNMENT_SUBMISSION".equals(activity.getActivityType())) {
+                Optional<AssignmentSubmission> submission = assignmentSubmissionRepository.findById(activity.getRelatedEntityId());
                 submission.ifPresent(s -> activityData.put("score", s.getScore()));
             }
 
@@ -1904,45 +1928,6 @@ public class AnalyticsService {
         }).collect(Collectors.toList());
     }
 
-
-
-
-
-    /**
-     * نسخه اصلاح شده متد getStudentActivityTimeline
-     */
-    private List<Map<String, Object>> getStudentActivityTimelineFixed(Long studentId) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
-
-        // FIX: Use the correct method name
-        List<ActivityLog> activities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, LocalDateTime.now());
-
-        return activities.stream().map(activity -> {
-            Map<String, Object> activityData = new HashMap<>();
-            activityData.put("type", activity.getActivityType());
-            activityData.put("timestamp", activity.getTimestamp());
-            activityData.put("timeSpent", activity.getTimeSpent());
-            activityData.put("description", generateActivityDescription(activity));
-
-            if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
-                Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
-                submission.ifPresent(s -> activityData.put("score", s.getScore()));
-            } else if ("EXERCISE_SUBMISSION".equals(activity.getActivityType())) {
-                Optional<ExerciseSubmission> submission = exerciseSubmissionRepository.findById(activity.getRelatedEntityId());
-                submission.ifPresent(s -> activityData.put("score", s.getScore()));
-            }
-
-            return activityData;
-        }).collect(Collectors.toList());
-    }
-
-    /**
-     * محاسبه آمار کلی عملکرد
-     */
     private Map<String, Object> calculateOverallStats(User student, Course course, Progress progress) {
         Map<String, Object> stats = new HashMap<>();
 
@@ -1992,20 +1977,16 @@ public class AnalyticsService {
         // تعداد آزمون‌های شرکت‌کرده
         stats.put("examsTaken", examSubmissions.size());
 
-        // تعداد تمرین‌های انجام‌شده
-        List<ExerciseSubmission> exerciseSubmissions = exerciseSubmissionRepository.findByStudent(student)
+        // تعداد تکالیف ارسال‌شده
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student)
                 .stream()
-                .filter(s -> s.getExercise().getLesson().getCourse().getId().equals(course.getId()))
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
                 .collect(Collectors.toList());
-        stats.put("exercisesDone", exerciseSubmissions.size());
+        stats.put("assignmentsDone", assignmentSubmissions.size());
 
         return stats;
     }
 
-
-    /**
-     * محاسبه توزیع نمرات
-     */
     private List<Map<String, Object>> calculateScoreDistribution(User student, Course course) {
         List<Submission> submissions = submissionRepository.findByStudent(student)
                 .stream()
@@ -2044,10 +2025,80 @@ public class AnalyticsService {
         return result;
     }
 
-    /**
-     * تحلیل جزئی زمان
-     */
+    private List<Map<String, Object>> calculateWeeklyActivity(User student, Course course, int days) {
+        List<Map<String, Object>> weeklyData = new ArrayList<>();
+        LocalDateTime endDate = LocalDateTime.now();
 
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withMinute(0).withSecond(0);
+            LocalDateTime dayEnd = dayStart.plusDays(1);
+
+            List<ActivityLog> dayActivities = activityLogRepository
+                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, dayStart, dayEnd)
+                    .stream()
+                    .filter(log -> isCourseRelatedActivity(log, course.getId()))
+                    .collect(Collectors.toList());
+
+            Map<String, Object> dayData = new HashMap<>();
+            dayData.put("date", dayStart.toLocalDate().toString());
+            dayData.put("dayName", getDayName(dayStart.getDayOfWeek()));
+            dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
+            dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "ASSIGNMENT_SUBMISSION"));
+            dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
+            dayData.put("totalTime", Math.round(dayActivities.stream()
+                    .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                    .sum() / 3600.0 * 10.0) / 10.0);
+
+            weeklyData.add(dayData);
+        }
+
+        return weeklyData;
+    }
+
+    private List<Map<String, Object>> calculateDetailedTimeAnalysis(User student, Course course, int days) {
+        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now())
+                .stream()
+                .filter(log -> isCourseRelatedActivity(log, course.getId()))
+                .collect(Collectors.toList());
+
+        Map<String, Long> timeByType = new HashMap<>();
+        timeByType.put("مطالعه محتوا", 0L);
+        timeByType.put("حل تکلیف", 0L);
+        timeByType.put("شرکت در آزمون", 0L);
+        timeByType.put("گفتگو و بحث", 0L);
+
+        for (ActivityLog activity : activities) {
+            long timeSpent = activity.getTimeSpent() != null ? activity.getTimeSpent() : 0L;
+
+            switch (activity.getActivityType()) {
+                case "CONTENT_VIEW":
+                    timeByType.put("مطالعه محتوا", timeByType.get("مطالعه محتوا") + timeSpent);
+                    break;
+                case "ASSIGNMENT_SUBMISSION":
+                    timeByType.put("حل تکلیف", timeByType.get("حل تکلیف") + timeSpent);
+                    break;
+                case "EXAM_SUBMISSION":
+                    timeByType.put("شرکت در آزمون", timeByType.get("شرکت در آزمون") + timeSpent);
+                    break;
+                case "CHAT_MESSAGE_SEND":
+                    timeByType.put("گفتگو و بحث", timeByType.get("گفتگو و بحث") + timeSpent);
+                    break;
+            }
+        }
+
+        return timeByType.entrySet().stream()
+                .filter(entry -> entry.getValue() > 0)
+                .map(entry -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("label", entry.getKey());
+                    item.put("value", entry.getValue());
+                    item.put("hours", Math.round(entry.getValue() / 3600.0 * 10.0) / 10.0);
+                    return item;
+                })
+                .collect(Collectors.toList());
+    }
 
     private List<Map<String, Object>> calculateProgressTrend(User student, Course course, int months) {
         List<Map<String, Object>> trend = new ArrayList<>();
@@ -2060,7 +2111,7 @@ public class AnalyticsService {
             List<ActivityLog> monthActivities = activityLogRepository
                     .findByUserAndTimestampBetweenOrderByTimestampDesc(student, monthStart, monthEnd)
                     .stream()
-                    .filter(log -> isCourseRelatedActivity(log, course.getId())) // FIX: Use correct method name
+                    .filter(log -> isCourseRelatedActivity(log, course.getId()))
                     .collect(Collectors.toList());
 
             Map<String, Object> monthData = new HashMap<>();
@@ -2068,7 +2119,7 @@ public class AnalyticsService {
             monthData.put("year", monthStart.getYear());
             monthData.put("lessons", countActivitiesByType(monthActivities, "LESSON_COMPLETION"));
             monthData.put("exams", countActivitiesByType(monthActivities, "EXAM_SUBMISSION"));
-            monthData.put("exercises", countActivitiesByType(monthActivities, "EXERCISE_SUBMISSION"));
+            monthData.put("assignments", countActivitiesByType(monthActivities, "ASSIGNMENT_SUBMISSION"));
             monthData.put("totalActivities", monthActivities.size());
 
             trend.add(monthData);
@@ -2076,7 +2127,6 @@ public class AnalyticsService {
 
         return trend;
     }
-
 
     private long countActivitiesByType(List<ActivityLog> activities, String... types) {
         return activities.stream()
@@ -2107,122 +2157,7 @@ public class AnalyticsService {
         return monthNames[month - 1];
     }
 
-    /**
-     * تولید توضیح فعالیت
-     */
-
-    private String generateActivityDescription(ActivityLog activity) {
-        switch (activity.getActivityType()) {
-            case "LOGIN":
-                return "ورود به سیستم";
-            case "CONTENT_VIEW":
-                return "مشاهده محتوا";
-            case "LESSON_COMPLETION":
-                return "تکمیل درس";
-            case "EXAM_SUBMISSION":
-                return "شرکت در آزمون";
-            case "EXERCISE_SUBMISSION":
-                return "ارسال تمرین";
-            case "CHAT_MESSAGE_SEND":
-                return "ارسال پیام در چت";
-            case "ASSIGNMENT_SUBMISSION":
-                return "ارسال تکلیف";
-            default:
-                return "فعالیت";
-        }
-    }
-
-
-    private List<Map<String, Object>> calculateWeeklyActivity(User student, Course course, int days) {
-        List<Map<String, Object>> weeklyData = new ArrayList<>();
-        LocalDateTime endDate = LocalDateTime.now();
-
-        for (int i = days - 1; i >= 0; i--) {
-            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withMinute(0).withSecond(0);
-            LocalDateTime dayEnd = dayStart.plusDays(1);
-
-            List<ActivityLog> dayActivities = activityLogRepository
-                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, dayStart, dayEnd)
-                    .stream()
-                    .filter(log -> isCourseRelatedActivity(log, course.getId()))
-                    .collect(Collectors.toList());
-
-            Map<String, Object> dayData = new HashMap<>();
-            dayData.put("date", dayStart.toLocalDate().toString());
-            dayData.put("dayName", getDayName(dayStart.getDayOfWeek()));
-            dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
-            dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "EXERCISE_SUBMISSION"));
-            dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
-            dayData.put("totalTime", Math.round(dayActivities.stream()
-                    .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                    .sum() / 3600.0 * 10.0) / 10.0);
-
-            weeklyData.add(dayData);
-        }
-
-        return weeklyData;
-    }
-
-
-    private List<Map<String, Object>> calculateDetailedTimeAnalysis(User student, Course course, int days) {
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        List<ActivityLog> activities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, LocalDateTime.now())
-                .stream()
-                .filter(log -> isCourseRelatedActivity(log, course.getId())) // FIX: Use correct method name
-                .collect(Collectors.toList());
-
-        Map<String, Long> timeByType = new HashMap<>();
-        timeByType.put("مطالعه محتوا", 0L);
-        timeByType.put("حل تمرین", 0L);
-        timeByType.put("شرکت در آزمون", 0L);
-        timeByType.put("گفتگو و بحث", 0L);
-
-        for (ActivityLog activity : activities) {
-            long timeSpent = activity.getTimeSpent() != null ? activity.getTimeSpent() : 0L;
-
-            switch (activity.getActivityType()) {
-                case "CONTENT_VIEW":
-                    timeByType.put("مطالعه محتوا", timeByType.get("مطالعه محتوا") + timeSpent);
-                    break;
-                case "EXERCISE_SUBMISSION":
-                    timeByType.put("حل تمرین", timeByType.get("حل تمرین") + timeSpent);
-                    break;
-                case "EXAM_SUBMISSION":
-                    timeByType.put("شرکت در آزمون", timeByType.get("شرکت در آزمون") + timeSpent);
-                    break;
-                case "CHAT_MESSAGE_SEND":
-                    timeByType.put("گفتگو و بحث", timeByType.get("گفتگو و بحث") + timeSpent);
-                    break;
-            }
-        }
-
-        return timeByType.entrySet().stream()
-                .filter(entry -> entry.getValue() > 0)
-                .map(entry -> {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("label", entry.getKey());
-                    item.put("value", entry.getValue());
-                    item.put("hours", Math.round(entry.getValue() / 3600.0 * 10.0) / 10.0);
-                    return item;
-                })
-                .collect(Collectors.toList());
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // اضافه کردن این متدها به AnalyticsService.java
+    // Additional methods for course analytics
 
     /**
      * Get course time distribution for students
@@ -2533,7 +2468,7 @@ public class AnalyticsService {
         return result;
     }
 
-// Helper methods که در کد قبلی موجود نبودند
+    // Helper methods for new analytics functionality
 
     private LocalDateTime calculateStartDate(LocalDateTime endDate, String period) {
         switch (period.toLowerCase()) {
@@ -2622,16 +2557,55 @@ public class AnalyticsService {
         return new ArrayList<>();
     }
 
+    private Map<String, Object> createContentStudyMetrics(List<ActivityLog> contentActivities, long totalStudents, Long courseId) {
+        Set<Long> uniqueStudents = contentActivities.stream()
+                .map(log -> log.getUser().getId())
+                .collect(Collectors.toSet());
 
+        double participationRate = totalStudents > 0 ? (double) uniqueStudents.size() / totalStudents * 100 : 0;
 
+        Map<String, Object> metrics = new HashMap<>();
+        metrics.put("participationRate", Math.round(participationRate));
+        metrics.put("totalViews", contentActivities.size());
+        metrics.put("averageViewsPerStudent", totalStudents > 0 ? (double) contentActivities.size() / totalStudents : 0);
+        metrics.put("completionRate", 78); // Placeholder - نیاز به محاسبه دقیق‌تر
+
+        return metrics;
+    }
+
+    private Map<String, Object> createChatActivityMetrics(List<ActivityLog> chatActivities, long totalStudents) {
+        Set<Long> uniqueStudents = chatActivities.stream()
+                .map(log -> log.getUser().getId())
+                .collect(Collectors.toSet());
+
+        double participationRate = totalStudents > 0 ? (double) uniqueStudents.size() / totalStudents * 100 : 0;
+
+        Map<String, Object> metrics = new HashMap<>();
+        metrics.put("participationRate", Math.round(participationRate));
+        metrics.put("totalMessages", chatActivities.size());
+        metrics.put("averageMessagesPerStudent", totalStudents > 0 ? (double) chatActivities.size() / totalStudents : 0);
+        metrics.put("activeParticipants", uniqueStudents.size());
+
+        return metrics;
+    }
 
     private Map<String, Object> createAssignmentMetrics(Long courseId, LocalDateTime startDate, LocalDateTime endDate, long totalStudents) {
-        // Implementation using assignment submissions
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findAll().stream()
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                .filter(as -> as.getSubmittedAt().isAfter(startDate) && as.getSubmittedAt().isBefore(endDate))
+                .collect(Collectors.toList());
+
+        Set<Long> uniqueStudents = assignmentSubmissions.stream()
+                .map(as -> as.getStudent().getId())
+                .collect(Collectors.toSet());
+
+        double participationRate = totalStudents > 0 ? (double) uniqueStudents.size() / totalStudents * 100 : 0;
+
         Map<String, Object> metrics = new HashMap<>();
-        metrics.put("participationRate", 84); // Placeholder
-        metrics.put("totalSubmissions", 42);
-        metrics.put("onTimeSubmissions", 38);
-        metrics.put("onTimeRate", 90.5);
+        metrics.put("participationRate", Math.round(participationRate));
+        metrics.put("totalSubmissions", assignmentSubmissions.size());
+        metrics.put("averageSubmissionsPerStudent", totalStudents > 0 ? (double) assignmentSubmissions.size() / totalStudents : 0);
+        metrics.put("completionRate", Math.round(participationRate));
 
         return metrics;
     }
@@ -2680,7 +2654,9 @@ public class AnalyticsService {
             weekData.put("chatMessages", weekActivities.stream()
                     .filter(log -> "CHAT_MESSAGE_SEND".equals(log.getActivityType()))
                     .count());
-            weekData.put("assignments", 8); // Placeholder
+            weekData.put("assignments", weekActivities.stream()
+                    .filter(log -> "ASSIGNMENT_SUBMISSION".equals(log.getActivityType()))
+                    .count());
             weekData.put("examAttempts", weekActivities.stream()
                     .filter(log -> "EXAM_SUBMISSION".equals(log.getActivityType()))
                     .count());
@@ -2690,57 +2666,5 @@ public class AnalyticsService {
         }
 
         return trend;
-    }
-
-    // Add missing methods که در fix_study_time artifacts تعریف شده بودند
-    public long calculateActualStudyTime(User student, List<Course> courses) {
-        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
-
-        List<ActivityLog> studyActivities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
-                .stream()
-                .filter(log -> isStudyActivity(log.getActivityType()))
-                .filter(log -> isCourseRelatedActivityForCourses(log, courses))
-                .collect(Collectors.toList());
-
-        return studyActivities.stream()
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
-    }
-
-    public long calculateCourseStudyTime(User student, Course course) {
-        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
-
-        List<ActivityLog> courseActivities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
-                .stream()
-                .filter(log -> isStudyActivity(log.getActivityType()))
-                .filter(log -> isCourseRelatedActivity(log, course.getId()))
-                .collect(Collectors.toList());
-
-        return courseActivities.stream()
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
-    }
-
-    private boolean isStudyActivity(String activityType) {
-        return Arrays.asList(
-                "CONTENT_VIEW",
-                "CONTENT_COMPLETION",
-                "LESSON_ACCESS",
-                "LESSON_COMPLETION",
-                "EXAM_SUBMISSION",
-                "EXERCISE_SUBMISSION",
-                "FILE_ACCESS"
-        ).contains(activityType);
-    }
-
-    private boolean isCourseRelatedActivityForCourses(ActivityLog log, List<Course> courses) {
-        for (Course course : courses) {
-            if (isCourseRelatedActivity(log, course.getId())) {
-                return true;
-            }
-        }
-        return false;
     }
 }
