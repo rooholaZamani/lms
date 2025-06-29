@@ -312,7 +312,6 @@ public class AnalyticsController {
         List<Map<String, Object>> lessonPerformance = analyticsService.getLessonPerformanceAnalysis(teacher);
         return ResponseEntity.ok(lessonPerformance);
     }
-    // اضافه کردن به AnalyticsController.java
 
     @GetMapping("/teacher/student/{studentId}/study-time")
     @Operation(summary = "Debug study time calculation", description = "Compare study time from different sources")
