@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface ProgressRepository extends JpaRepository<Progress, Long> {
     List<Progress> findByStudent(User student);
     Optional<Progress> findByStudentAndCourse(User student, Course course);
+    List<Progress> findByCourse(Course course);
 }
