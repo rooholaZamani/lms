@@ -19,7 +19,7 @@ public class BlankAnswer {
     @Column(length = 500)
     private String correctAnswer; // پاسخ صحیح
     
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String acceptableAnswers; // پاسخ‌های قابل قبول (JSON array)
     
     private Boolean caseSensitive = false; // حساس به حروف کوچک/بزرگ

@@ -22,7 +22,7 @@ public class AssignmentSubmission {
     @ManyToOne
     private User student;
 
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String comment;
 
     @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)

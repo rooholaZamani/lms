@@ -26,7 +26,7 @@ public class Question {
 
     private Integer points = 1; // Set default value
 
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String explanation; // توضیح سوال
 
     @Column(length = 2000)

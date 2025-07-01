@@ -20,7 +20,7 @@ public class Exam {
 
     private String title;
 
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String description;
 
     private Integer timeLimit; // in minutes, optional

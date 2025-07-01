@@ -25,7 +25,7 @@ public class Lesson {
 
     private String title;
 
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String description;
 
     private Integer orderIndex; // For ordering lessons within a course

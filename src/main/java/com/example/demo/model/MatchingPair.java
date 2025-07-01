@@ -23,10 +23,10 @@ public class MatchingPair {
     private String leftItemType = "TEXT"; // TEXT, IMAGE, AUDIO
     private String rightItemType = "TEXT"; // TEXT, IMAGE, AUDIO
     
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String leftItemUrl; // URL برای تصویر یا صوت
     
-    @Column(length = 1000) 
+    @Column(length = 2000)
     private String rightItemUrl; // URL برای تصویر یا صوت
     
     private Integer points = 1; // امتیاز این جفت

@@ -16,14 +16,14 @@ public class Answer {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String text;
 
     private Boolean correct = false;
 
     private String answerType = "TEXT"; // TEXT, IMAGE, AUDIO
 
-    @Column(length = 1000)
+    @Column(length = 2000)
     private String mediaUrl; // URL برای تصویر یا صوت
 
     private Integer points = 0; // امتیاز این گزینه (برای امتیازدهی جزئی)
