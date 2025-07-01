@@ -484,7 +484,7 @@ public class AnalyticsService {
         // Calculate total study hours
         long totalHours = allProgress.stream()
                 .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
-                .sum() ; // Convert minutes to hours
+                .sum() ; // Convert seconds to hours
 
         overview.put("totalStudents", totalStudents);
         overview.put("totalCourses", teacherCourses.size());
@@ -799,21 +799,21 @@ public class AnalyticsService {
 
 
     private double calculateEfficiency(String activityType, double avgTime) {
-        // Simple efficiency calculation based on activity type and time
+
         switch (activityType) {
             case "CONTENT_VIEW":
-                return avgTime < 20 ? 95 : (avgTime < 40 ? 85 : 70);
+                return avgTime < 1200 ? 95 : (avgTime < 2400 ? 85 : 70);
             case "ASSIGNMENT_SUBMISSION":
-                return avgTime < 30 ? 90 : (avgTime < 60 ? 80 : 65);
+                return avgTime < 1800 ? 90 : (avgTime < 3600 ? 80 : 65);
             default:
                 return 80.0;
         }
     }
 
     private String getDifficultyLabel(double avgTime) {
-        if (avgTime < 20) return "آسان";
-        if (avgTime < 45) return "متوسط";
-        if (avgTime < 70) return "سخت";
+        if (avgTime < 1200) return "آسان";      // 20 seconds = 1200 seconds
+        if (avgTime < 2700) return "متوسط";     // 45 seconds = 2700 seconds
+        if (avgTime < 4200) return "سخت";       // 70 seconds = 4200 seconds
         return "خیلی سخت";
     }
 
@@ -869,7 +869,7 @@ public class AnalyticsService {
     }
 
     private double calculateEngagementForContentType(String contentType, List<ActivityLog> activities) {
-        // Calculate engagement based on frequency and time spent
+        // محاسبه engagement بر اساس frequency و زمان صرف شده
         if (activities.isEmpty()) return 0.0;
 
         double avgTimeSpent = activities.stream()
@@ -877,8 +877,8 @@ public class AnalyticsService {
                 .average()
                 .orElse(0.0);
 
-        // Higher time spent = higher engagement (up to a point)
-        return Math.min(95.0, 50 + avgTimeSpent); // Simple formula
+        // Higher time spent = higher engagement (up to a point) - اکنون در ثانیه
+        return Math.min(95.0, 50 + (avgTimeSpent / 60)); // تقسیم بر 60 برای تنظیم scale
     }
 
     private double calculateAverageScoreForQuestions(List<Question> questions) {
@@ -887,8 +887,8 @@ public class AnalyticsService {
     }
 
     private double calculateAverageTimeForQuestions(List<Question> questions) {
-        // Calculate average time spent on these questions
-        return 3.5; // Placeholder - 3.5 minutes average
+        // Calculate average time spent on these questions in seconds
+        return 210.0; // Placeholder - 3.5 seconds = 210 seconds
     }
 
     private double calculateDifficultyRating(List<Question> questions) {
@@ -1338,13 +1338,13 @@ public class AnalyticsService {
         stats.put("completionRate", Math.round(completionRate * 10.0) / 10.0);
 
         // مجموع ساعات مطالعه
-        long totalStudyMinutes = activityLogRepository
+        long totalStudyseconds = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, LocalDateTime.now().minusDays(90), LocalDateTime.now())
                 .stream()
                 .filter(log -> log.getRelatedEntityId() != null)
                 .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
                 .sum();
-        stats.put("totalStudyHours", Math.round(totalStudyMinutes  * 10.0) / 10.0);
+        stats.put("totalStudyHours", Math.round(totalStudyseconds  * 10.0) / 10.0);
 
         // امتیاز پایداری (بر اساس فعالیت روزانه)
         double consistencyScore = calculateConsistencyScore(student, 30);
@@ -1418,7 +1418,7 @@ public class AnalyticsService {
         LocalDateTime endDate = LocalDateTime.now();
 
         for (int i = days - 1; i >= 0; i--) {
-            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withMinute(0).withSecond(0);
+            LocalDateTime dayStart = endDate.minusDays(i).withHour(0).withSecond(0).withSecond(0);
             LocalDateTime dayEnd = dayStart.plusDays(1);
 
             List<ActivityLog> dayActivities = activityLogRepository
@@ -1918,7 +1918,7 @@ public class AnalyticsService {
             String dateStr = current.toLocalDate().toString();
             timelineMap.put(dateStr, new HashMap<>());
             timelineMap.get(dateStr).put("date", dateStr);
-            timelineMap.get(dateStr).put("totalMinutes", 0L);
+            timelineMap.get(dateStr).put("totalseconds", 0L);
             timelineMap.get(dateStr).put("activeStudents", 0);
             current = current.plusDays(1);
         }
@@ -1928,8 +1928,8 @@ public class AnalyticsService {
             String dateStr = activity.getTimestamp().toLocalDate().toString();
             if (timelineMap.containsKey(dateStr)) {
                 Map<String, Object> dayData = timelineMap.get(dateStr);
-                Long currentMinutes = (Long) dayData.get("totalMinutes");
-                dayData.put("totalMinutes", currentMinutes + activity.getTimeSpent());
+                Long currentseconds = (Long) dayData.get("totalseconds");
+                dayData.put("totalseconds", currentseconds + activity.getTimeSpent());
 
                 // Count unique students (simplified)
                 Integer currentStudents = (Integer) dayData.get("activeStudents");
@@ -2876,7 +2876,7 @@ public class AnalyticsService {
                     studentData.put("studentId", student.getId());
                     studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
                     studentData.put("value", Math.round(progress.getTotalStudyTime() * 10.0) / 10.0); // Convert to hours
-                    studentData.put("totalMinutes", progress.getTotalStudyTime());
+                    studentData.put("totalseconds", progress.getTotalStudyTime());
                     return studentData;
                 })
                 .collect(Collectors.toList());

@@ -50,7 +50,7 @@ public class Progress {
     @Column(name = "content_id")
     private Set<Long> completedContent = new HashSet<>();
 
-    private Long totalStudyTime; // in minutes
+    private Long totalStudyTime; // in seconds
     private LocalDateTime lastLoginTime;
     private Integer currentStreak;
 

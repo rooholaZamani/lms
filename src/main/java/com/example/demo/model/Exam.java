@@ -23,7 +23,7 @@ public class Exam {
     @Column(length = 2000)
     private String description;
 
-    private Integer timeLimit; // in minutes, optional
+    private Integer timeLimit; // in seconds, optional
 
     private Integer passingScore; // minimum score to pass
 

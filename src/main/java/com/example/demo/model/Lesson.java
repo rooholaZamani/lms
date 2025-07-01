@@ -31,7 +31,7 @@ public class Lesson {
     private Integer orderIndex; // For ordering lessons within a course
 
     @Column(nullable = false, columnDefinition = "INTEGER DEFAULT 0")
-    private Integer duration = 0; // Duration in minutes with default value
+    private Integer duration = 0; // Duration in seconds with default value
 
     @CreatedDate
     @Column(name = "created_at", nullable = true, updatable = false)
