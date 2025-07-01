@@ -45,6 +45,6 @@ public class Content {
     @Column(name = "updated_at", nullable = true)
     private LocalDateTime updatedAt;
 
-    private Long avgViewTime;
+    private Long avgViewTime; // Average viewing time in seconds (if tracked)
 
 }

@@ -262,14 +262,14 @@ public class AnalyticsService {
 
         if (progress != null) {
             analysis.put("completionPercentage", progress.getCompletionPercentage());
-            analysis.put("totalStudyTime", progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L);
+            analysis.put("totalStudyTimeSeconds", progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L);
             analysis.put("streak", progress.getCurrentStreak() != null ? progress.getCurrentStreak() : 0);
             analysis.put("lastAccessed", progress.getLastAccessed());
             analysis.put("completedLessons", progress.getCompletedLessons().size());
             analysis.put("totalLessons", progress.getTotalLessons() != null ? progress.getTotalLessons() : 0);
         } else {
             analysis.put("completionPercentage", 0.0);
-            analysis.put("totalStudyTime", 0L);
+            analysis.put("totalStudyTimeSeconds", 0L);
             analysis.put("streak", 0);
             analysis.put("lastAccessed", null);
             analysis.put("completedLessons", 0);
@@ -300,9 +300,9 @@ public class AnalyticsService {
         long totalStudyTime = progress != null && progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L;
         int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
 
-        analysis.put("averageTimePerLesson", completedLessons > 0 ?
+         analysis.put("averageTimePerLessonSeconds", completedLessons > 0 ?
                 Math.round((totalStudyTime / completedLessons) * 10.0) / 10.0 : 0);
-        analysis.put("averageTimePerExam", examSubmissions.isEmpty() ? 0 :
+        analysis.put("averageTimePerExamSeconds", examSubmissions.isEmpty() ? 0 :
                 Math.round(examSubmissions.stream().mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
                         .average().orElse(0.0) * 10.0) / 10.0);
 
@@ -799,21 +799,20 @@ public class AnalyticsService {
 
 
     private double calculateEfficiency(String activityType, double avgTime) {
-
         switch (activityType) {
             case "CONTENT_VIEW":
-                return avgTime < 1200 ? 95 : (avgTime < 2400 ? 85 : 70);
+                return avgTime < 300 ? 95 : (avgTime < 600 ? 85 : 70); // 5-10 minutes
             case "ASSIGNMENT_SUBMISSION":
-                return avgTime < 1800 ? 90 : (avgTime < 3600 ? 80 : 65);
+                return avgTime < 1800 ? 90 : (avgTime < 3600 ? 80 : 65); // 30-60 minutes
             default:
                 return 80.0;
         }
     }
 
     private String getDifficultyLabel(double avgTime) {
-        if (avgTime < 1200) return "آسان";      // 20 seconds = 1200 seconds
-        if (avgTime < 2700) return "متوسط";     // 45 seconds = 2700 seconds
-        if (avgTime < 4200) return "سخت";       // 70 seconds = 4200 seconds
+        if (avgTime < 120) return "آسان";      // 2 minutes = 120 seconds
+        if (avgTime < 300) return "متوسط";     // 5 minutes = 300 seconds
+        if (avgTime < 600) return "سخت";       // 10 minutes = 600 seconds
         return "خیلی سخت";
     }
 
@@ -878,7 +877,7 @@ public class AnalyticsService {
                 .orElse(0.0);
 
         // Higher time spent = higher engagement (up to a point) - اکنون در ثانیه
-        return Math.min(95.0, 50 + (avgTimeSpent / 60)); // تقسیم بر 60 برای تنظیم scale
+        return Math.min(95.0, 50 + (avgTimeSpent / 10));
     }
 
     private double calculateAverageScoreForQuestions(List<Question> questions) {
@@ -1051,7 +1050,7 @@ public class AnalyticsService {
 
             // Calculate study time for each course from ActivityLog
             long courseStudyTime = calculateCourseStudyTime(student, course);
-            courseData.put("studyTime", Math.round(courseStudyTime * 10.0) / 10.0);
+            courseData.put("studyTimeSeconds", Math.round(courseStudyTime * 10.0) / 10.0);
 
             courseDetails.add(courseData);
         }
@@ -1482,7 +1481,7 @@ public class AnalyticsService {
                     Map<String, Object> item = new HashMap<>();
                     item.put("label", entry.getKey());
                     item.put("value", entry.getValue());
-                    item.put("hours", Math.round(entry.getValue() * 10.0) / 10.0);
+                    item.put("seconds", Math.round(entry.getValue()) );
                     return item;
                 })
                 .collect(Collectors.toList());

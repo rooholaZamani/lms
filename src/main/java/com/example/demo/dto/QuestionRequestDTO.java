@@ -13,7 +13,7 @@ public class QuestionRequestDTO {
     private String explanation;
     private String hint;
     private String template; // برای fill in the blanks
-    private Integer timeLimit;
+    private Integer timeLimit; // Time limit  in seconds
     private Boolean isRequired = true;
     private Double difficulty;
     

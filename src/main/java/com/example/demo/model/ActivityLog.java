@@ -25,7 +25,7 @@ public class ActivityLog {
     private String activityType;
     private Long relatedEntityId;
     private LocalDateTime timestamp;
-    private Long timeSpent;
+    private Long timeSpent; // Time spent on exam in seconds
 
     @ElementCollection  // Add this for Map storage
     @CollectionTable(name = "activity_metadata")

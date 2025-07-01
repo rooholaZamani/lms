@@ -10,7 +10,7 @@ public class ExamDTO {
     private Long id;
     private String title;
     private String description;
-    private Integer timeLimit;
+    private Integer timeLimit; // Time limit  in seconds
     private Integer passingScore;
     
     // New finalization fields

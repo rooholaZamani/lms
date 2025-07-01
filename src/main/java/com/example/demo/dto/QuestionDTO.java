@@ -15,7 +15,7 @@ public class QuestionDTO {
     private String explanation;
     private String hint;
     private String template;
-    private Integer timeLimit;
+    private Integer timeLimit; // Time limit  in seconds
     private Boolean isRequired; // Fixed: was "Required" - should be "isRequired"
     private Double difficulty;
 

@@ -26,5 +26,5 @@ public class StudentAnswerDTO {
     // برای سوالات دسته‌بندی
     private Map<String, String> categorizationAnswers; // item -> category
     
-    private Long timeSpent; // زمان صرف شده (میلی‌ثانیه)
+    private Long timeSpent; // Time spent on activity in seconds // زمان صرف شده (میلی‌ثانیه)
 }
