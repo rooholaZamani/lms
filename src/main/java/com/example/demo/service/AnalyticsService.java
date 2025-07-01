@@ -301,10 +301,10 @@ public class AnalyticsService {
         int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
 
         analysis.put("averageTimePerLesson", completedLessons > 0 ?
-                Math.round((totalStudyTime / completedLessons) / 3600.0 * 10.0) / 10.0 : 0);
+                Math.round((totalStudyTime / completedLessons) * 10.0) / 10.0 : 0);
         analysis.put("averageTimePerExam", examSubmissions.isEmpty() ? 0 :
                 Math.round(examSubmissions.stream().mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
-                        .average().orElse(0.0) / 3600.0 * 10.0) / 10.0);
+                        .average().orElse(0.0) * 10.0) / 10.0);
 
         // Calculate class rank
         List<Progress> allProgress = progressRepository.findAll().stream()
@@ -368,7 +368,7 @@ public class AnalyticsService {
             examData.put("examName", exam.getTitle());
             examData.put("score", submission.getScore());
             examData.put("timeSpent", submission.getTimeSpent() != null ?
-                    Math.round(submission.getTimeSpent() / 3600.0 * 10.0) / 10.0 : 0.0);
+                    Math.round(submission.getTimeSpent()  * 10.0) / 10.0 : 0.0);
             examData.put("passed", submission.isPassed());
             examData.put("date", submission.getSubmissionTime());
 
@@ -484,7 +484,7 @@ public class AnalyticsService {
         // Calculate total study hours
         long totalHours = allProgress.stream()
                 .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
-                .sum() / 60; // Convert minutes to hours
+                .sum() ; // Convert minutes to hours
 
         overview.put("totalStudents", totalStudents);
         overview.put("totalCourses", teacherCourses.size());
@@ -977,9 +977,9 @@ public class AnalyticsService {
 
         performance.put("enrolledCourses", studentCourses.size());
         performance.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
-        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities / 3600.0 * 10.0) / 10.0); // Convert seconds to hours
+        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities  * 10.0) / 10.0); // Convert seconds to hours
         performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 :
-                Math.round((totalStudyTimeFromActivities / studentCourses.size()) / 3600.0 * 10.0) / 10.0);
+                Math.round((totalStudyTimeFromActivities / studentCourses.size())  * 10.0) / 10.0);
 
         // Exam performance
         List<Course> finalStudentCourses1 = studentCourses;
@@ -1051,7 +1051,7 @@ public class AnalyticsService {
 
             // Calculate study time for each course from ActivityLog
             long courseStudyTime = calculateCourseStudyTime(student, course);
-            courseData.put("studyTime", Math.round(courseStudyTime / 3600.0 * 10.0) / 10.0);
+            courseData.put("studyTime", Math.round(courseStudyTime * 10.0) / 10.0);
 
             courseDetails.add(courseData);
         }
@@ -1301,7 +1301,7 @@ public class AnalyticsService {
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
             activityData.put("timeSpent", activity.getTimeSpent() != null ?
-                    Math.round(activity.getTimeSpent() / 3600.0 * 10.0) / 10.0 : 0.0);
+                    Math.round(activity.getTimeSpent() * 10.0) / 10.0 : 0.0);
             activityData.put("description", generateActivityDescription(activity));
 
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
@@ -1344,7 +1344,7 @@ public class AnalyticsService {
                 .filter(log -> log.getRelatedEntityId() != null)
                 .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
                 .sum();
-        stats.put("totalStudyHours", Math.round(totalStudyMinutes / 60.0 * 10.0) / 10.0);
+        stats.put("totalStudyHours", Math.round(totalStudyMinutes  * 10.0) / 10.0);
 
         // امتیاز پایداری (بر اساس فعالیت روزانه)
         double consistencyScore = calculateConsistencyScore(student, 30);
@@ -1435,7 +1435,7 @@ public class AnalyticsService {
             dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
             dayData.put("totalTime", Math.round(dayActivities.stream()
                     .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                    .sum() / 3600.0 * 10.0) / 10.0);
+                    .sum() * 10.0) / 10.0);
 
             weeklyData.add(dayData);
         }
@@ -1482,7 +1482,7 @@ public class AnalyticsService {
                     Map<String, Object> item = new HashMap<>();
                     item.put("label", entry.getKey());
                     item.put("value", entry.getValue());
-                    item.put("hours", Math.round(entry.getValue() / 3600.0 * 10.0) / 10.0);
+                    item.put("hours", Math.round(entry.getValue() * 10.0) / 10.0);
                     return item;
                 })
                 .collect(Collectors.toList());
@@ -2875,7 +2875,7 @@ public class AnalyticsService {
                     User student = progress.getStudent();
                     studentData.put("studentId", student.getId());
                     studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
-                    studentData.put("value", Math.round(progress.getTotalStudyTime() / 3600.0 * 10.0) / 10.0); // Convert to hours
+                    studentData.put("value", Math.round(progress.getTotalStudyTime() * 10.0) / 10.0); // Convert to hours
                     studentData.put("totalMinutes", progress.getTotalStudyTime());
                     return studentData;
                 })
@@ -2950,7 +2950,7 @@ public class AnalyticsService {
                     .orElse(0.0);
 
             // Calculate difficulty score (based on error rate and time)
-            double difficultyScore = Math.min(100, errorRate + (averageTime / 60.0 * 10));
+            double difficultyScore = Math.min(100, errorRate + (averageTime * 10));
 
             // Only include challenging questions (difficulty > 60%)
             if (difficultyScore > 60) {
