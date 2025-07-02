@@ -158,6 +158,24 @@ public class CourseController {
         return ResponseEntity.ok(students);
     }
 
+    @PutMapping("/{courseId}")
+    @Operation(summary = "Update course", description = "Update course information including status")
+    public ResponseEntity<CourseDTO> updateCourse(
+            @PathVariable Long courseId,
+            @RequestBody Course courseData,
+            Authentication authentication) {
 
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // بررسی مالکیت دوره
+        Course existingCourse = courseService.getCourseById(courseId);
+        if (!existingCourse.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied: You can only update your own courses");
+        }
+
+        // به‌روزرسانی دوره
+        Course updatedCourse = courseService.updateCourse(courseId, courseData);
+        return ResponseEntity.ok(dtoMapperService.mapToCourseDTO(updatedCourse));
+    }
 
 }

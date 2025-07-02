@@ -27,6 +27,10 @@ public class Course {
     @Column(length = 2000)
     private String prerequisite; // Course prerequisite as text
 
+
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
+    private Boolean active = true;
+
     @ManyToOne
     private User teacher;
 

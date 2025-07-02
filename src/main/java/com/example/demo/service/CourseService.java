@@ -165,4 +165,31 @@ public class CourseService {
 
         return studentsData;
     }
+    public Course updateCourse(Long courseId, Course courseData) {
+        Course existingCourse = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found with id: " + courseId));
+
+        // به‌روزرسانی فقط فیلدهای ارسال شده
+        if (courseData.getTitle() != null && !courseData.getTitle().trim().isEmpty()) {
+            existingCourse.setTitle(courseData.getTitle().trim());
+        }
+
+        if (courseData.getDescription() != null) {
+            existingCourse.setDescription(courseData.getDescription().trim());
+        }
+
+        if (courseData.getActive() != null) {
+            existingCourse.setActive(courseData.getActive());
+        }
+
+        return courseRepository.save(existingCourse);
+    }
+
+    public List<Course> getActiveCourses() {
+        return courseRepository.findByActiveTrue();
+    }
+
+    public List<Course> getTeacherActiveCourses(User teacher) {
+        return courseRepository.findByTeacherAndActiveTrue(teacher);
+    }
 }

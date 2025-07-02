@@ -63,6 +63,7 @@ public class DTOMapperService {
         dto.setId(course.getId());
         dto.setTitle(course.getTitle());
         dto.setDescription(course.getDescription());
+        dto.setActive(course.getActive());
 
         // Map teacher (always included)
         if (course.getTeacher() != null) {
@@ -119,7 +120,7 @@ public class DTOMapperService {
 
     // Add convenience method for backward compatibility
     public CourseDTO mapToCourseDTO(Course course) {
-        return mapToCourseDTO(course, true); // Default to full details
+        return mapToCourseDTO(course, true);
     }
 
     // UPDATE the list mapping methods:

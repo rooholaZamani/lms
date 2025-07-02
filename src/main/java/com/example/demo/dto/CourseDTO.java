@@ -13,6 +13,7 @@ public class CourseDTO {
     private String prerequisite; // Add this field
     private Integer totalDuration; // Add this field
     private UserSummaryDTO teacher;
+    private Boolean active;
     private List<LessonSummaryDTO> lessons = new ArrayList<>();
     private List<UserSummaryDTO> enrolledStudents = new ArrayList<>();
 }
