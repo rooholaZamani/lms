@@ -552,6 +552,9 @@ public class DTOMapperService {
                             .collect(Collectors.toList());
                     dto.setAnswers(answerDTOs);
                 }
+                if (question.getCategories() != null) {
+                    dto.setCategories(new ArrayList<>(question.getCategories()));
+                }
                 break;
 
             case FILL_IN_THE_BLANKS:

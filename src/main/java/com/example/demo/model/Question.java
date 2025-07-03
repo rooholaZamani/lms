@@ -43,6 +43,13 @@ public class Question {
     @ManyToOne
     private Exam exam;
 
+
+    @ElementCollection
+    @CollectionTable(name = "question_categories",
+            joinColumns = @JoinColumn(name = "question_id"))
+    @Column(name = "category")
+    private List<String> categories = new ArrayList<>();
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "question_id")
     private List<Answer> answers = new ArrayList<>();

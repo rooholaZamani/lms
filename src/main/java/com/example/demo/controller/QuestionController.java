@@ -39,6 +39,28 @@ public class QuestionController {
         return ResponseEntity.ok(dtoMapperService.mapToQuestionDTO(savedQuestion));
     }
 
+
+    private void convertCategorizationItems(QuestionRequestDTO dto, Question question) {
+        // ❌ MISSING: Save categories list
+        if (dto.getCategories() != null) {
+            question.setCategories(new ArrayList<>(dto.getCategories()));
+        }
+
+        List<Answer> answers = new ArrayList<>();
+        if (dto.getCategorizationItems() != null) {
+            for (CategorizationItemDTO itemDTO : dto.getCategorizationItems()) {
+                Answer answer = new Answer();
+                answer.setText(itemDTO.getText());
+                answer.setCategory(itemDTO.getCorrectCategory());
+                answer.setAnswerType(itemDTO.getItemType());
+                answer.setMediaUrl(itemDTO.getMediaUrl());
+                answer.setPoints(itemDTO.getPoints());
+                answer.setCorrect(true);
+                answers.add(answer);
+            }
+        }
+        question.setAnswers(answers);
+    }
     private Question convertDTOToQuestion(QuestionRequestDTO dto) {
         Question question = new Question();
         question.setText(dto.getText());
@@ -142,24 +164,5 @@ public class QuestionController {
         }
         
         question.setMatchingPairs(matchingPairs);
-    }
-
-    private void convertCategorizationItems(QuestionRequestDTO dto, Question question) {
-        List<Answer> answers = new ArrayList<>();
-        
-        if (dto.getCategorizationItems() != null) {
-            for (CategorizationItemDTO itemDTO : dto.getCategorizationItems()) {
-                Answer answer = new Answer();
-                answer.setText(itemDTO.getText());
-                answer.setCategory(itemDTO.getCorrectCategory());
-                answer.setAnswerType(itemDTO.getItemType());
-                answer.setMediaUrl(itemDTO.getMediaUrl());
-                answer.setPoints(itemDTO.getPoints());
-                answer.setCorrect(true); // همه آیتم‌ها صحیح هستند، فقط دسته‌بندی مهم است
-                answers.add(answer);
-            }
-        }
-        
-        question.setAnswers(answers);
     }
 }
