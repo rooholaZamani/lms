@@ -386,4 +386,97 @@ public class ExamService {
         // Delete the exam (questions will be cascade deleted due to CascadeType.ALL)
         examRepository.delete(exam);
     }
+
+
+    @Transactional
+    public Question updateQuestion(Long questionId, Question questionDetails, User teacher) {
+        Question question = questionRepository.findById(questionId)
+                .orElseThrow(() -> new RuntimeException("Question not found"));
+
+        Exam exam = question.getExam();
+
+        // Security check: verify teacher owns the exam
+        if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Unauthorized: You can only update questions in your own exams");
+        }
+
+        // Business rule: only allow updating if exam is still in draft status
+        if (!exam.canBeModified()) {
+            throw new RuntimeException("Cannot update questions in finalized exam");
+        }
+
+        // Update question fields
+        question.setText(questionDetails.getText());
+        question.setQuestionType(questionDetails.getQuestionType());
+        question.setPoints(questionDetails.getPoints());
+        question.setExplanation(questionDetails.getExplanation());
+        question.setHint(questionDetails.getHint());
+        question.setTimeLimit(questionDetails.getTimeLimit());
+        question.setDifficulty(questionDetails.getDifficulty());
+        question.setIsRequired(questionDetails.getIsRequired());
+
+        // Clear existing related data and add new ones based on question type
+        question.getAnswers().clear();
+        question.getBlankAnswers().clear();
+        question.getMatchingPairs().clear();
+        question.getCategories().clear();
+
+        // Copy new related data from questionDetails
+        if (questionDetails.getAnswers() != null) {
+            for (Answer answer : questionDetails.getAnswers()) {
+                question.getAnswers().add(answer);
+            }
+        }
+
+        if (questionDetails.getBlankAnswers() != null) {
+            for (BlankAnswer blankAnswer : questionDetails.getBlankAnswers()) {
+                question.getBlankAnswers().add(blankAnswer);
+            }
+        }
+
+        if (questionDetails.getMatchingPairs() != null) {
+            for (MatchingPair pair : questionDetails.getMatchingPairs()) {
+                question.getMatchingPairs().add(pair);
+            }
+        }
+
+        if (questionDetails.getCategories() != null) {
+            question.getCategories().addAll(questionDetails.getCategories());
+        }
+
+        return questionRepository.save(question);
+    }
+    @Transactional
+    public void deleteQuestion(Long questionId, User teacher) {
+        Question question = questionRepository.findById(questionId)
+                .orElseThrow(() -> new RuntimeException("Question not found"));
+
+        Exam exam = question.getExam();
+
+        // Security check: verify teacher owns the exam
+        if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Unauthorized: You can only delete questions from your own exams");
+        }
+
+        // Business rule: only allow deletion if exam is still in draft status
+        if (!exam.canBeModified()) {
+            throw new RuntimeException("Cannot delete questions from finalized exam");
+        }
+
+        // Check if any students have submitted this exam
+        List<Submission> submissions = submissionRepository.findByExam(exam);
+        if (!submissions.isEmpty()) {
+            throw new RuntimeException("Cannot delete question: " + submissions.size() +
+                    " student(s) have already submitted this exam");
+        }
+
+        // Ensure exam has at least 2 questions (can't delete the last question)
+        List<Question> examQuestions = questionRepository.findByExamOrderById(exam);
+        if (examQuestions.size() <= 1) {
+            throw new RuntimeException("Cannot delete question: Exam must have at least one question");
+        }
+
+        // Delete the question (answers, blank answers, matching pairs will be cascade deleted)
+        questionRepository.delete(question);
+    }
 }

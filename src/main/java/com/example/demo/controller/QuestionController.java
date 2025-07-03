@@ -5,12 +5,16 @@ import com.example.demo.model.*;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.ExamService;
 import com.example.demo.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/questions")
@@ -164,5 +168,89 @@ public class QuestionController {
         }
         
         question.setMatchingPairs(matchingPairs);
+    }
+    @PutMapping("/{questionId}")
+    @Operation(
+            summary = "Update question",
+            description = "Update an existing question (only allowed for draft exams)"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> updateQuestion(
+            @PathVariable Long questionId,
+            @RequestBody QuestionRequestDTO questionRequest,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // Verify user is a teacher
+            boolean isTeacher = teacher.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+            if (!isTeacher) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Access denied: Only teachers can update questions");
+                return ResponseEntity.status(403).body(errorResponse);
+            }
+
+            Question question = convertDTOToQuestion(questionRequest);
+            Question updatedQuestion = examService.updateQuestion(questionId, question, teacher);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Question updated successfully");
+            response.put("question", dtoMapperService.mapToQuestionDTO(updatedQuestion));
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    @DeleteMapping("/{questionId}")
+    @Operation(
+            summary = "Delete question",
+            description = "Delete a question from exam (only allowed for draft exams without submissions)"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> deleteQuestion(
+            @PathVariable Long questionId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // Verify user is a teacher
+            boolean isTeacher = teacher.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+            if (!isTeacher) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Access denied: Only teachers can delete questions");
+                return ResponseEntity.status(403).body(errorResponse);
+            }
+
+            examService.deleteQuestion(questionId, teacher);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Question deleted successfully");
+            response.put("questionId", questionId);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("questionId", questionId);
+
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
     }
 }
