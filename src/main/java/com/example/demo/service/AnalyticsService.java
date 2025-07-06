@@ -2908,6 +2908,7 @@ public class AnalyticsService {
     /**
      * Get challenging questions for a specific course
      */
+
     public Map<String, Object> getChallengingQuestionsForCourse(Long courseId, String period) {
         Map<String, Object> result = new HashMap<>();
 
@@ -2942,7 +2943,8 @@ public class AnalyticsService {
             long incorrectAnswers = submissions.stream()
                     .mapToLong(sub -> {
                         // Check if student answered this question correctly
-                        Long answerId = sub.getAnswers().get(question.getId());
+                        Map<Long, Long> submissionAnswers = getSubmissionAnswers(sub);
+                        Long answerId = submissionAnswers.get(question.getId());
                         if (answerId == null) return 1; // No answer = incorrect
 
                         return question.getAnswers().stream()
@@ -2955,53 +2957,59 @@ public class AnalyticsService {
 
             double errorRate = totalAnswers > 0 ? (double) incorrectAnswers / totalAnswers * 100 : 0;
 
-            // Calculate average time spent on this question
-            double averageTime = submissions.stream()
-                    .mapToDouble(sub -> {
-                        // Estimate time per question (total time / number of questions)
-                        int questionCount = sub.getExam().getQuestions().size();
-                        return questionCount > 0 ? (double) sub.getTimeSpent() / questionCount : 0;
-                    })
-                    .average()
-                    .orElse(0.0);
-
-            // Calculate difficulty score (based on error rate and time)
-            double difficultyScore = Math.min(100, errorRate + (averageTime * 10));
-
-            // Only include challenging questions (difficulty > 60%)
-            if (difficultyScore > 60) {
+            // Only include questions with high error rate (> 60%)
+            if (errorRate > 60) {
                 Map<String, Object> questionData = new HashMap<>();
-                questionData.put("id", question.getId());
-                questionData.put("title", "سوال " + question.getId());
-                questionData.put("text", question.getText());
-                questionData.put("difficultyScore", Math.round(difficultyScore));
-                questionData.put("errorRate", Math.round(errorRate));
-                questionData.put("averageTime", Math.round(averageTime));
-                questionData.put("totalAnswers", totalAnswers);
-                questionData.put("examTitle", question.getExam().getTitle());
+                questionData.put("questionId", question.getId());
+                questionData.put("questionText", question.getText());
+                questionData.put("errorRate", Math.round(errorRate * 100.0) / 100.0);
+                questionData.put("difficulty", Math.round((errorRate / 100.0 * 5) * 100.0) / 100.0); // Scale 0-5
+                questionData.put("totalAttempts", totalAnswers);
+                questionData.put("incorrectCount", incorrectAnswers);
+                questionData.put("topic", question.getExam() != null ? question.getExam().getTitle() : "General");
+
+                // Add lesson and exam info
+                if (question.getExam() != null && question.getExam().getLesson() != null) {
+                    questionData.put("lessonTitle", question.getExam().getLesson().getTitle());
+                    questionData.put("examTitle", question.getExam().getTitle());
+                }
 
                 challengingQuestions.add(questionData);
 
+                // Update statistics
                 totalDifficult++;
-                needsReview++;
+                totalDifficultyScore += errorRate;
+                if (errorRate > 80) needsReview++;
+                if (errorRate > maxDifficulty) maxDifficulty = errorRate;
             }
-
-            totalDifficultyScore += difficultyScore;
-            maxDifficulty = Math.max(maxDifficulty, difficultyScore);
         }
 
-        // Sort by difficulty score descending
-        challengingQuestions.sort((a, b) ->
-                Integer.compare((Integer) b.get("difficultyScore"), (Integer) a.get("difficultyScore")));
+        // Sort by error rate (descending)
+        challengingQuestions.sort((q1, q2) -> {
+            Double rate1 = (Double) q1.get("errorRate");
+            Double rate2 = (Double) q2.get("errorRate");
+            return rate2.compareTo(rate1);
+        });
 
-        // Prepare statistics
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("mostDifficult", Math.round(maxDifficulty));
-        stats.put("averageDifficulty", courseQuestions.isEmpty() ? 0 : Math.round(totalDifficultyScore / courseQuestions.size()));
-        stats.put("needsReview", needsReview);
+        // Limit to top 20 most challenging
+        if (challengingQuestions.size() > 20) {
+            challengingQuestions = challengingQuestions.subList(0, 20);
+        }
 
-        result.put("questions", challengingQuestions);
-        result.put("stats", stats);
+        // Build summary statistics
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalDifficultQuestions", totalDifficult);
+        summary.put("averageDifficulty", totalDifficult > 0 ? Math.round(totalDifficultyScore / totalDifficult * 100.0) / 100.0 : 0);
+        summary.put("questionsNeedingReview", needsReview);
+        summary.put("maxDifficulty", Math.round(maxDifficulty * 100.0) / 100.0);
+        summary.put("period", period);
+
+        result.put("challengingQuestions", challengingQuestions);
+        result.put("summary", summary);
+        result.put("course", Map.of(
+                "id", course.getId(),
+                "title", course.getTitle()
+        ));
 
         return result;
     }
