@@ -179,6 +179,7 @@ public class AnalyticsService {
         List<Map<String, Object>> questionAnalysis = new ArrayList<>();
 
         List<Question> questions = questionRepository.findByExamOrderById(exam);
+        Map<Long, Long> submissionAnswers = getSubmissionAnswers(submission);
 
         for (Question question : questions) {
             Map<String, Object> questionData = new HashMap<>();
@@ -188,7 +189,7 @@ public class AnalyticsService {
             questionData.put("points", question.getPoints());
 
             // Get student's answer
-            Long answerId = submission.getAnswers().get(question.getId());
+            Long answerId = submissionAnswers.get(question.getId());
 
             if (answerId != null) {
                 // Find the answer object
@@ -244,6 +245,71 @@ public class AnalyticsService {
                 allSubmissions.stream().mapToDouble(Submission::getScore).toArray()));
 
         return examDetails;
+    }
+
+    // Replace the getChallengingQuestions method
+    public List<Map<String, Object>> getChallengingQuestions(User teacher) {
+        List<Question> teacherQuestions = questionRepository.findByTeacher(teacher);
+        List<Map<String, Object>> challengingQuestions = new ArrayList<>();
+
+        for (Question question : teacherQuestions) {
+            // Get all submissions for this question
+            List<Submission> submissions = submissionRepository.findAll().stream()
+                    .filter(s -> {
+                        Map<Long, Long> answers = getSubmissionAnswers(s);
+                        return answers.containsKey(question.getId());
+                    })
+                    .collect(Collectors.toList());
+
+            if (submissions.isEmpty()) continue;
+
+            // Calculate correct rate
+            long correctAnswers = submissions.stream()
+                    .filter(s -> {
+                        Map<Long, Long> answers = getSubmissionAnswers(s);
+                        Long answerId = answers.get(question.getId());
+                        if (answerId == null) return false;
+
+                        return question.getAnswers().stream()
+                                .filter(a -> a.getId().equals(answerId))
+                                .findFirst()
+                                .map(Answer::getCorrect)
+                                .orElse(false);
+                    })
+                    .count();
+
+            double correctRate = (double) correctAnswers / submissions.size() * 100;
+
+            // Only include challenging questions (low correct rate)
+            if (correctRate < 70) {
+                Map<String, Object> questionData = new HashMap<>();
+                questionData.put("id", question.getId());
+                questionData.put("text", question.getText());
+                questionData.put("difficulty", 100 - correctRate);
+                questionData.put("correctRate", correctRate);
+                questionData.put("attempts", submissions.size());
+                questionData.put("topic", "General");
+
+                // Calculate average time spent on this question
+                double avgTime = submissions.stream()
+                        .mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() / submissions.size() : 0)
+                        .average()
+                        .orElse(0.0);
+
+                questionData.put("avgTimeSeconds", avgTime);
+
+                challengingQuestions.add(questionData);
+            }
+        }
+
+        // Sort by difficulty (descending)
+        challengingQuestions.sort((q1, q2) -> {
+            Double difficulty1 = (Double) q1.get("difficulty");
+            Double difficulty2 = (Double) q2.get("difficulty");
+            return difficulty2.compareTo(difficulty1);
+        });
+
+        return challengingQuestions;
     }
 
     /**
@@ -721,67 +787,6 @@ public class AnalyticsService {
         return trends;
     }
 
-    /**
-     * Get challenging questions
-     */
-    public List<Map<String, Object>> getChallengingQuestions(User teacher) {
-        List<Question> teacherQuestions = questionRepository.findByTeacher(teacher);
-        List<Map<String, Object>> challengingQuestions = new ArrayList<>();
-
-        for (Question question : teacherQuestions) {
-            // Get all submissions for this question
-            List<Submission> submissions = submissionRepository.findAll().stream()
-                    .filter(s -> s.getAnswers().containsKey(question.getId()))
-                    .collect(Collectors.toList());
-
-            if (submissions.isEmpty()) continue;
-
-            // Calculate correct rate
-            long correctAnswers = submissions.stream()
-                    .filter(s -> {
-                        Long answerId = s.getAnswers().get(question.getId());
-                        if (answerId == null) return false;
-
-                        return question.getAnswers().stream()
-                                .filter(a -> a.getId().equals(answerId))
-                                .findFirst()
-                                .map(Answer::getCorrect)
-                                .orElse(false);
-                    })
-                    .count();
-
-            double correctRate = (double) correctAnswers / submissions.size() * 100;
-
-            // Only include challenging questions (low correct rate)
-            if (correctRate < 70) {
-                Map<String, Object> questionData = new HashMap<>();
-                questionData.put("id", question.getId());
-                questionData.put("text", question.getText());
-                questionData.put("difficulty", 100 - correctRate);
-                questionData.put("correctRate", correctRate);
-                questionData.put("attempts", submissions.size());
-                questionData.put("topic", "General");
-
-                // Calculate average time spent on this question
-                double avgTime = submissions.stream()
-                        .mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
-                        .average()
-                        .orElse(0.0);
-
-                questionData.put("avgTime", avgTime);
-                challengingQuestions.add(questionData);
-            }
-        }
-
-        // Sort by difficulty (lowest correct rate first)
-        challengingQuestions.sort((q1, q2) -> {
-            Double rate1 = (Double) q1.get("correctRate");
-            Double rate2 = (Double) q2.get("correctRate");
-            return rate1.compareTo(rate2);
-        });
-
-        return challengingQuestions;
-    }
 
 
     private List<Map<String, Object>> getRecentActivity(User student) {
@@ -3255,5 +3260,45 @@ public class AnalyticsService {
         result.put("dataPoints", dataPoints);
 
         return result;
+    }
+    private Map<Long, Long> getSubmissionAnswers(Submission submission) {
+        Map<Long, Long> answers = new HashMap<>();
+
+        if (submission.getAnswersJson() == null || submission.getAnswersJson().trim().isEmpty()) {
+            return answers;
+        }
+
+        try {
+            // Simple JSON parsing for backward compatibility
+            String answersJson = submission.getAnswersJson();
+            if (answersJson.startsWith("{") && answersJson.endsWith("}")) {
+                String content = answersJson.substring(1, answersJson.length() - 1);
+
+                if (!content.trim().isEmpty()) {
+                    String[] pairs = content.split(",");
+
+                    for (String pair : pairs) {
+                        String[] keyValue = pair.split(":", 2);
+                        if (keyValue.length == 2) {
+                            String key = keyValue[0].trim().replaceAll("\"", "");
+                            String value = keyValue[1].trim().replaceAll("\"", "");
+
+                            try {
+                                // Only include simple numeric answers for analytics
+                                Long questionId = Long.parseLong(key);
+                                Long answerId = Long.parseLong(value);
+                                answers.put(questionId, answerId);
+                            } catch (NumberFormatException e) {
+                                // Skip complex answers that can't be converted to Long
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Return empty map if parsing fails
+        }
+
+        return answers;
     }
 }

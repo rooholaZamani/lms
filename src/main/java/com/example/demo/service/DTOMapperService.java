@@ -359,10 +359,54 @@ public class DTOMapperService {
         dto.setSubmissionTime(submission.getSubmissionTime());
         dto.setScore(submission.getScore());
         dto.setPassed(submission.isPassed());
-        dto.setAnswers(submission.getAnswers());
+
+        // Convert JSON answers back to Map format for backward compatibility
+        dto.setAnswers(parseAnswersJsonToMap(submission.getAnswersJson()));
+
         dto.setActualDuration(submission.getTimeSpent());
 
         return dto;
+    }
+
+    // Helper method to convert JSON back to Map format
+    private Map<Long, Long> parseAnswersJsonToMap(String answersJson) {
+        Map<Long, Long> answers = new HashMap<>();
+
+        if (answersJson == null || answersJson.trim().isEmpty()) {
+            return answers;
+        }
+
+        try {
+            // Simple JSON parsing for backward compatibility
+            if (answersJson.startsWith("{") && answersJson.endsWith("}")) {
+                String content = answersJson.substring(1, answersJson.length() - 1);
+
+                if (!content.trim().isEmpty()) {
+                    String[] pairs = content.split(",");
+
+                    for (String pair : pairs) {
+                        String[] keyValue = pair.split(":", 2);
+                        if (keyValue.length == 2) {
+                            String key = keyValue[0].trim().replaceAll("\"", "");
+                            String value = keyValue[1].trim().replaceAll("\"", "");
+
+                            try {
+                                // Only include simple numeric answers for backward compatibility
+                                Long questionId = Long.parseLong(key);
+                                Long answerId = Long.parseLong(value);
+                                answers.put(questionId, answerId);
+                            } catch (NumberFormatException e) {
+                                // Skip complex answers that can't be converted to Long
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Return empty map if parsing fails
+        }
+
+        return answers;
     }
 
     public ChatMessageDTO mapToChatMessageDTO(ChatMessage message) {
