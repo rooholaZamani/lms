@@ -6,13 +6,15 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 @Service
 public class SubmissionService {
 
     private final SubmissionRepository submissionRepository;
     private final QuestionRepository questionRepository;
     private final ExamRepository examRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public SubmissionService(
             SubmissionRepository submissionRepository,
@@ -250,42 +252,16 @@ public class SubmissionService {
     }
 
     private Map<String, Object> parseAnswersJson(String answersJson) {
-        Map<String, Object> answers = new HashMap<>();
-        
         if (answersJson == null || answersJson.trim().isEmpty()) {
-            return answers;
+            return new HashMap<>();
         }
-        
+
         try {
-            // Simple JSON parsing
-            if (answersJson.startsWith("{") && answersJson.endsWith("}")) {
-                String content = answersJson.substring(1, answersJson.length() - 1);
-                
-                if (!content.trim().isEmpty()) {
-                    String[] pairs = content.split(",(?=\\\"[^\\\"]*\\\":\\\"[^\\\"]*\\\")");
-                    
-                    for (String pair : pairs) {
-                        String[] keyValue = pair.split(":", 2);
-                        if (keyValue.length == 2) {
-                            String key = keyValue[0].trim().replaceAll("\"", "");
-                            String value = keyValue[1].trim();
-                            
-                            if (value.startsWith("{") && value.endsWith("}")) {
-                                // Complex answer - keep as string for further parsing
-                                answers.put(key, value);
-                            } else {
-                                // Simple answer
-                                answers.put(key, value.replaceAll("\"", ""));
-                            }
-                        }
-                    }
-                }
-            }
+            return objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
-            // Return empty map if parsing fails
+            e.printStackTrace();
+            return new HashMap<>();
         }
-        
-        return answers;
     }
 
     private Map<String, String> parseComplexAnswer(String answerJson) {

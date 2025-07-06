@@ -23,7 +23,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import com.example.demo.dto.ExamWithDetailsDTO;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 @RestController
 @RequestMapping("/api/exams")
 @Tag(name = "Exams", description = "Exam management operations")
@@ -35,7 +36,7 @@ public class ExamController {
     private final ActivityTrackingService activityTrackingService;
     private final SubmissionRepository submissionRepository;
     private final SubmissionService submissionService;
-
+    private final ObjectMapper objectMapper = new ObjectMapper();
     public ExamController(
             ExamService examService,
             UserService userService,
@@ -168,32 +169,12 @@ public class ExamController {
     }
 
     private String convertAnswersToJson(Map<String, Object> answers) {
-        StringBuilder json = new StringBuilder("{");
-        boolean first = true;
-
-        for (Map.Entry<String, Object> entry : answers.entrySet()) {
-            if (!first) json.append(",");
-            first = false;
-
-            String questionId = entry.getKey();
-            Object answer = entry.getValue();
-
-            json.append("\"").append(questionId).append("\":");
-
-            if (answer instanceof Map) {
-                // Complex answer (matching, categorization, etc.)
-                json.append(convertObjectToJson(answer));
-            } else if (answer instanceof List) {
-                // Multiple answers
-                json.append(convertListToJson((List<?>) answer));
-            } else {
-                // Simple answer
-                json.append("\"").append(answer.toString()).append("\"");
-            }
+        try {
+            return objectMapper.writeValueAsString(answers);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "{}";
         }
-
-        json.append("}");
-        return json.toString();
     }
 
     private String convertObjectToJson(Object obj) {
@@ -536,52 +517,15 @@ public class ExamController {
 
     // متد کمکی برای parse کردن JSON answers
     private Map<String, Object> parseAnswersJson(String answersJson) {
-        Map<String, Object> answers = new HashMap<>();
-
-        if (answersJson == null || answersJson.trim().isEmpty() || answersJson.equals("{}")) {
-            return answers;
+        if (answersJson == null || answersJson.trim().isEmpty()) {
+            return new HashMap<>();
         }
 
         try {
-            // Parse ساده JSON - می‌تونید از Jackson ObjectMapper هم استفاده کنید
-            String jsonStr = answersJson.trim();
-            if (jsonStr.startsWith("{") && jsonStr.endsWith("}")) {
-                jsonStr = jsonStr.substring(1, jsonStr.length() - 1); // حذف { و }
-
-                if (!jsonStr.trim().isEmpty()) {
-                    String[] pairs = jsonStr.split(",");
-
-                    for (String pair : pairs) {
-                        String[] keyValue = pair.split(":", 2);
-                        if (keyValue.length == 2) {
-                            String key = keyValue[0].trim().replaceAll("\"", "");
-                            String value = keyValue[1].trim();
-
-                            // حذف کوتیشن‌ها و تبدیل به object مناسب
-                            if (value.startsWith("\"") && value.endsWith("\"")) {
-                                value = value.substring(1, value.length() - 1);
-                                answers.put(key, value);
-                            } else {
-                                try {
-                                    // تلاش برای تبدیل به عدد
-                                    if (value.contains(".")) {
-                                        answers.put(key, Double.parseDouble(value));
-                                    } else {
-                                        answers.put(key, Integer.parseInt(value));
-                                    }
-                                } catch (NumberFormatException e) {
-                                    answers.put(key, value);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            return objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
-            System.err.println("Error parsing answers JSON: " + e.getMessage());
-            // در صورت خطا، یک Map خالی برمی‌گردانیم
+            e.printStackTrace();
+            return new HashMap<>();
         }
-
-        return answers;
     }
 }
