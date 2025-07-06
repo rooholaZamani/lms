@@ -6,6 +6,7 @@ import com.example.demo.dto.SubmissionDTO;
 import com.example.demo.model.*;
 import com.example.demo.repository.QuestionRepository;
 import com.example.demo.repository.SubmissionRepository;
+import com.example.demo.service.ExamService;
 import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -520,7 +521,7 @@ public class ExamController {
                 int earnedPoints = 0;
 
                 if (studentAnswer != null) {
-                    isCorrect = evaluateAnswer(question, studentAnswer);
+                    isCorrect = examService.evaluateAnswer(question, studentAnswer);
                     if (isCorrect) {
                         earnedPoints = question.getPoints();
                     }
@@ -538,12 +539,19 @@ public class ExamController {
                         break;
 
                     case CATEGORIZATION:
-                    case MATCHING:
                         Map<String, String> correctMapping = new HashMap<>();
                         for (Answer answer : question.getAnswers()) {
                             correctMapping.put(answer.getText(), answer.getCategory());
                         }
                         correctAnswer = correctMapping;
+                        break;
+
+                    case MATCHING:
+                        Map<String, String> correctMatching = new HashMap<>();
+                        for (MatchingPair pair : question.getMatchingPairs()) {
+                            correctMatching.put(pair.getLeftItem(), pair.getRightItem());
+                        }
+                        correctAnswer = correctMatching;
                         break;
 
                     case FILL_IN_THE_BLANK:
@@ -594,86 +602,5 @@ public class ExamController {
             e.printStackTrace();
             return new HashMap<>();
         }
-    }
-    private boolean evaluateAnswer(Question question, Object studentAnswer) {
-        switch (question.getQuestionType()) {
-            case MULTIPLE_CHOICE:
-            case TRUE_FALSE:
-                return evaluateSimpleAnswer(question, studentAnswer);
-            case CATEGORIZATION:
-            case MATCHING:
-                return evaluateComplexAnswer(question, studentAnswer);
-            case FILL_IN_THE_BLANK:
-                return evaluateFillBlankAnswer(question, studentAnswer);
-            default:
-                return false;
-        }
-    }
-
-    private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
-        if (studentAnswer instanceof String) {
-            Long answerId = Long.parseLong((String) studentAnswer);
-            return question.getAnswers().stream()
-                    .filter(answer -> answer.getId().equals(answerId))
-                    .findFirst()
-                    .map(Answer::getCorrect)
-                    .orElse(false);
-        }
-        return false;
-    }
-
-    private boolean evaluateComplexAnswer(Question question, Object studentAnswer) {
-        if (!(studentAnswer instanceof String)) return false;
-
-        try {
-            Map<String, String> answerMap = parseComplexAnswer((String) studentAnswer);
-
-            if (question.getQuestionType() == QuestionType.CATEGORIZATION) {
-                return evaluateCategorizationAnswer(question, answerMap);
-            }
-
-            if (question.getQuestionType() == QuestionType.MATCHING) {
-                return evaluateMatchingAnswer(question, answerMap);
-            }
-
-        } catch (Exception e) {
-            return false;
-        }
-
-        return false;
-    }
-
-    private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
-        String studentText = studentAnswer.toString().trim().toLowerCase();
-        return question.getAnswers().stream()
-                .anyMatch(answer -> answer.getText().trim().toLowerCase().equals(studentText));
-    }
-
-    private Map<String, String> parseComplexAnswer(String answerJson) throws Exception {
-        return objectMapper.readValue(answerJson, new TypeReference<Map<String, String>>() {});
-    }
-
-    private boolean evaluateCategorizationAnswer(Question question, Map<String, String> studentAnswers) {
-        Map<String, String> correctAnswers = new HashMap<>();
-        for (Answer answer : question.getAnswers()) {
-            correctAnswers.put(answer.getText(), answer.getCategory());
-        }
-
-        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
-            String item = entry.getKey();
-            String studentCategory = entry.getValue();
-            String correctCategory = correctAnswers.get(item);
-
-            if (!Objects.equals(studentCategory, correctCategory)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private boolean evaluateMatchingAnswer(Question question, Map<String, String> studentAnswers) {
-        // Implementation depends on how matching questions are structured
-        return true; // Simplified for now
     }
 }

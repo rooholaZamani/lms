@@ -133,94 +133,6 @@ public class ExamService {
         return new int[]{earnedPoints, totalPoints};
     }
 
-    private boolean evaluateAnswer(Question question, Object studentAnswer) {
-        switch (question.getQuestionType()) {
-            case MULTIPLE_CHOICE:
-            case TRUE_FALSE:
-                return evaluateSimpleAnswer(question, studentAnswer);
-
-            case CATEGORIZATION:
-            case MATCHING:
-                return evaluateComplexAnswer(question, studentAnswer);
-
-            case FILL_IN_THE_BLANK:
-                return evaluateFillBlankAnswer(question, studentAnswer);
-
-            default:
-                return false;
-        }
-    }
-
-    private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
-        if (studentAnswer instanceof String) {
-            Long answerId = Long.parseLong((String) studentAnswer);
-            return question.getAnswers().stream()
-                    .filter(answer -> answer.getId().equals(answerId))
-                    .findFirst()
-                    .map(Answer::getCorrect)
-                    .orElse(false);
-        }
-        return false;
-    }
-
-    private boolean evaluateComplexAnswer(Question question, Object studentAnswer) {
-        if (!(studentAnswer instanceof String)) return false;
-
-        try {
-            // Parse the complex answer (matching pairs, categorization)
-            Map<String, String> answerMap = parseComplexAnswer((String) studentAnswer);
-
-            // For categorization: check if each item is in correct category
-            if (question.getQuestionType() == QuestionType.CATEGORIZATION) {
-                return evaluateCategorizationAnswer(question, answerMap);
-            }
-
-            // For matching: check if pairs are correct
-            if (question.getQuestionType() == QuestionType.MATCHING) {
-                return evaluateMatchingAnswer(question, answerMap);
-            }
-
-        } catch (Exception e) {
-            return false;
-        }
-
-        return false;
-    }
-
-    private boolean evaluateCategorizationAnswer(Question question, Map<String, String> studentAnswers) {
-        // Get correct categorization from question answers
-        Map<String, String> correctAnswers = new HashMap<>();
-        for (Answer answer : question.getAnswers()) {
-            correctAnswers.put(answer.getText(), answer.getCategory());
-        }
-
-        // Check if student answers match correct answers
-        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
-            String item = entry.getKey();
-            String studentCategory = entry.getValue();
-            String correctCategory = correctAnswers.get(item);
-
-            if (!Objects.equals(studentCategory, correctCategory)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private boolean evaluateMatchingAnswer(Question question, Map<String, String> studentAnswers) {
-        // Similar logic for matching questions
-        // Implementation depends on how matching questions are structured
-        return true; // Simplified for now
-    }
-
-    private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
-        // Compare with correct text answers
-        String studentText = studentAnswer.toString().trim().toLowerCase();
-
-        return question.getAnswers().stream()
-                .anyMatch(answer -> answer.getText().trim().toLowerCase().equals(studentText));
-    }
 
     private Map<String, Object> parseAnswersJson(String answersJson) {
         if (answersJson == null || answersJson.trim().isEmpty()) {
@@ -235,25 +147,7 @@ public class ExamService {
         }
     }
 
-    private Map<String, String> parseComplexAnswer(String answerJson) {
-        Map<String, String> result = new HashMap<>();
 
-        if (answerJson.startsWith("{") && answerJson.endsWith("}")) {
-            String content = answerJson.substring(1, answerJson.length() - 1);
-            String[] pairs = content.split(",");
-
-            for (String pair : pairs) {
-                String[] keyValue = pair.split(":");
-                if (keyValue.length == 2) {
-                    String key = keyValue[0].trim().replaceAll("\"", "");
-                    String value = keyValue[1].trim().replaceAll("\"", "");
-                    result.put(key, value);
-                }
-            }
-        }
-
-        return result;
-    }
 
     public List<Submission> getStudentSubmissions(User student) {
         return submissionRepository.findByStudent(student);
@@ -662,5 +556,113 @@ public class ExamService {
     public Exam findById(Long examId) {
         return examRepository.findById(examId)
                 .orElseThrow(() -> new RuntimeException("Exam not found with id: " + examId));
+    }
+
+
+
+
+
+    public boolean evaluateAnswer(Question question, Object studentAnswer) {
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                return evaluateSimpleAnswer(question, studentAnswer);
+            case CATEGORIZATION:
+            case MATCHING:
+                return evaluateComplexAnswer(question, studentAnswer);
+            case FILL_IN_THE_BLANK:
+                return evaluateFillBlankAnswer(question, studentAnswer);
+            default:
+                return false;
+        }
+    }
+
+    private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
+        if (studentAnswer instanceof String) {
+            Long answerId = Long.parseLong((String) studentAnswer);
+            return question.getAnswers().stream()
+                    .filter(answer -> answer.getId().equals(answerId))
+                    .findFirst()
+                    .map(Answer::getCorrect)
+                    .orElse(false);
+        }
+        return false;
+    }
+
+    private boolean evaluateComplexAnswer(Question question, Object studentAnswer) {
+        if (!(studentAnswer instanceof String)) return false;
+
+        try {
+            Map<String, String> answerMap = parseComplexAnswer((String) studentAnswer);
+
+            if (question.getQuestionType() == QuestionType.CATEGORIZATION) {
+                return evaluateCategorizationAnswer(question, answerMap);
+            }
+
+            if (question.getQuestionType() == QuestionType.MATCHING) {
+                return evaluateMatchingAnswer(question, answerMap);
+            }
+
+        } catch (Exception e) {
+            return false;
+        }
+
+        return false;
+    }
+
+    private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
+        String studentText = studentAnswer.toString().trim().toLowerCase();
+        return question.getAnswers().stream()
+                .anyMatch(answer -> answer.getText().trim().toLowerCase().equals(studentText));
+    }
+
+    private Map<String, String> parseComplexAnswer(String answerJson) throws Exception {
+        return objectMapper.readValue(answerJson, new TypeReference<Map<String, String>>() {});
+    }
+
+    private boolean evaluateCategorizationAnswer(Question question, Map<String, String> studentAnswers) {
+        Map<String, String> correctAnswers = new HashMap<>();
+        for (Answer answer : question.getAnswers()) {
+            correctAnswers.put(answer.getText(), answer.getCategory());
+        }
+
+        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
+            String item = entry.getKey();
+            String studentCategory = entry.getValue();
+            String correctCategory = correctAnswers.get(item);
+
+            if (!Objects.equals(studentCategory, correctCategory)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean evaluateMatchingAnswer(Question question, Map<String, String> studentAnswers) {
+        // ساخت نقشه صحیح از جفت‌های تطبیق
+        Map<String, String> correctMatches = new HashMap<>();
+        for (MatchingPair pair : question.getMatchingPairs()) {
+            correctMatches.put(pair.getLeftItem(), pair.getRightItem());
+        }
+
+        // بررسی اینکه تعداد پاسخ‌های دانش‌آموز با تعداد جفت‌های صحیح مطابقت دارد
+        if (studentAnswers.size() != correctMatches.size()) {
+            return false;
+        }
+
+        // بررسی هر جفت
+        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
+            String leftItem = entry.getKey();
+            String studentRightItem = entry.getValue();
+            String correctRightItem = correctMatches.get(leftItem);
+
+            // اگر leftItem وجود نداشته باشد یا rightItem درست نباشد
+            if (correctRightItem == null || !Objects.equals(studentRightItem, correctRightItem)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
