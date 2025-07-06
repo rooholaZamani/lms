@@ -680,4 +680,8 @@ public class ExamService {
                 type == QuestionType.MATCHING ||
                 type == QuestionType.FILL_IN_THE_BLANK;
     }
+    public Exam findById(Long examId) {
+        return examRepository.findById(examId)
+                .orElseThrow(() -> new RuntimeException("Exam not found with id: " + examId));
+    }
 }

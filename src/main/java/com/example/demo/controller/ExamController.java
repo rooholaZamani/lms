@@ -481,4 +481,107 @@ public class ExamController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error fetching answers");
         }
     }
+    @GetMapping("/{examId}/student-answers")
+    @Operation(summary = "Get student answers for exam", description = "Retrieve student's answers for a specific exam")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentAnswers(
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User student = userService.findByUsername(authentication.getName());
+
+            // بررسی وجود آزمون
+            Exam exam = examService.findById(examId);
+            if (exam == null) {
+                throw new RuntimeException("Exam not found");
+            }
+
+            // پیدا کردن submission دانش‌آموز
+            Optional<Submission> submissionOpt = examService.getStudentSubmission(examId, student);
+
+            if (!submissionOpt.isPresent()) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "شما در این آزمون شرکت نکرده‌اید");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+            }
+
+            Submission submission = submissionOpt.get();
+
+            // Parse کردن JSON answers
+            Map<String, Object> answers = parseAnswersJson(submission.getAnswers());
+
+            // ساخت response
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("answers", answers);
+            response.put("score", submission.getScore());
+            response.put("passed", submission.isPassed());
+            response.put("submissionTime", submission.getSubmissionTime());
+            response.put("timeSpent", submission.getTimeSpent());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error getting student answers: " + e.getMessage());
+            e.printStackTrace();
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "خطا در دریافت پاسخ‌ها");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    // متد کمکی برای parse کردن JSON answers
+    private Map<String, Object> parseAnswersJson(String answersJson) {
+        Map<String, Object> answers = new HashMap<>();
+
+        if (answersJson == null || answersJson.trim().isEmpty() || answersJson.equals("{}")) {
+            return answers;
+        }
+
+        try {
+            // Parse ساده JSON - می‌تونید از Jackson ObjectMapper هم استفاده کنید
+            String jsonStr = answersJson.trim();
+            if (jsonStr.startsWith("{") && jsonStr.endsWith("}")) {
+                jsonStr = jsonStr.substring(1, jsonStr.length() - 1); // حذف { و }
+
+                if (!jsonStr.trim().isEmpty()) {
+                    String[] pairs = jsonStr.split(",");
+
+                    for (String pair : pairs) {
+                        String[] keyValue = pair.split(":", 2);
+                        if (keyValue.length == 2) {
+                            String key = keyValue[0].trim().replaceAll("\"", "");
+                            String value = keyValue[1].trim();
+
+                            // حذف کوتیشن‌ها و تبدیل به object مناسب
+                            if (value.startsWith("\"") && value.endsWith("\"")) {
+                                value = value.substring(1, value.length() - 1);
+                                answers.put(key, value);
+                            } else {
+                                try {
+                                    // تلاش برای تبدیل به عدد
+                                    if (value.contains(".")) {
+                                        answers.put(key, Double.parseDouble(value));
+                                    } else {
+                                        answers.put(key, Integer.parseInt(value));
+                                    }
+                                } catch (NumberFormatException e) {
+                                    answers.put(key, value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing answers JSON: " + e.getMessage());
+            // در صورت خطا، یک Map خالی برمی‌گردانیم
+        }
+
+        return answers;
+    }
 }
