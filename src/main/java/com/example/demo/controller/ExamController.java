@@ -510,7 +510,7 @@ public class ExamController {
             Submission submission = submissionOpt.get();
 
             // Parse کردن JSON answers
-            Map<String, Object> answers = parseAnswersJson(submission.getAnswers());
+            Map<String, Object> answers = parseAnswersJson(submission.getAnswersJson());
 
             // ساخت response
             Map<String, Object> response = new HashMap<>();
