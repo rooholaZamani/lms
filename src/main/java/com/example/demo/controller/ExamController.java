@@ -500,82 +500,51 @@ public class ExamController {
             // گرفتن سوالات آزمون
             List<Question> questions = questionRepository.findByExamOrderById(exam);
 
-            // ساخت detailed answers
+            // ساخت detailed answers با استفاده از ExamService.evaluateStudentAnswer()
             Map<String, Object> detailedAnswers = new HashMap<>();
+            int totalEarnedPoints = 0;
+            int totalPossiblePoints = 0;
 
             for (Question question : questions) {
-                Map<String, Object> questionDetails = new HashMap<>();
+                // استفاده از متد جدید evaluateStudentAnswer
+                Object studentAnswer = submittedAnswers.get(question.getId().toString());
+                Map<String, Object> evaluationResult = examService.evaluateStudentAnswer(question, studentAnswer);
 
-                // اطلاعات اصلی سوال
+                // اضافه کردن اطلاعات سوال
+                Map<String, Object> questionDetails = new HashMap<>();
                 questionDetails.put("questionType", question.getQuestionType().toString());
                 questionDetails.put("questionText", question.getText());
-                questionDetails.put("totalPoints", question.getPoints());
-
-                // جواب دانش‌آموز
-                Object studentAnswer = submittedAnswers.get(question.getId().toString());
                 questionDetails.put("studentAnswer", studentAnswer);
-
-                // محاسبه نمره و پیدا کردن جواب درست
-                boolean isCorrect = false;
-                Object correctAnswer = null;
-                int earnedPoints = 0;
-
-                if (studentAnswer != null) {
-                    isCorrect = examService.evaluateAnswer(question, studentAnswer);
-                    if (isCorrect) {
-                        earnedPoints = question.getPoints();
-                    }
-                }
-
-                // پیدا کردن جواب درست بر اساس نوع سوال
-                switch (question.getQuestionType()) {
-                    case MULTIPLE_CHOICE:
-                    case TRUE_FALSE:
-                        correctAnswer = question.getAnswers().stream()
-                                .filter(Answer::getCorrect)
-                                .map(Answer::getId)
-                                .findFirst()
-                                .orElse(null);
-                        break;
-
-                    case CATEGORIZATION:
-                        Map<String, String> correctMapping = new HashMap<>();
-                        for (Answer answer : question.getAnswers()) {
-                            correctMapping.put(answer.getText(), answer.getCategory());
-                        }
-                        correctAnswer = correctMapping;
-                        break;
-
-                    case MATCHING:
-                        Map<String, String> correctMatching = new HashMap<>();
-                        for (MatchingPair pair : question.getMatchingPairs()) {
-                            correctMatching.put(pair.getLeftItem(), pair.getRightItem());
-                        }
-                        correctAnswer = correctMatching;
-                        break;
-
-                    case FILL_IN_THE_BLANK:
-                        correctAnswer = question.getAnswers().stream()
-                                .map(Answer::getText)
-                                .collect(Collectors.toList());
-                        break;
-                }
-
-                questionDetails.put("correctAnswer", correctAnswer);
-                questionDetails.put("isCorrect", isCorrect);
-                questionDetails.put("earnedPoints", earnedPoints);
+                questionDetails.putAll(evaluationResult); // isCorrect, earnedPoints, totalPoints, correctAnswer
 
                 detailedAnswers.put(question.getId().toString(), questionDetails);
+
+                // محاسبه مجموع امتیازات
+                totalEarnedPoints += (Integer) evaluationResult.get("earnedPoints");
+                totalPossiblePoints += (Integer) evaluationResult.get("totalPoints");
             }
 
             // ساخت response
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("answers", detailedAnswers);
-            response.put("score", submission.getScore());
-            response.put("passed", submission.isPassed());
+            response.put("score", totalEarnedPoints); // استفاده از نمره محاسبه شده جدید
+            response.put("totalPossibleScore", totalPossiblePoints);
+            response.put("passed", totalEarnedPoints >= exam.getPassingScore());
             response.put("submissionTime", submission.getSubmissionTime());
             response.put("timeSpent", submission.getTimeSpent());
+
+            // اگر نمره محاسبه شده با نمره ذخیره شده متفاوت است، آن را به‌روزرسانی کن
+            if (!submission.getScore().equals(totalEarnedPoints)) {
+                System.out.println("Score mismatch detected. Stored: " + submission.getScore() +
+                        ", Calculated: " + totalEarnedPoints + ". Updating submission...");
+
+                // به‌روزرسانی submission با نمره صحیح
+                submission.setScore(totalEarnedPoints);
+                submission.setPassed(totalEarnedPoints >= exam.getPassingScore());
+
+                 submission = submissionRepository.save(submission);
+            }
 
             return ResponseEntity.ok(response);
 
@@ -602,5 +571,52 @@ public class ExamController {
             e.printStackTrace();
             return new HashMap<>();
         }
+    }
+    public Map<String, Object> evaluateStudentAnswer(Question question, Object studentAnswer) {
+        Map<String, Object> result = new HashMap<>();
+
+        boolean isCorrect = examService.evaluateAnswer(question, studentAnswer);
+        int earnedPoints = isCorrect ? question.getPoints() : 0;
+
+        result.put("isCorrect", isCorrect);
+        result.put("earnedPoints", earnedPoints);
+        result.put("totalPoints", question.getPoints());
+
+        // Add correct answer info based on question type
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                Optional<Answer> correctAnswer = question.getAnswers().stream()
+                        .filter(Answer::getCorrect)
+                        .findFirst();
+                result.put("correctAnswer", correctAnswer.map(Answer::getId).orElse(null));
+                break;
+
+            case CATEGORIZATION:
+                Map<String, String> correctCategories = new HashMap<>();
+                for (Answer answer : question.getAnswers()) {
+                    correctCategories.put(answer.getText(), answer.getCategory());
+                }
+                result.put("correctAnswer", correctCategories);
+                break;
+
+            case MATCHING:
+                Map<String, String> correctMatches = new HashMap<>();
+                for (MatchingPair pair : question.getMatchingPairs()) {
+                    correctMatches.put(pair.getLeftItem(), pair.getRightItem());
+                }
+                result.put("correctAnswer", correctMatches);
+                break;
+
+            case FILL_IN_THE_BLANK:
+            case FILL_IN_THE_BLANKS:
+                List<String> correctAnswers = question.getAnswers().stream()
+                        .map(Answer::getText)
+                        .collect(Collectors.toList());
+                result.put("correctAnswer", correctAnswers);
+                break;
+        }
+
+        return result;
     }
 }

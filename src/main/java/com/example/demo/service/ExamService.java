@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 @Service
@@ -106,31 +108,6 @@ public class ExamService {
         submission.setPassed(earnedPoints >= exam.getPassingScore());
 
         return submissionRepository.save(submission);
-    }
-
-    private int[] calculateScore(Exam exam, String answersJson) {
-        List<Question> questions = questionRepository.findByExamOrderById(exam);
-        int totalPoints = 0;
-        int earnedPoints = 0;
-
-        // Parse JSON answers
-        Map<String, Object> answers = parseAnswersJson(answersJson);
-
-        for (Question question : questions) {
-            totalPoints += question.getPoints();
-
-            String questionId = question.getId().toString();
-            Object studentAnswer = answers.get(questionId);
-
-            if (studentAnswer != null) {
-                boolean isCorrect = evaluateAnswer(question, studentAnswer);
-                if (isCorrect) {
-                    earnedPoints += question.getPoints();
-                }
-            }
-        }
-
-        return new int[]{earnedPoints, totalPoints};
     }
 
 
@@ -563,30 +540,42 @@ public class ExamService {
 
 
     public boolean evaluateAnswer(Question question, Object studentAnswer) {
+        if (studentAnswer == null) return false;
+
         switch (question.getQuestionType()) {
             case MULTIPLE_CHOICE:
             case TRUE_FALSE:
                 return evaluateSimpleAnswer(question, studentAnswer);
             case CATEGORIZATION:
+                return evaluateCategorizationAnswer(question, studentAnswer);
             case MATCHING:
-                return evaluateComplexAnswer(question, studentAnswer);
+                return evaluateMatchingAnswer(question, studentAnswer);
             case FILL_IN_THE_BLANK:
+            case FILL_IN_THE_BLANKS:
                 return evaluateFillBlankAnswer(question, studentAnswer);
             default:
                 return false;
         }
     }
-
     private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
-        if (studentAnswer instanceof String) {
-            Long answerId = Long.parseLong((String) studentAnswer);
+        try {
+            Long answerId;
+            if (studentAnswer instanceof Number) {
+                answerId = ((Number) studentAnswer).longValue();
+            } else if (studentAnswer instanceof String) {
+                answerId = Long.parseLong((String) studentAnswer);
+            } else {
+                return false;
+            }
+
             return question.getAnswers().stream()
                     .filter(answer -> answer.getId().equals(answerId))
                     .findFirst()
                     .map(Answer::getCorrect)
                     .orElse(false);
+        } catch (NumberFormatException e) {
+            return false;
         }
-        return false;
     }
 
     private boolean evaluateComplexAnswer(Question question, Object studentAnswer) {
@@ -610,59 +599,186 @@ public class ExamService {
         return false;
     }
 
-    private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
-        String studentText = studentAnswer.toString().trim().toLowerCase();
-        return question.getAnswers().stream()
-                .anyMatch(answer -> answer.getText().trim().toLowerCase().equals(studentText));
-    }
 
     private Map<String, String> parseComplexAnswer(String answerJson) throws Exception {
         return objectMapper.readValue(answerJson, new TypeReference<Map<String, String>>() {});
     }
 
-    private boolean evaluateCategorizationAnswer(Question question, Map<String, String> studentAnswers) {
-        Map<String, String> correctAnswers = new HashMap<>();
-        for (Answer answer : question.getAnswers()) {
-            correctAnswers.put(answer.getText(), answer.getCategory());
-        }
+    private boolean evaluateCategorizationAnswer(Question question, Object studentAnswer) {
+        try {
+            Map<String, String> studentAnswers;
 
-        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
-            String item = entry.getKey();
-            String studentCategory = entry.getValue();
-            String correctCategory = correctAnswers.get(item);
-
-            if (!Objects.equals(studentCategory, correctCategory)) {
+            // Handle different input types
+            if (studentAnswer instanceof Map) {
+                studentAnswers = convertMapToStringMap((Map<?, ?>) studentAnswer);
+            } else if (studentAnswer instanceof String) {
+                studentAnswers = parseComplexAnswerFromString((String) studentAnswer);
+            } else {
                 return false;
             }
-        }
 
-        return true;
-    }
+            // Build correct answers map
+            Map<String, String> correctAnswers = new HashMap<>();
+            for (Answer answer : question.getAnswers()) {
+                correctAnswers.put(answer.getText(), answer.getCategory());
+            }
 
-    private boolean evaluateMatchingAnswer(Question question, Map<String, String> studentAnswers) {
-        // ساخت نقشه صحیح از جفت‌های تطبیق
-        Map<String, String> correctMatches = new HashMap<>();
-        for (MatchingPair pair : question.getMatchingPairs()) {
-            correctMatches.put(pair.getLeftItem(), pair.getRightItem());
-        }
+            // Compare each categorization
+            for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
+                String item = entry.getKey();
+                String studentCategory = entry.getValue();
+                String correctCategory = correctAnswers.get(item);
 
-        // بررسی اینکه تعداد پاسخ‌های دانش‌آموز با تعداد جفت‌های صحیح مطابقت دارد
-        if (studentAnswers.size() != correctMatches.size()) {
+                if (!Objects.equals(studentCategory, correctCategory)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Exception e) {
             return false;
         }
+    }
 
-        // بررسی هر جفت
-        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
-            String leftItem = entry.getKey();
-            String studentRightItem = entry.getValue();
-            String correctRightItem = correctMatches.get(leftItem);
+    private boolean evaluateMatchingAnswer(Question question, Object studentAnswer) {
+        try {
+            Map<String, String> studentAnswers;
 
-            // اگر leftItem وجود نداشته باشد یا rightItem درست نباشد
-            if (correctRightItem == null || !Objects.equals(studentRightItem, correctRightItem)) {
+            // Handle different input types
+            if (studentAnswer instanceof Map) {
+                studentAnswers = convertMapToStringMap((Map<?, ?>) studentAnswer);
+            } else if (studentAnswer instanceof String) {
+                studentAnswers = parseComplexAnswerFromString((String) studentAnswer);
+            } else {
                 return false;
+            }
+
+            // Build correct matches map
+            Map<String, String> correctMatches = new HashMap<>();
+            for (MatchingPair pair : question.getMatchingPairs()) {
+                correctMatches.put(pair.getLeftItem(), pair.getRightItem());
+            }
+
+            // Check if all matches are correct
+            if (studentAnswers.size() != correctMatches.size()) {
+                return false;
+            }
+
+            for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
+                String leftItem = entry.getKey();
+                String studentRightItem = entry.getValue();
+                String correctRightItem = correctMatches.get(leftItem);
+
+                if (correctRightItem == null || !Objects.equals(studentRightItem, correctRightItem)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
+        try {
+            String studentText = studentAnswer.toString().trim();
+
+            // Check against all possible correct answers
+            return question.getAnswers().stream()
+                    .anyMatch(answer -> {
+                        String correctText = answer.getText().trim();
+                        // Case-insensitive comparison
+                        return correctText.equalsIgnoreCase(studentText);
+                    });
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private Map<String, String> convertMapToStringMap(Map<?, ?> inputMap) {
+        Map<String, String> result = new HashMap<>();
+        for (Map.Entry<?, ?> entry : inputMap.entrySet()) {
+            String key = entry.getKey().toString();
+            String value = entry.getValue().toString();
+            result.put(key, value);
+        }
+        return result;
+    }
+    private Map<String, String> parseComplexAnswerFromString(String answerJson) throws Exception {
+        return objectMapper.readValue(answerJson, new TypeReference<Map<String, String>>() {});
+    }
+    private int[] calculateScore(Exam exam, String answersJson) {
+        List<Question> questions = questionRepository.findByExamOrderById(exam);
+        int totalPoints = 0;
+        int earnedPoints = 0;
+
+        // Parse JSON answers
+        Map<String, Object> answers = parseAnswersJson(answersJson);
+
+        for (Question question : questions) {
+            totalPoints += question.getPoints();
+
+            String questionId = question.getId().toString();
+            Object studentAnswer = answers.get(questionId);
+
+            if (studentAnswer != null) {
+                boolean isCorrect = evaluateAnswer(question, studentAnswer);
+                if (isCorrect) {
+                    earnedPoints += question.getPoints();
+                }
             }
         }
 
-        return true;
+        return new int[]{earnedPoints, totalPoints};
     }
+
+    public Map<String, Object> evaluateStudentAnswer(Question question, Object studentAnswer) {
+        Map<String, Object> result = new HashMap<>();
+
+        boolean isCorrect = evaluateAnswer(question, studentAnswer);
+        int earnedPoints = isCorrect ? question.getPoints() : 0;
+
+        result.put("isCorrect", isCorrect);
+        result.put("earnedPoints", earnedPoints);
+        result.put("totalPoints", question.getPoints());
+
+        // Add correct answer info based on question type
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                Optional<Answer> correctAnswer = question.getAnswers().stream()
+                        .filter(Answer::getCorrect)
+                        .findFirst();
+                result.put("correctAnswer", correctAnswer.map(Answer::getId).orElse(null));
+                break;
+
+            case CATEGORIZATION:
+                Map<String, String> correctCategories = new HashMap<>();
+                for (Answer answer : question.getAnswers()) {
+                    correctCategories.put(answer.getText(), answer.getCategory());
+                }
+                result.put("correctAnswer", correctCategories);
+                break;
+
+            case MATCHING:
+                Map<String, String> correctMatches = new HashMap<>();
+                for (MatchingPair pair : question.getMatchingPairs()) {
+                    correctMatches.put(pair.getLeftItem(), pair.getRightItem());
+                }
+                result.put("correctAnswer", correctMatches);
+                break;
+
+            case FILL_IN_THE_BLANK:
+            case FILL_IN_THE_BLANKS:
+                List<String> correctAnswers = question.getAnswers().stream()
+                        .map(Answer::getText)
+                        .collect(Collectors.toList());
+                result.put("correctAnswer", correctAnswers);
+                break;
+        }
+
+        return result;
+    }
+
 }
