@@ -4,10 +4,7 @@ import com.example.demo.model.*;
 import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,58 +49,10 @@ public class SubmissionService {
 
         // سوالات و پاسخ‌ها
         List<Question> questions = questionRepository.findByExamOrderById(exam);
+        Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
+        
         List<Map<String, Object>> questionAnswers = questions.stream()
-                .map(question -> {
-                    Map<String, Object> qaData = new HashMap<>();
-                    qaData.put("questionId", question.getId());
-                    qaData.put("questionText", question.getText());
-                    qaData.put("points", question.getPoints());
-
-                    // پاسخ دانش‌آموز
-                    Long answerId = submission.getAnswers().get(question.getId());
-                    if (answerId != null) {
-                        Optional<Answer> answerOpt = question.getAnswers().stream()
-                                .filter(a -> a.getId().equals(answerId))
-                                .findFirst();
-
-                        if (answerOpt.isPresent()) {
-                            Answer answer = answerOpt.get();
-                            qaData.put("studentAnswerId", answerId);
-                            qaData.put("studentAnswerText", answer.getText());
-                            qaData.put("isCorrect", answer.getCorrect());
-                            qaData.put("pointsEarned", answer.getCorrect() ? question.getPoints() : 0);
-                        }
-                    } else {
-                        qaData.put("studentAnswerId", null);
-                        qaData.put("studentAnswerText", "No answer provided");
-                        qaData.put("isCorrect", false);
-                        qaData.put("pointsEarned", 0);
-                    }
-
-                    // پاسخ صحیح
-                    Optional<Answer> correctAnswer = question.getAnswers().stream()
-                            .filter(Answer::getCorrect)
-                            .findFirst();
-                    
-                    if (correctAnswer.isPresent()) {
-                        qaData.put("correctAnswerId", correctAnswer.get().getId());
-                        qaData.put("correctAnswerText", correctAnswer.get().getText());
-                    }
-
-                    // همه گزینه‌ها (برای مرور کامل)
-                    List<Map<String, Object>> options = question.getAnswers().stream()
-                            .map(ans -> {
-                                Map<String, Object> option = new HashMap<>();
-                                option.put("id", ans.getId());
-                                option.put("text", ans.getText());
-                                option.put("isCorrect", ans.getCorrect());
-                                return option;
-                            })
-                            .collect(Collectors.toList());
-                    qaData.put("options", options);
-
-                    return qaData;
-                })
+                .map(question -> buildQuestionAnswerData(question, studentAnswers))
                 .collect(Collectors.toList());
 
         result.put("questionAnswers", questionAnswers);
@@ -113,64 +62,249 @@ public class SubmissionService {
         long correctAnswers = questionAnswers.stream()
                 .mapToLong(qa -> (Boolean) qa.get("isCorrect") ? 1 : 0)
                 .sum();
+        long incorrectAnswers = questionAnswers.stream()
+                .mapToLong(qa -> !(Boolean) qa.get("isCorrect") && qa.get("studentAnswer") != null ? 1 : 0)
+                .sum();
+        long unanswered = totalQuestions - correctAnswers - incorrectAnswers;
 
         result.put("totalQuestions", totalQuestions);
         result.put("correctAnswers", correctAnswers);
-        result.put("incorrectAnswers", totalQuestions - correctAnswers);
-        result.put("accuracyPercentage", totalQuestions > 0 ? 
-                Math.round((double) correctAnswers / totalQuestions * 100.0 * 10.0) / 10.0 : 0.0);
+        result.put("incorrectAnswers", incorrectAnswers);
+        result.put("unanswered", unanswered);
 
         return result;
     }
 
-    /**
-     * بررسی دسترسی دانش‌آموز به submission
-     */
-    public boolean hasAccessToSubmission(User user, Long submissionId) {
-        Submission submission = submissionRepository.findById(submissionId)
-                .orElseThrow(() -> new RuntimeException("Submission not found"));
+    private Map<String, Object> buildQuestionAnswerData(Question question, Map<String, Object> studentAnswers) {
+        Map<String, Object> qaData = new HashMap<>();
+        
+        qaData.put("questionId", question.getId());
+        qaData.put("questionText", question.getText());
+        qaData.put("questionType", question.getQuestionType().toString());
+        qaData.put("points", question.getPoints());
 
-        // فقط صاحب submission یا معلم آزمون دسترسی دارند
-        boolean isOwner = submission.getStudent().getId().equals(user.getId());
-        boolean isTeacher = submission.getExam().getLesson().getCourse().getTeacher().getId().equals(user.getId());
-
-        return isOwner || isTeacher;
-    }
-
-    /**
-     * دریافت آمار submission برای معلم
-     */
-    public Map<String, Object> getSubmissionStatistics(Long examId) {
-        Exam exam = examRepository.findById(examId)
-                .orElseThrow(() -> new RuntimeException("Exam not found"));
-
-        List<Submission> submissions = submissionRepository.findByExam(exam);
-
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("totalSubmissions", submissions.size());
-        stats.put("passedSubmissions", submissions.stream().filter(Submission::isPassed).count());
-        stats.put("averageScore", submissions.stream()
-                .mapToDouble(Submission::getScore)
-                .average()
-                .orElse(0.0));
-
-        // توزیع نمرات
-        Map<String, Integer> scoreDistribution = new HashMap<>();
-        scoreDistribution.put("0-25%", 0);
-        scoreDistribution.put("26-50%", 0);
-        scoreDistribution.put("51-75%", 0);
-        scoreDistribution.put("76-100%", 0);
-
-        for (Submission submission : submissions) {
-            double percentage = (double) submission.getScore() / exam.getTotalPossibleScore() * 100;
-            if (percentage <= 25) scoreDistribution.merge("0-25%", 1, Integer::sum);
-            else if (percentage <= 50) scoreDistribution.merge("26-50%", 1, Integer::sum);
-            else if (percentage <= 75) scoreDistribution.merge("51-75%", 1, Integer::sum);
-            else scoreDistribution.merge("76-100%", 1, Integer::sum);
+        // Get student answer
+        String questionId = question.getId().toString();
+        Object studentAnswer = studentAnswers.get(questionId);
+        
+        // Process answer based on question type
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                processSimpleAnswer(qaData, question, studentAnswer);
+                break;
+                
+            case CATEGORIZATION:
+                processCategorizationAnswer(qaData, question, studentAnswer);
+                break;
+                
+            case MATCHING:
+                processMatchingAnswer(qaData, question, studentAnswer);
+                break;
+                
+            case FILL_IN_THE_BLANK:
+                processFillBlankAnswer(qaData, question, studentAnswer);
+                break;
+                
+            default:
+                qaData.put("studentAnswer", "Unsupported question type");
+                qaData.put("isCorrect", false);
+                qaData.put("pointsEarned", 0);
         }
 
-        stats.put("scoreDistribution", scoreDistribution);
+        return qaData;
+    }
 
-        return stats;
+    private void processSimpleAnswer(Map<String, Object> qaData, Question question, Object studentAnswer) {
+        if (studentAnswer != null) {
+            Long answerId = Long.parseLong(studentAnswer.toString());
+            
+            Optional<Answer> answerOpt = question.getAnswers().stream()
+                    .filter(a -> a.getId().equals(answerId))
+                    .findFirst();
+
+            if (answerOpt.isPresent()) {
+                Answer answer = answerOpt.get();
+                qaData.put("studentAnswerId", answerId);
+                qaData.put("studentAnswerText", answer.getText());
+                qaData.put("isCorrect", answer.getCorrect());
+                qaData.put("pointsEarned", answer.getCorrect() ? question.getPoints() : 0);
+            } else {
+                qaData.put("studentAnswer", "Invalid answer ID");
+                qaData.put("isCorrect", false);
+                qaData.put("pointsEarned", 0);
+            }
+        } else {
+            qaData.put("studentAnswer", null);
+            qaData.put("isCorrect", false);
+            qaData.put("pointsEarned", 0);
+        }
+
+        // Add correct answer info
+        Optional<Answer> correctAnswer = question.getAnswers().stream()
+                .filter(Answer::getCorrect)
+                .findFirst();
+        
+        if (correctAnswer.isPresent()) {
+            qaData.put("correctAnswerId", correctAnswer.get().getId());
+            qaData.put("correctAnswerText", correctAnswer.get().getText());
+        }
+
+        // Add all options
+        List<Map<String, Object>> options = question.getAnswers().stream()
+                .map(ans -> {
+                    Map<String, Object> option = new HashMap<>();
+                    option.put("id", ans.getId());
+                    option.put("text", ans.getText());
+                    option.put("isCorrect", ans.getCorrect());
+                    return option;
+                })
+                .collect(Collectors.toList());
+        qaData.put("options", options);
+    }
+
+    private void processCategorizationAnswer(Map<String, Object> qaData, Question question, Object studentAnswer) {
+        if (studentAnswer != null) {
+            Map<String, String> studentCategories = parseComplexAnswer(studentAnswer.toString());
+            qaData.put("studentAnswer", studentCategories);
+            
+            // Check correctness
+            boolean isCorrect = true;
+            Map<String, String> correctAnswers = new HashMap<>();
+            
+            for (Answer answer : question.getAnswers()) {
+                correctAnswers.put(answer.getText(), answer.getCategory());
+            }
+            
+            for (Map.Entry<String, String> entry : studentCategories.entrySet()) {
+                String item = entry.getKey();
+                String studentCategory = entry.getValue();
+                String correctCategory = correctAnswers.get(item);
+                
+                if (!Objects.equals(studentCategory, correctCategory)) {
+                    isCorrect = false;
+                    break;
+                }
+            }
+            
+            qaData.put("isCorrect", isCorrect);
+            qaData.put("pointsEarned", isCorrect ? question.getPoints() : 0);
+        } else {
+            qaData.put("studentAnswer", null);
+            qaData.put("isCorrect", false);
+            qaData.put("pointsEarned", 0);
+        }
+
+        // Add correct categorization
+        Map<String, String> correctCategories = new HashMap<>();
+        for (Answer answer : question.getAnswers()) {
+            correctCategories.put(answer.getText(), answer.getCategory());
+        }
+        qaData.put("correctAnswer", correctCategories);
+        
+        // Add categories list
+        qaData.put("categories", question.getCategories());
+    }
+
+    private void processMatchingAnswer(Map<String, Object> qaData, Question question, Object studentAnswer) {
+        if (studentAnswer != null) {
+            Map<String, String> studentMatches = parseComplexAnswer(studentAnswer.toString());
+            qaData.put("studentAnswer", studentMatches);
+            
+            // For now, mark as correct if answer exists
+            // You can implement proper matching validation here
+            qaData.put("isCorrect", true);
+            qaData.put("pointsEarned", question.getPoints());
+        } else {
+            qaData.put("studentAnswer", null);
+            qaData.put("isCorrect", false);
+            qaData.put("pointsEarned", 0);
+        }
+        
+        // Add matching pairs info
+        qaData.put("matchingPairs", "Implementation needed");
+    }
+
+    private void processFillBlankAnswer(Map<String, Object> qaData, Question question, Object studentAnswer) {
+        if (studentAnswer != null) {
+            String studentText = studentAnswer.toString().trim();
+            qaData.put("studentAnswer", studentText);
+            
+            // Check if matches any correct answer
+            boolean isCorrect = question.getAnswers().stream()
+                    .anyMatch(answer -> answer.getText().trim().equalsIgnoreCase(studentText));
+            
+            qaData.put("isCorrect", isCorrect);
+            qaData.put("pointsEarned", isCorrect ? question.getPoints() : 0);
+        } else {
+            qaData.put("studentAnswer", null);
+            qaData.put("isCorrect", false);
+            qaData.put("pointsEarned", 0);
+        }
+
+        // Add correct answers
+        List<String> correctAnswers = question.getAnswers().stream()
+                .map(Answer::getText)
+                .collect(Collectors.toList());
+        qaData.put("correctAnswers", correctAnswers);
+    }
+
+    private Map<String, Object> parseAnswersJson(String answersJson) {
+        Map<String, Object> answers = new HashMap<>();
+        
+        if (answersJson == null || answersJson.trim().isEmpty()) {
+            return answers;
+        }
+        
+        try {
+            // Simple JSON parsing
+            if (answersJson.startsWith("{") && answersJson.endsWith("}")) {
+                String content = answersJson.substring(1, answersJson.length() - 1);
+                
+                if (!content.trim().isEmpty()) {
+                    String[] pairs = content.split(",(?=\\\"[^\\\"]*\\\":\\\"[^\\\"]*\\\")");
+                    
+                    for (String pair : pairs) {
+                        String[] keyValue = pair.split(":", 2);
+                        if (keyValue.length == 2) {
+                            String key = keyValue[0].trim().replaceAll("\"", "");
+                            String value = keyValue[1].trim();
+                            
+                            if (value.startsWith("{") && value.endsWith("}")) {
+                                // Complex answer - keep as string for further parsing
+                                answers.put(key, value);
+                            } else {
+                                // Simple answer
+                                answers.put(key, value.replaceAll("\"", ""));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Return empty map if parsing fails
+        }
+        
+        return answers;
+    }
+
+    private Map<String, String> parseComplexAnswer(String answerJson) {
+        Map<String, String> result = new HashMap<>();
+        
+        if (answerJson.startsWith("{") && answerJson.endsWith("}")) {
+            String content = answerJson.substring(1, answerJson.length() - 1);
+            String[] pairs = content.split(",");
+            
+            for (String pair : pairs) {
+                String[] keyValue = pair.split(":", 2);
+                if (keyValue.length == 2) {
+                    String key = keyValue[0].trim().replaceAll("\"", "");
+                    String value = keyValue[1].trim().replaceAll("\"", "");
+                    result.put(key, value);
+                }
+            }
+        }
+        
+        return result;
     }
 }

@@ -5,8 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
 @Entity
 @Data
@@ -30,14 +28,10 @@ public class Submission {
 
     private boolean passed;
 
-    // Store question ID -> answer ID mapping
-    @ElementCollection
-    @CollectionTable(name = "submission_answers",
-            joinColumns = @JoinColumn(name = "submission_id"))
-    @MapKeyColumn(name = "question_id")
-    @Column(name = "answer_id")
-    private Map<Long, Long> answers = new HashMap<>();
-    private Long timeSpent; // Time spent on activity in seconds // time spent on exam in seconds
+    // Store answers as JSON string to support different question types
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String answersJson;
 
-
+    private Long timeSpent; // Time spent on exam in seconds
 }

@@ -77,9 +77,9 @@ public class ExamService {
     }
 
     @Transactional
-    public Submission submitExam(Long examId, User student, Map<Long, Long> answers) {
+    public Submission submitExam(Long examId, User student, String answersJson) {
         Exam exam = getExamById(examId);
-        
+
         // Check if exam is available for students
         if (!exam.isAvailableForStudents()) {
             throw new RuntimeException("Exam is not available for submission");
@@ -94,35 +94,186 @@ public class ExamService {
         submission.setStudent(student);
         submission.setExam(exam);
         submission.setSubmissionTime(LocalDateTime.now());
-        submission.setAnswers(answers);
+        submission.setAnswersJson(answersJson);
 
-        // Calculate score
+        // Calculate score based on question types
+        int[] scoreResult = calculateScore(exam, answersJson);
+        int earnedPoints = scoreResult[0];
+        int totalPoints = scoreResult[1];
+
+        submission.setScore(earnedPoints);
+        submission.setPassed(earnedPoints >= exam.getPassingScore());
+
+        return submissionRepository.save(submission);
+    }
+
+    private int[] calculateScore(Exam exam, String answersJson) {
+        List<Question> questions = questionRepository.findByExamOrderById(exam);
         int totalPoints = 0;
         int earnedPoints = 0;
 
-        List<Question> questions = questionRepository.findByExamOrderById(exam);
+        // Parse JSON answers
+        Map<String, Object> answers = parseAnswersJson(answersJson);
+
         for (Question question : questions) {
             totalPoints += question.getPoints();
 
-            Long answerId = answers.get(question.getId());
-            if (answerId != null) {
-                // Check if correct answer
-                boolean isCorrect = question.getAnswers().stream()
-                        .filter(answer -> answer.getId().equals(answerId))
-                        .findFirst()
-                        .map(Answer::getCorrect)
-                        .orElse(false);
+            String questionId = question.getId().toString();
+            Object studentAnswer = answers.get(questionId);
 
+            if (studentAnswer != null) {
+                boolean isCorrect = evaluateAnswer(question, studentAnswer);
                 if (isCorrect) {
                     earnedPoints += question.getPoints();
                 }
             }
         }
 
-        submission.setScore(earnedPoints);
-        submission.setPassed(earnedPoints >= exam.getPassingScore());
+        return new int[]{earnedPoints, totalPoints};
+    }
 
-        return submissionRepository.save(submission);
+    private boolean evaluateAnswer(Question question, Object studentAnswer) {
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                return evaluateSimpleAnswer(question, studentAnswer);
+
+            case CATEGORIZATION:
+            case MATCHING:
+                return evaluateComplexAnswer(question, studentAnswer);
+
+            case FILL_IN_THE_BLANK:
+                return evaluateFillBlankAnswer(question, studentAnswer);
+
+            default:
+                return false;
+        }
+    }
+
+    private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
+        if (studentAnswer instanceof String) {
+            Long answerId = Long.parseLong((String) studentAnswer);
+            return question.getAnswers().stream()
+                    .filter(answer -> answer.getId().equals(answerId))
+                    .findFirst()
+                    .map(Answer::getCorrect)
+                    .orElse(false);
+        }
+        return false;
+    }
+
+    private boolean evaluateComplexAnswer(Question question, Object studentAnswer) {
+        if (!(studentAnswer instanceof String)) return false;
+
+        try {
+            // Parse the complex answer (matching pairs, categorization)
+            Map<String, String> answerMap = parseComplexAnswer((String) studentAnswer);
+
+            // For categorization: check if each item is in correct category
+            if (question.getQuestionType() == QuestionType.CATEGORIZATION) {
+                return evaluateCategorizationAnswer(question, answerMap);
+            }
+
+            // For matching: check if pairs are correct
+            if (question.getQuestionType() == QuestionType.MATCHING) {
+                return evaluateMatchingAnswer(question, answerMap);
+            }
+
+        } catch (Exception e) {
+            return false;
+        }
+
+        return false;
+    }
+
+    private boolean evaluateCategorizationAnswer(Question question, Map<String, String> studentAnswers) {
+        // Get correct categorization from question answers
+        Map<String, String> correctAnswers = new HashMap<>();
+        for (Answer answer : question.getAnswers()) {
+            correctAnswers.put(answer.getText(), answer.getCategory());
+        }
+
+        // Check if student answers match correct answers
+        for (Map.Entry<String, String> entry : studentAnswers.entrySet()) {
+            String item = entry.getKey();
+            String studentCategory = entry.getValue();
+            String correctCategory = correctAnswers.get(item);
+
+            if (!Objects.equals(studentCategory, correctCategory)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean evaluateMatchingAnswer(Question question, Map<String, String> studentAnswers) {
+        // Similar logic for matching questions
+        // Implementation depends on how matching questions are structured
+        return true; // Simplified for now
+    }
+
+    private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
+        // Compare with correct text answers
+        String studentText = studentAnswer.toString().trim().toLowerCase();
+
+        return question.getAnswers().stream()
+                .anyMatch(answer -> answer.getText().trim().toLowerCase().equals(studentText));
+    }
+
+    private Map<String, Object> parseAnswersJson(String answersJson) {
+        Map<String, Object> answers = new HashMap<>();
+
+        try {
+            // Simple JSON parsing - you can use Jackson ObjectMapper for more robust parsing
+            if (answersJson.startsWith("{") && answersJson.endsWith("}")) {
+                String content = answersJson.substring(1, answersJson.length() - 1);
+
+                if (!content.trim().isEmpty()) {
+                    String[] pairs = content.split(",(?=\\\"[^\\\"]*\\\":\\\"[^\\\"]*\\\")");
+
+                    for (String pair : pairs) {
+                        String[] keyValue = pair.split(":");
+                        if (keyValue.length == 2) {
+                            String key = keyValue[0].trim().replaceAll("\"", "");
+                            String value = keyValue[1].trim();
+
+                            if (value.startsWith("{") && value.endsWith("}")) {
+                                // Complex answer
+                                answers.put(key, value);
+                            } else {
+                                // Simple answer
+                                answers.put(key, value.replaceAll("\"", ""));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Return empty map if parsing fails
+        }
+
+        return answers;
+    }
+
+    private Map<String, String> parseComplexAnswer(String answerJson) {
+        Map<String, String> result = new HashMap<>();
+
+        if (answerJson.startsWith("{") && answerJson.endsWith("}")) {
+            String content = answerJson.substring(1, answerJson.length() - 1);
+            String[] pairs = content.split(",");
+
+            for (String pair : pairs) {
+                String[] keyValue = pair.split(":");
+                if (keyValue.length == 2) {
+                    String key = keyValue[0].trim().replaceAll("\"", "");
+                    String value = keyValue[1].trim().replaceAll("\"", "");
+                    result.put(key, value);
+                }
+            }
+        }
+
+        return result;
     }
 
     public List<Submission> getStudentSubmissions(User student) {
@@ -376,11 +527,7 @@ public class ExamService {
 
         return availableExams;
     }
-    @Transactional
-    public Submission updateSubmissionTimeSpent(Submission submission, Long timeSpent) {
-        submission.setTimeSpent(timeSpent);
-        return submissionRepository.save(submission);
-    }
+
     @Transactional
     public void deleteExam(Long examId, User teacher) {
         Exam exam = getExamById(examId);
@@ -501,5 +648,36 @@ public class ExamService {
 
         // Delete the question (answers, blank answers, matching pairs will be cascade deleted)
         questionRepository.delete(question);
+    }
+    @Transactional
+    public Submission updateSubmissionTimeSpent(Submission submission, Long timeSpent) {
+        submission.setTimeSpent(timeSpent);
+        return submissionRepository.save(submission);
+    }
+
+    // Helper method to convert old Map<Long, Long> format to JSON for backward compatibility
+    public String convertOldAnswersToJson(Map<Long, Long> oldAnswers) {
+        StringBuilder json = new StringBuilder("{");
+        boolean first = true;
+
+        for (Map.Entry<Long, Long> entry : oldAnswers.entrySet()) {
+            if (!first) json.append(",");
+            first = false;
+
+            json.append("\"").append(entry.getKey()).append("\":")
+                    .append("\"").append(entry.getValue()).append("\"");
+        }
+
+        json.append("}");
+        return json.toString();
+    }
+
+    // Method to validate question type support
+    private boolean isQuestionTypeSupported(QuestionType type) {
+        return type == QuestionType.MULTIPLE_CHOICE ||
+                type == QuestionType.TRUE_FALSE ||
+                type == QuestionType.CATEGORIZATION ||
+                type == QuestionType.MATCHING ||
+                type == QuestionType.FILL_IN_THE_BLANK;
     }
 }

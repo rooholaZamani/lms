@@ -124,7 +124,7 @@ public class ExamController {
     }
 
     @PostMapping("/{examId}/submit")
-    @Transactional  // Add this annotation
+    @Transactional
     public ResponseEntity<SubmissionDTO> submitExam(
             @PathVariable Long examId,
             @RequestBody Map<String, Object> submissionData,
@@ -135,38 +135,100 @@ public class ExamController {
         if (examService.hasStudentTakenExam(examId, student)) {
             throw new RuntimeException("You have already submitted this exam");
         }
-        // FIX: Convert String keys to Long keys
-        Map<Long, Long> answers = new HashMap<>();
+
+        // Process answers for different question types
         Object answersObj = submissionData.get("answers");
+        String answersJson = "{}";
 
         if (answersObj instanceof Map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> answersMap = (Map<String, Object>) answersObj;
-
-            for (Map.Entry<String, Object> entry : answersMap.entrySet()) {
-                Long questionId = Long.parseLong(entry.getKey());
-                Long answerId = ((Number) entry.getValue()).longValue();
-                answers.put(questionId, answerId);
+            try {
+                // Convert to JSON string using ObjectMapper or simple approach
+                answersJson = convertAnswersToJson((Map<String, Object>) answersObj);
+            } catch (Exception e) {
+                throw new RuntimeException("Invalid answers format");
             }
         }
 
         Long timeSpent = submissionData.get("timeSpent") != null ?
                 ((Number) submissionData.get("timeSpent")).longValue() : 0L;
 
-        // Submit exam with converted answers
-        Submission submission = examService.submitExam(examId, student, answers);
+        // Submit exam with JSON answers
+        Submission submission = examService.submitExam(examId, student, answersJson);
 
-        // Update submission with time spent and save again
-//        submission.setTimeSpent(timeSpent);
-        // You'll need to add this method to ExamService or save here
+        // Update submission with time spent
         submission = examService.updateSubmissionTimeSpent(submission, timeSpent);
-        // ADD ACTIVITY TRACKING
+
+        // Activity tracking
         activityTrackingService.logActivity(student, "EXAM_SUBMISSION", examId, timeSpent);
         if (timeSpent > 0) {
             activityTrackingService.updateStudyTime(student, timeSpent);
         }
 
         return ResponseEntity.ok(dtoMapperService.mapToSubmissionDTO(submission));
+    }
+
+    private String convertAnswersToJson(Map<String, Object> answers) {
+        StringBuilder json = new StringBuilder("{");
+        boolean first = true;
+
+        for (Map.Entry<String, Object> entry : answers.entrySet()) {
+            if (!first) json.append(",");
+            first = false;
+
+            String questionId = entry.getKey();
+            Object answer = entry.getValue();
+
+            json.append("\"").append(questionId).append("\":");
+
+            if (answer instanceof Map) {
+                // Complex answer (matching, categorization, etc.)
+                json.append(convertObjectToJson(answer));
+            } else if (answer instanceof List) {
+                // Multiple answers
+                json.append(convertListToJson((List<?>) answer));
+            } else {
+                // Simple answer
+                json.append("\"").append(answer.toString()).append("\"");
+            }
+        }
+
+        json.append("}");
+        return json.toString();
+    }
+
+    private String convertObjectToJson(Object obj) {
+        if (obj instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) obj;
+            StringBuilder json = new StringBuilder("{");
+            boolean first = true;
+
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!first) json.append(",");
+                first = false;
+
+                json.append("\"").append(entry.getKey().toString()).append("\":");
+                json.append("\"").append(entry.getValue().toString()).append("\"");
+            }
+
+            json.append("}");
+            return json.toString();
+        }
+        return "\"" + obj.toString() + "\"";
+    }
+
+    private String convertListToJson(List<?> list) {
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+
+        for (Object item : list) {
+            if (!first) json.append(",");
+            first = false;
+
+            json.append("\"").append(item.toString()).append("\"");
+        }
+
+        json.append("]");
+        return json.toString();
     }
 
     @GetMapping("/submissions/student")

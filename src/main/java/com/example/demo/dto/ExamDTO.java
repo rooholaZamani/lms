@@ -12,6 +12,8 @@ public class ExamDTO {
     private String description;
     private Integer timeLimit; // Time limit  in seconds
     private Integer passingScore;
+    private Long courseId;
+    private String courseTitle;
     
     // New finalization fields
     private String status; // ExamStatus as string

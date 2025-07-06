@@ -270,6 +270,10 @@ public class DTOMapperService {
         if (exam.getLesson() != null) {
             dto.setLessonId(exam.getLesson().getId());
             dto.setLessonTitle(exam.getLesson().getTitle());
+            if (exam.getLesson().getCourse() != null) {
+                dto.setCourseId(exam.getLesson().getCourse().getId());
+                dto.setCourseTitle(exam.getLesson().getCourse().getTitle());
+            }
         }
 
         // Helper fields
