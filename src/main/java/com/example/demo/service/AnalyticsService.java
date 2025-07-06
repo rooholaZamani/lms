@@ -311,12 +311,17 @@ public class AnalyticsService {
                 .filter(p -> p.getCourse().getId().equals(courseId))
                 .collect(Collectors.toList());
 
-        long betterStudents = allProgress.stream()
-                .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
-                .count();
+        if (allProgress.size() <= 1) {
+            analysis.put("classRank", 1);
+            analysis.put("totalStudents", 1);
+        } else {
+            long betterStudents = allProgress.stream()
+                    .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
+                    .count();
+            analysis.put("classRank", (int) (betterStudents + 1));
+            analysis.put("totalStudents", allProgress.size());
+        }
 
-        analysis.put("classRank", betterStudents + 1);
-        analysis.put("totalStudents", allProgress.size());
 
         return analysis;
     }
@@ -328,7 +333,7 @@ public class AnalyticsService {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(90);
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, LocalDateTime.now());
 
@@ -368,7 +373,7 @@ public class AnalyticsService {
             examData.put("examName", exam.getTitle());
             examData.put("score", submission.getScore());
             examData.put("timeSpent", submission.getTimeSpent() != null ?
-                    Math.round(submission.getTimeSpent()  * 10.0) / 10.0 : 0.0);
+                    submission.getTimeSpent() : 0L);
             examData.put("passed", submission.isPassed());
             examData.put("date", submission.getSubmissionTime());
 
@@ -1355,11 +1360,16 @@ public class AnalyticsService {
                 .filter(p -> p.getCourse().getId().equals(course.getId()))
                 .collect(Collectors.toList());
 
-        long betterStudents = allProgress.stream()
-                .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
-                .count();
-        stats.put("classRank", (int) (betterStudents + 1));
-        stats.put("totalStudents", allProgress.size());
+        if (allProgress.size() <= 1) {
+            stats.put("classRank", 1);
+            stats.put("totalStudents", 1);
+        } else {
+            long betterStudents = allProgress.stream()
+                    .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
+                    .count();
+            stats.put("classRank", (int) (betterStudents + 1));
+            stats.put("totalStudents", allProgress.size());
+        }
 
         // تعداد آزمون‌های شرکت‌کرده
         stats.put("examsTaken", examSubmissions.size());
@@ -2242,7 +2252,7 @@ public class AnalyticsService {
 
         // Calculate average completion rate
         double averageCompletion = progressList.stream()
-                .mapToDouble(Progress::getCompletionPercentage)
+                .mapToDouble(p -> (double) p.getCompletedLessonCount() / p.getTotalLessons() * 100)
                 .average()
                 .orElse(0.0);
 
@@ -2312,7 +2322,7 @@ public class AnalyticsService {
 
         // Calculate class average completion
         double averageCompletion = allProgress.stream()
-                .mapToDouble(Progress::getCompletionPercentage)
+                .mapToDouble(p -> (double) p.getCompletedLessonCount() / p.getTotalLessons() * 100)
                 .average()
                 .orElse(0.0);
 
@@ -2363,8 +2373,9 @@ public class AnalyticsService {
         // Build comparison data
         comparison.put("studentCompletion", studentProgress.getCompletionPercentage());
         comparison.put("classAverageCompletion", averageCompletion);
-        comparison.put("completionPercentile", calculatePercentile(studentProgress.getCompletionPercentage(),
-                allProgress.stream().mapToDouble(Progress::getCompletionPercentage).toArray()));
+        double studentCompletionRate = (double) studentProgress.getCompletedLessonCount() / studentProgress.getTotalLessons() * 100;
+        comparison.put("completionPercentile", calculatePercentile(studentCompletionRate,
+                allProgress.stream().mapToDouble(p -> (double) p.getCompletedLessonCount() / p.getTotalLessons() * 100).toArray()));
 
         comparison.put("studentExamAverage", studentExamAverage);
         comparison.put("classExamAverage", classExamAverage);
@@ -2399,7 +2410,8 @@ public class AnalyticsService {
 
         // Calculate overall course metrics
         double averageCompletion = allProgress.stream()
-                .mapToDouble(Progress::getCompletionPercentage)
+                .mapToDouble(p -> p.getTotalLessons() > 0 ?
+                        (double) p.getCompletedLessonCount() / p.getTotalLessons() * 100 : 0)
                 .average()
                 .orElse(0.0);
 

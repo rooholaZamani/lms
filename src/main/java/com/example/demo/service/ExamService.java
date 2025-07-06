@@ -189,59 +189,82 @@ public class ExamService {
     @Transactional
     public Exam finalizeExam(Long examId, User teacher) {
         Exam exam = getExamById(examId);
-        
+
         // Security check: verify teacher owns the exam
         if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
             throw new RuntimeException("Unauthorized: You can only finalize your own exams");
         }
-        
+
         // Validation checks
         if (exam.getStatus() == ExamStatus.FINALIZED) {
             throw new RuntimeException("Exam is already finalized");
         }
-        
+
         List<Question> questions = questionRepository.findByExamOrderById(exam);
-        
+
         // Ensure exam has at least one question
         if (questions.isEmpty()) {
             throw new RuntimeException("Cannot finalize exam: Exam must have at least one question");
         }
-        
-        // Validate all questions have valid answers
+
+        // Validate all questions have valid answers based on question type
         for (Question question : questions) {
-            if (question.getAnswers().isEmpty()) {
-                throw new RuntimeException("Cannot finalize exam: Question '" + question.getText() + "' has no answers");
+            boolean hasValidAnswers = false;
+
+            switch (question.getQuestionType()) {
+                case MULTIPLE_CHOICE:
+                case TRUE_FALSE:
+                case CATEGORIZATION:
+                    // These use the answers field
+                    if (!question.getAnswers().isEmpty()) {
+                        // Check if at least one answer is marked as correct
+                        hasValidAnswers = question.getAnswers().stream()
+                                .anyMatch(Answer::getCorrect);
+                    }
+                    break;
+
+                case FILL_IN_THE_BLANKS:
+                    // These use blankAnswers field
+                    hasValidAnswers = !question.getBlankAnswers().isEmpty();
+                    break;
+
+                case MATCHING:
+                    // These use matchingPairs field
+                    hasValidAnswers = !question.getMatchingPairs().isEmpty();
+                    break;
+
+                case ESSAY:
+                case SHORT_ANSWER:
+                    // These don't require predefined answers
+                    hasValidAnswers = true;
+                    break;
             }
-            
-            // Check if at least one answer is marked as correct
-            boolean hasCorrectAnswer = question.getAnswers().stream()
-                    .anyMatch(Answer::getCorrect);
-            
-            if (!hasCorrectAnswer) {
-                throw new RuntimeException("Cannot finalize exam: Question '" + question.getText() + "' has no correct answer");
+
+            if (!hasValidAnswers) {
+                throw new RuntimeException("Cannot finalize exam: Question '" + question.getText() + "' has invalid or missing answers for question type " + question.getQuestionType());
             }
         }
-        
+
         // Calculate total possible score
         int totalScore = questions.stream()
                 .mapToInt(Question::getPoints)
                 .sum();
-        
+
         // Validate passing score
         if (exam.getPassingScore() > totalScore) {
-            throw new RuntimeException("Cannot finalize exam: Passing score (" + exam.getPassingScore() + 
+            throw new RuntimeException("Cannot finalize exam: Passing score (" + exam.getPassingScore() +
                     ") cannot be greater than total possible score (" + totalScore + ")");
         }
-        
+
         // Update exam status and metadata
         exam.setStatus(ExamStatus.FINALIZED);
         exam.setFinalizedAt(LocalDateTime.now());
         exam.setFinalizedBy(teacher);
         exam.setTotalPossibleScore(totalScore);
-        
+
         // Set availability start time to now (can be customized later)
         exam.setAvailableFrom(LocalDateTime.now());
-        
+
         return examRepository.save(exam);
     }
 
