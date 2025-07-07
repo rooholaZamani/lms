@@ -1,6 +1,7 @@
 package com.example.demo.dto;
 
 
+import com.example.demo.model.Lesson;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -21,6 +22,10 @@ public class SubmissionDTO {
     private Integer timeLimit; // Time limit  in seconds
     private Long actualDuration;
     private String courseTitle;
+    private Integer questionCount;
+    private Integer totalPossibleScore;
+    private String lessonTitle;
+
 
     // Getters and setters
 }

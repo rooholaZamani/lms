@@ -349,6 +349,9 @@ public class DTOMapperService {
             dto.setExamId(submission.getExam().getId());
             dto.setExamTitle(submission.getExam().getTitle());
             dto.setTimeLimit(submission.getExam().getTimeLimit());
+            dto.setQuestionCount(submission.getExam().getQuestions().size());
+            dto.setTotalPossibleScore(submission.getExam().getTotalPossibleScore());
+            dto.setLessonTitle(submission.getExam().getLesson().getTitle());
 
             if (submission.getExam().getLesson() != null &&
                     submission.getExam().getLesson().getCourse() != null) {
