@@ -18,14 +18,15 @@ public class SubmissionDTO {
     private LocalDateTime submissionTime;
     private Integer score;
     private boolean passed;
+
     private Map<Long, Long> answers = new HashMap<>();
-    private Integer timeLimit; // Time limit  in seconds
+
+    private Map<String, Object> answersDetails = new HashMap<>();
+
+    private Integer timeLimit;
     private Long actualDuration;
     private String courseTitle;
     private Integer questionCount;
     private Integer totalPossibleScore;
     private String lessonTitle;
-
-
-    // Getters and setters
 }

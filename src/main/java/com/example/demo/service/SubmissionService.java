@@ -104,7 +104,7 @@ public class SubmissionService {
                 processMatchingAnswer(qaData, question, studentAnswer);
                 break;
                 
-            case FILL_IN_THE_BLANK:
+            case FILL_IN_THE_BLANKS:
                 processFillBlankAnswer(qaData, question, studentAnswer);
                 break;
                 

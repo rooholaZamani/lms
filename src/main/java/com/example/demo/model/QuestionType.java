@@ -7,6 +7,5 @@ public enum QuestionType {
     FILL_IN_THE_BLANKS,  // جای خالی
     MATCHING,            // جورکردن
     CATEGORIZATION,      // دسته‌بندی
-    SHORT_ANSWER,         // پاسخ کوتاه
-    FILL_IN_THE_BLANK
+    SHORT_ANSWER         // پاسخ کوتاه
 }

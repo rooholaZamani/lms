@@ -513,7 +513,7 @@ public class ExamService {
                 type == QuestionType.TRUE_FALSE ||
                 type == QuestionType.CATEGORIZATION ||
                 type == QuestionType.MATCHING ||
-                type == QuestionType.FILL_IN_THE_BLANK;
+                type == QuestionType.FILL_IN_THE_BLANKS;
     }
     public Exam findById(Long examId) {
         return examRepository.findById(examId)
@@ -535,7 +535,7 @@ public class ExamService {
                 return evaluateCategorizationAnswer(question, studentAnswer);
             case MATCHING:
                 return evaluateMatchingAnswer(question, studentAnswer);
-            case FILL_IN_THE_BLANK:
+
             case FILL_IN_THE_BLANKS:
                 return evaluateFillBlankAnswer(question, studentAnswer);
             default:
@@ -754,7 +754,6 @@ public class ExamService {
                 result.put("correctAnswer", correctMatches);
                 break;
 
-            case FILL_IN_THE_BLANK:
             case FILL_IN_THE_BLANKS:
                 List<String> correctAnswers = question.getAnswers().stream()
                         .map(Answer::getText)

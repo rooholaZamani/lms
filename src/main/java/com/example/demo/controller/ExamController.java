@@ -660,8 +660,6 @@ public class ExamController {
                 }
                 result.put("correctAnswer", correctMatches);
                 break;
-
-            case FILL_IN_THE_BLANK:
             case FILL_IN_THE_BLANKS:
                 List<String> correctAnswers = question.getAnswers().stream()
                         .map(Answer::getText)

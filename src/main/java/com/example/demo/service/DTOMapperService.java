@@ -5,6 +5,10 @@ import com.example.demo.model.*;
 import com.example.demo.repository.AssignmentRepository;
 import com.example.demo.repository.SubmissionRepository;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.stereotype.Service;
+import java.util.*;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -13,6 +17,7 @@ import java.util.stream.Collectors;
 public class DTOMapperService {
     private final SubmissionRepository submissionRepository;
     private final AssignmentRepository assignmentRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public DTOMapperService(SubmissionRepository submissionRepository, AssignmentRepository assignmentRepository) {
         this.submissionRepository = submissionRepository;
@@ -351,6 +356,7 @@ public class DTOMapperService {
             dto.setTimeLimit(submission.getExam().getTimeLimit());
             dto.setQuestionCount(submission.getExam().getQuestions().size());
             dto.setTotalPossibleScore(submission.getExam().getTotalPossibleScore());
+
             if (submission.getExam().getLesson() != null) {
                 dto.setLessonTitle(submission.getExam().getLesson().getTitle());
                 if (submission.getExam().getLesson().getCourse() != null) {
@@ -359,24 +365,23 @@ public class DTOMapperService {
             } else {
                 dto.setLessonTitle("حذف شده");
             }
-
-            if (submission.getExam().getLesson() != null &&
-                    submission.getExam().getLesson().getCourse() != null) {
-                dto.setCourseTitle(submission.getExam().getLesson().getCourse().getTitle());
-            }
         }
 
         dto.setSubmissionTime(submission.getSubmissionTime());
         dto.setScore(submission.getScore());
         dto.setPassed(submission.isPassed());
 
-        // Convert JSON answers back to Map format for backward compatibility
-        dto.setAnswers(parseAnswersJsonToMap(submission.getAnswersJson()));
+        // پاسخ‌های قدیمی برای backward compatibility
+        dto.setAnswers(parseAnswersJsonToLegacyMap(submission.getAnswersJson()));
+
+        // پاسخ‌های کامل - پشتیبانی از تمام انواع سوالات
+        dto.setAnswersDetails(parseAnswersJsonToFullObject(submission.getAnswersJson()));
 
         dto.setActualDuration(submission.getTimeSpent());
 
         return dto;
     }
+
 
     // Helper method to convert JSON back to Map format
     private Map<Long, Long> parseAnswersJsonToMap(String answersJson) {
@@ -843,5 +848,136 @@ public class DTOMapperService {
         return users.stream()
                 .map(this::mapToUserDTO)
                 .collect(Collectors.toList());
+    }
+    private Map<String, Object> parseAnswersJsonToFullObject(String answersJson) {
+        if (answersJson == null || answersJson.trim().isEmpty()) {
+            return new HashMap<>();
+        }
+
+        try {
+            Map<String, Object> rawAnswers = objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> processedAnswers = new HashMap<>();
+
+            for (Map.Entry<String, Object> entry : rawAnswers.entrySet()) {
+                String questionId = entry.getKey();
+                Object answer = entry.getValue();
+
+                // پردازش بر اساس نوع پاسخ
+                processedAnswers.put(questionId, processAnswerBasedOnType(answer));
+            }
+
+            return processedAnswers;
+
+        } catch (Exception e) {
+            System.err.println("Error parsing answers JSON to full object: " + e.getMessage());
+            e.printStackTrace();
+            return new HashMap<>();
+        }
+    }
+    private Object processAnswerBasedOnType(Object answer) {
+        if (answer == null) {
+            return null;
+        }
+
+        // اگر آرایه است (FILL_IN_THE_BLANK, MATCHING, CATEGORIZATION)
+        if (answer instanceof List) {
+            return new ArrayList<>((List<?>) answer);
+        }
+
+        // اگر Map است (MATCHING, CATEGORIZATION)
+        if (answer instanceof Map) {
+            return new HashMap<>((Map<?, ?>) answer);
+        }
+
+        // اگر رشته JSON است، سعی کن parse کنی
+        if (answer instanceof String) {
+            String answerStr = (String) answer;
+
+            // چک کردن اینکه آیا JSON آرایه است
+            if (answerStr.trim().startsWith("[") && answerStr.trim().endsWith("]")) {
+                try {
+                    return objectMapper.readValue(answerStr, List.class);
+                } catch (Exception e) {
+                    return answerStr; // اگر parse نشد، به عنوان string برگردان
+                }
+            }
+
+            // چک کردن اینکه آیا JSON object است
+            if (answerStr.trim().startsWith("{") && answerStr.trim().endsWith("}")) {
+                try {
+                    return objectMapper.readValue(answerStr, Map.class);
+                } catch (Exception e) {
+                    return answerStr; // اگر parse نشد، به عنوان string برگردان
+                }
+            }
+
+            return answerStr; // رشته ساده
+        }
+
+        // سایر انواع (Number, Boolean و...)
+        return answer;
+    }
+    private Map<Long, Long> parseAnswersJsonToLegacyMap(String answersJson) {
+        Map<Long, Long> legacyAnswers = new HashMap<>();
+
+        if (answersJson == null || answersJson.trim().isEmpty()) {
+            return legacyAnswers;
+        }
+
+        try {
+            Map<String, Object> fullAnswers = parseAnswersJsonToFullObject(answersJson);
+
+            for (Map.Entry<String, Object> entry : fullAnswers.entrySet()) {
+                try {
+                    Long questionId = Long.parseLong(entry.getKey());
+                    Object value = entry.getValue();
+
+                    // فقط پاسخ‌های قابل تبدیل به Long را اضافه کن
+                    Long legacyValue = convertToLegacyFormat(value);
+                    if (legacyValue != null) {
+                        legacyAnswers.put(questionId, legacyValue);
+                    }
+
+                } catch (NumberFormatException e) {
+                    // questionId عددی نیست، نادیده بگیر
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing answers to legacy format: " + e.getMessage());
+        }
+
+        return legacyAnswers;
+    }
+
+    /**
+     * تبدیل پاسخ به فرمت قدیمی Long (فقط برای MULTIPLE_CHOICE و TRUE_FALSE)
+     */
+    private Long convertToLegacyFormat(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        // اگر عدد است
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+
+        // اگر رشته عددی است
+        if (value instanceof String) {
+            try {
+                return Long.parseLong((String) value);
+            } catch (NumberFormatException e) {
+                // رشته غیرعددی است
+                return null;
+            }
+        }
+
+        // اگر boolean است (TRUE_FALSE questions)
+        if (value instanceof Boolean) {
+            return ((Boolean) value) ? 1L : 0L;
+        }
+
+        // سایر انواع قابل تبدیل نیستند
+        return null;
     }
 }
