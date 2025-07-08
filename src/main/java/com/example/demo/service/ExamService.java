@@ -817,14 +817,21 @@ public class ExamService {
                 // حذف آزمون قبلی
                 examRepository.delete(existingExam);
                 lesson.setExam(null);
+                lessonRepository.save(lesson);
             }
         }
 
-        exam.setLesson(lesson);
+        // Set exam properties
         exam.setStatus(ExamStatus.DRAFT);
 
+        // STEP 1: Save exam first (without lesson relationship)
         Exam savedExam = examRepository.save(exam);
+
+        // STEP 2: Set bidirectional relationship
         lesson.setExam(savedExam);
+        savedExam.setLesson(lesson);
+
+        // STEP 3: Save lesson to persist the relationship
         lessonRepository.save(lesson);
 
         return savedExam;
