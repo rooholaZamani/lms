@@ -45,7 +45,13 @@ public class CourseService {
     }
 
     public List<Course> getEnrolledCourses(User student) {
-        return courseRepository.findByEnrolledStudentsContaining(student);
+        return courseRepository.findByEnrolledStudentsContaining(student)
+                .stream()
+                .filter(Course::getActive)
+                .collect(Collectors.toList());
+    }
+    public List<Course> getAllActiveCourses() {
+        return courseRepository.findByActiveTrue();
     }
 
     public Course enrollStudent(Long courseId, User student) {

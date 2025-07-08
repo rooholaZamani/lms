@@ -70,16 +70,12 @@ public class CourseController {
 
     // 🔥 FIXED: Now returns CourseDTO instead of raw Course entity
     @GetMapping("/available")
-    @Operation(summary = "Get available courses", description = "Get list of courses available for enrollment")
     public ResponseEntity<List<CourseDTO>> getAvailableCourses(Authentication authentication) {
         User user = userService.findByUsername(authentication.getName());
-        List<Course> allCourses = courseService.getAllCourses();
+        List<Course> allCourses = courseService.getAllActiveCourses();
         List<Course> enrolledCourses = courseService.getEnrolledCourses(user);
 
-        // Filter out courses the student is already enrolled in
         allCourses.removeAll(enrolledCourses);
-
-        // Convert to DTOs
         List<CourseDTO> courseDTOs = dtoMapperService.mapToCourseDTOListSummary(allCourses);
         return ResponseEntity.ok(courseDTOs);
     }
