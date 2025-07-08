@@ -10,6 +10,8 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 @Service
 public class ExamService {
 
@@ -19,37 +21,20 @@ public class ExamService {
     private final SubmissionRepository submissionRepository;
     private final CourseRepository courseRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final UserService userService;
     public ExamService(
             ExamRepository examRepository,
             LessonRepository lessonRepository,
             QuestionRepository questionRepository,
-            SubmissionRepository submissionRepository, CourseRepository courseRepository) {
+            SubmissionRepository submissionRepository, CourseRepository courseRepository, UserService userService) {
         this.examRepository = examRepository;
         this.lessonRepository = lessonRepository;
         this.questionRepository = questionRepository;
         this.submissionRepository = submissionRepository;
         this.courseRepository = courseRepository;
+        this.userService = userService;
     }
 
-    @Transactional
-    public Exam createExam(Exam exam, Long lessonId) {
-        Lesson lesson = lessonRepository.findById(lessonId)
-                .orElseThrow(() -> new RuntimeException("Lesson not found"));
-
-        // Set default status to DRAFT
-        exam.setStatus(ExamStatus.DRAFT);
-
-        exam.setLesson(lesson);
-        
-        // Save exam first
-        Exam savedExam = examRepository.save(exam);
-
-        // Update lesson with exam
-        lesson.setExam(savedExam);
-        lessonRepository.save(lesson);
-
-        return savedExam;
-    }
 
     public Exam getExamById(Long examId) {
         return examRepository.findById(examId)
@@ -804,6 +789,57 @@ public class ExamService {
         existingExam.setAvailableTo(examData.getAvailableTo());
 
         return examRepository.save(existingExam);
+    }
+
+    @Transactional
+    public Exam createExam(Exam exam, Long lessonId, boolean forceReplace) {
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new RuntimeException("Lesson not found"));
+
+        // Security check: verify teacher owns the lesson
+        User currentUser = getCurrentUser();
+        if (!lesson.getCourse().getTeacher().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("Unauthorized: You can only create exams for your own lessons");
+        }
+
+        // بررسی وجود آزمون قبلی
+        if (lesson.getExam() != null) {
+            Exam existingExam = lesson.getExam();
+            List<Submission> submissions = submissionRepository.findByExam(existingExam);
+
+            if (!submissions.isEmpty() && !forceReplace) {
+                throw new RuntimeException("EXAM_EXISTS_WITH_SUBMISSIONS:" + submissions.size());
+            }
+
+            if (forceReplace) {
+                // حذف تمام submissions
+                submissionRepository.deleteByExam(existingExam);
+                // حذف آزمون قبلی
+                examRepository.delete(existingExam);
+                lesson.setExam(null);
+            }
+        }
+
+        exam.setLesson(lesson);
+        exam.setStatus(ExamStatus.DRAFT);
+
+        Exam savedExam = examRepository.save(exam);
+        lesson.setExam(savedExam);
+        lessonRepository.save(lesson);
+
+        return savedExam;
+    }
+
+    // Overload برای backward compatibility
+    @Transactional
+    public Exam createExam(Exam exam, Long lessonId) {
+        return createExam(exam, lessonId, false);
+    }
+
+    // Helper method to get current user
+    private User getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return userService.findByUsername(authentication.getName());
     }
 
 }

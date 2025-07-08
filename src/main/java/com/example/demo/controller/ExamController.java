@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import com.example.demo.repository.LessonRepository;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,30 +41,62 @@ public class ExamController {
     private final ActivityTrackingService activityTrackingService;
     private final SubmissionRepository submissionRepository;
     private final SubmissionService submissionService;
+    private final LessonRepository lessonRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
         this.submissionRepository = submissionRepository;
         this.submissionService = submissionService;
+        this.lessonRepository = lessonRepository;
     }
+
 
     @PostMapping("/lesson/{lessonId}")
     @Operation(summary = "Create a new exam", description = "Create a new exam for a specific lesson")
     @SecurityRequirement(name = "basicAuth")
-    public ResponseEntity<ExamDTO> createExam(
+    public ResponseEntity<?> createExam(
             @PathVariable Long lessonId,
             @RequestBody Exam exam,
+            @RequestParam(defaultValue = "false") boolean forceReplace,
             Authentication authentication) {
 
-        User teacher = userService.findByUsername(authentication.getName());
-        Exam savedExam = examService.createExam(exam, lessonId);
-        return ResponseEntity.ok(dtoMapperService.mapToExamDTO(savedExam));
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+            Exam savedExam = examService.createExam(exam, lessonId, forceReplace);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("exam", dtoMapperService.mapToExamDTO(savedExam));
+            response.put("id", savedExam.getId()); // اضافه کردن id برای backward compatibility
+            response.put("message", "آزمون با موفقیت ایجاد شد");
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            if (e.getMessage().startsWith("EXAM_EXISTS_WITH_SUBMISSIONS:")) {
+                String[] parts = e.getMessage().split(":");
+                int submissionCount = Integer.parseInt(parts[1]);
+
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("errorType", "EXAM_EXISTS_WITH_SUBMISSIONS");
+                errorResponse.put("submissionCount", submissionCount);
+                errorResponse.put("message", "این درس قبلاً آزمون دارد که " + submissionCount + " دانش‌آموز در آن شرکت کرده‌اند.");
+
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+            }
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
     }
 
     @PostMapping("/{examId}/questions/clone/{questionId}")
@@ -639,4 +672,32 @@ public class ExamController {
 
         return result;
     }
+    @GetMapping("/lesson/{lessonId}/status")
+    @Operation(summary = "Check lesson exam status", description = "Check if lesson has exam and submission count")
+    public ResponseEntity<Map<String, Object>> checkLessonExamStatus(@PathVariable Long lessonId) {
+        try {
+            Lesson lesson = lessonRepository.findById(lessonId)
+                    .orElseThrow(() -> new RuntimeException("Lesson not found"));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("hasExam", lesson.getExam() != null);
+
+            if (lesson.getExam() != null) {
+                List<Submission> submissions = submissionRepository.findByExam(lesson.getExam());
+                response.put("submissionCount", submissions.size());
+                response.put("examTitle", lesson.getExam().getTitle());
+                response.put("examStatus", lesson.getExam().getStatus());
+            } else {
+                response.put("submissionCount", 0);
+            }
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
 }

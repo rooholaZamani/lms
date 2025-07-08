@@ -6,8 +6,10 @@ import com.example.demo.model.Exam;
 import com.example.demo.model.Submission;
 import com.example.demo.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,4 +30,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     @Query("SELECT s FROM Submission s WHERE s.student = :student AND s.submissionTime BETWEEN :start AND :end")
     List<Submission> findByStudentAndTimestampBetween(@Param("student") User student, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM Submission s WHERE s.exam = :exam")
+    void deleteByExam(@Param("exam") Exam exam);
 }
