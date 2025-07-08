@@ -295,7 +295,27 @@ public class ExamController {
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }
+    @PutMapping("/{examId}")
+    @Operation(summary = "Update exam", description = "Update exam details (only draft exams can be updated)")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<ExamDTO> updateExam(
+            @PathVariable Long examId,
+            @RequestBody Exam examData,
+            Authentication authentication) {
 
+        User teacher = userService.findByUsername(authentication.getName());
+
+        // Verify user is a teacher
+        boolean isTeacher = teacher.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+        if (!isTeacher) {
+            throw new RuntimeException("Access denied: Only teachers can update exams");
+        }
+
+        Exam updatedExam = examService.updateExam(examId, examData, teacher);
+        return ResponseEntity.ok(dtoMapperService.mapToExamDTO(updatedExam));
+    }
     @GetMapping("/{examId}/finalization-info")
     @Operation(
         summary = "Get exam finalization information", 

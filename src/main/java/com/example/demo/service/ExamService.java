@@ -780,5 +780,30 @@ public class ExamService {
 
         return result;
     }
+    @Transactional
+    public Exam updateExam(Long examId, Exam examData, User teacher) {
+        Exam existingExam = examRepository.findById(examId)
+                .orElseThrow(() -> new RuntimeException("Exam not found"));
+
+        // Security check: verify teacher owns the exam
+        if (!existingExam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied: You can only update your own exams");
+        }
+
+        // Business rule: only allow updating if exam is still in draft status
+        if (!existingExam.canBeModified()) {
+            throw new RuntimeException("Cannot update finalized exam");
+        }
+
+        // Update exam fields
+        existingExam.setTitle(examData.getTitle());
+        existingExam.setDescription(examData.getDescription());
+        existingExam.setTimeLimit(examData.getTimeLimit());
+        existingExam.setPassingScore(examData.getPassingScore());
+        existingExam.setAvailableFrom(examData.getAvailableFrom());
+        existingExam.setAvailableTo(examData.getAvailableTo());
+
+        return examRepository.save(existingExam);
+    }
 
 }
