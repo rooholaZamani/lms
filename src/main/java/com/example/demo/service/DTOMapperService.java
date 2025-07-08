@@ -351,7 +351,14 @@ public class DTOMapperService {
             dto.setTimeLimit(submission.getExam().getTimeLimit());
             dto.setQuestionCount(submission.getExam().getQuestions().size());
             dto.setTotalPossibleScore(submission.getExam().getTotalPossibleScore());
-            dto.setLessonTitle(submission.getExam().getLesson().getTitle());
+            if (submission.getExam().getLesson() != null) {
+                dto.setLessonTitle(submission.getExam().getLesson().getTitle());
+                if (submission.getExam().getLesson().getCourse() != null) {
+                    dto.setCourseTitle(submission.getExam().getLesson().getCourse().getTitle());
+                }
+            } else {
+                dto.setLessonTitle("حذف شده");
+            }
 
             if (submission.getExam().getLesson() != null &&
                     submission.getExam().getLesson().getCourse() != null) {
