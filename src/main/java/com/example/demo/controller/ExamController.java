@@ -783,6 +783,7 @@ public class ExamController {
     @PostMapping("/submissions/{submissionId}/manual-grade")
     @Operation(summary = "Manual grading for essay and short answer questions")
     @SecurityRequirement(name = "basicAuth")
+    @Transactional
     public ResponseEntity<?> manualGradeSubmission(
             @PathVariable Long submissionId,
             @RequestBody Map<String, Object> gradingData,
@@ -854,7 +855,6 @@ public class ExamController {
         } catch (Exception e) {
             System.err.println("Error in manual grading: " + e.getMessage());
             e.printStackTrace();
-
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "خطا در نمره‌گذاری: " + e.getMessage()));
         }
@@ -1401,6 +1401,9 @@ public class ExamController {
             response.put("submissionTime", submission.getSubmissionTime());
             response.put("timeSpent", submission.getTimeSpent());
             response.put("success", true);
+            response.put("studentName", submission.getStudent().getFirstName() + " " +
+                    (submission.getStudent().getLastName() != null ? submission.getStudent().getLastName() : ""));
+
 
             // اگر نمره محاسبه شده با نمره ذخیره شده متفاوت است، به‌روزرسانی کن
             if (!Objects.equals(submission.getScore(), totalEarnedPoints)) {
