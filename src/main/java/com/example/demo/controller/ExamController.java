@@ -180,10 +180,17 @@ public class ExamController {
 
         if (answersObj instanceof Map) {
             try {
-                // Convert to JSON string using ObjectMapper or simple approach
-                answersJson = convertAnswersToJson((Map<String, Object>) answersObj);
+                // اضافه کردن logging برای debug
+                System.out.println("Received answers: " + answersObj);
+
+                // Convert to JSON string using ObjectMapper
+                answersJson = objectMapper.writeValueAsString(answersObj);
+                System.out.println("Converted to JSON: " + answersJson);
+
             } catch (Exception e) {
-                throw new RuntimeException("Invalid answers format");
+                System.err.println("Error converting answers to JSON: " + e.getMessage());
+                e.printStackTrace();
+                throw new RuntimeException("Invalid answers format: " + e.getMessage());
             }
         }
 
@@ -205,14 +212,6 @@ public class ExamController {
         return ResponseEntity.ok(dtoMapperService.mapToSubmissionDTO(submission));
     }
 
-    private String convertAnswersToJson(Map<String, Object> answers) {
-        try {
-            return objectMapper.writeValueAsString(answers);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "{}";
-        }
-    }
 
     private String convertObjectToJson(Object obj) {
         if (obj instanceof Map) {
@@ -520,8 +519,7 @@ public class ExamController {
         }
     }
     @GetMapping("/{examId}/student-answers")
-    @Operation(summary = "Get student answers for exam", description = "Retrieve student's answers for a specific exam")
-    @SecurityRequirement(name = "basicAuth")
+    @Operation(summary = "Get student answers for exam", description = "Retrieve detailed answers for student submission")
     public ResponseEntity<Map<String, Object>> getStudentAnswers(
             @PathVariable Long examId,
             Authentication authentication) {
@@ -529,74 +527,66 @@ public class ExamController {
         try {
             User student = userService.findByUsername(authentication.getName());
 
-            // بررسی وجود آزمون
-            Exam exam = examService.findById(examId);
-            if (exam == null) {
-                throw new RuntimeException("Exam not found");
-            }
-
             // پیدا کردن submission دانش‌آموز
-            Optional<Submission> submissionOpt = examService.getStudentSubmission(examId, student);
+            Submission submission = submissionRepository.findByExamIdAndStudent(examId, student)
+                    .orElseThrow(() -> new RuntimeException("Submission not found"));
 
-            if (!submissionOpt.isPresent()) {
-                Map<String, Object> errorResponse = new HashMap<>();
-                errorResponse.put("success", false);
-                errorResponse.put("message", "شما در این آزمون شرکت نکرده‌اید");
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
-            }
+            Exam exam = submission.getExam();
+            List<Question> questions = exam.getQuestions();
 
-            Submission submission = submissionOpt.get();
+            // Parse کردن answers از JSON
+            Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
+            System.out.println("Parsed student answers: " + studentAnswers);
 
-            // Parse کردن JSON answers
-            Map<String, Object> submittedAnswers = parseAnswersJson(submission.getAnswersJson());
+            Map<String, Object> response = new HashMap<>();
+            Map<String, Object> answersDetails = new HashMap<>();
 
-            // گرفتن سوالات آزمون
-            List<Question> questions = questionRepository.findByExamOrderById(exam);
-
-            // ساخت detailed answers با استفاده از ExamService.evaluateStudentAnswer()
-            Map<String, Object> detailedAnswers = new HashMap<>();
             int totalEarnedPoints = 0;
-            int totalPossiblePoints = 0;
 
             for (Question question : questions) {
-                // استفاده از متد جدید evaluateStudentAnswer
-                Object studentAnswer = submittedAnswers.get(question.getId().toString());
-                Map<String, Object> evaluationResult = examService.evaluateStudentAnswer(question, studentAnswer);
+                String questionId = String.valueOf(question.getId());
 
-                // اضافه کردن اطلاعات سوال
-                Map<String, Object> questionDetails = new HashMap<>();
-                questionDetails.put("questionType", question.getQuestionType().toString());
-                questionDetails.put("questionText", question.getText());
-                questionDetails.put("studentAnswer", studentAnswer);
-                questionDetails.putAll(evaluationResult); // isCorrect, earnedPoints, totalPoints, correctAnswer
+                // پیدا کردن پاسخ دانش‌آموز برای این سوال
+                Object studentAnswer = studentAnswers.get(questionId);
 
-                detailedAnswers.put(question.getId().toString(), questionDetails);
+                // اگر پاسخی پیدا نشد، تلاش کن با ایندکس سوال نیز بیابی
+                if (studentAnswer == null) {
+                    // تلاش با ایندکس سوال
+                    int questionIndex = questions.indexOf(question);
+                    studentAnswer = studentAnswers.get(String.valueOf(questionIndex));
+                    System.out.println("Question " + questionId + " not found, trying index " + questionIndex + ": " + studentAnswer);
+                }
 
-                // محاسبه مجموع امتیازات
-                totalEarnedPoints += (Integer) evaluationResult.get("earnedPoints");
-                totalPossiblePoints += (Integer) evaluationResult.get("totalPoints");
+                System.out.println("Processing question " + questionId + " with answer: " + studentAnswer);
+
+                // ارزیابی پاسخ
+                Map<String, Object> evaluation = evaluateStudentAnswer(question, studentAnswer);
+
+                // اضافه کردن اطلاعات اضافی
+                evaluation.put("studentAnswer", studentAnswer);
+                evaluation.put("questionType", question.getQuestionType().toString());
+                evaluation.put("questionText", question.getText());
+
+                answersDetails.put(questionId, evaluation);
+                totalEarnedPoints += (Integer) evaluation.get("earnedPoints");
             }
 
-            // ساخت response
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("answers", detailedAnswers);
-            response.put("score", totalEarnedPoints); // استفاده از نمره محاسبه شده جدید
-            response.put("totalPossibleScore", totalPossiblePoints);
-            response.put("passed", totalEarnedPoints >= exam.getPassingScore());
+            response.put("answers", answersDetails);
+            response.put("score", totalEarnedPoints);
+            response.put("totalPossibleScore", submission.getExam().getTotalPossibleScore());
+            response.put("passed", totalEarnedPoints >= submission.getExam().getPassingScore());
             response.put("submissionTime", submission.getSubmissionTime());
             response.put("timeSpent", submission.getTimeSpent());
+            response.put("success", true);
 
-            // اگر نمره محاسبه شده با نمره ذخیره شده متفاوت است، آن را به‌روزرسانی کن
-            if (!submission.getScore().equals(totalEarnedPoints)) {
+            // اگر نمره محاسبه شده با نمره ذخیره شده متفاوت است، به‌روزرسانی کن
+            if (!Objects.equals(submission.getScore(), totalEarnedPoints)) {
                 System.out.println("Score mismatch detected. Stored: " + submission.getScore() +
                         ", Calculated: " + totalEarnedPoints + ". Updating submission...");
 
-                // به‌روزرسانی submission با نمره صحیح
                 submission.setScore(totalEarnedPoints);
                 submission.setPassed(totalEarnedPoints >= exam.getPassingScore());
-
-                 submission = submissionRepository.save(submission);
+                submission = submissionRepository.save(submission);
             }
 
             return ResponseEntity.ok(response);
@@ -607,20 +597,25 @@ public class ExamController {
 
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
-            errorResponse.put("message", "خطا در دریافت پاسخ‌ها");
+            errorResponse.put("message", "خطا در دریافت پاسخ‌ها: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
-
     // متد کمکی برای parse کردن JSON answers
     private Map<String, Object> parseAnswersJson(String answersJson) {
-        if (answersJson == null || answersJson.trim().isEmpty()) {
+        if (answersJson == null || answersJson.trim().isEmpty() || answersJson.trim().equals("{}")) {
+            System.out.println("Empty or null answers JSON");
             return new HashMap<>();
         }
 
         try {
-            return objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
+            System.out.println("Parsing answers JSON: " + answersJson);
+            Map<String, Object> parsed = objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {
+            });
+            System.out.println("Successfully parsed: " + parsed);
+            return parsed;
         } catch (Exception e) {
+            System.err.println("Error parsing answers JSON: " + e.getMessage());
             e.printStackTrace();
             return new HashMap<>();
         }
@@ -628,8 +623,19 @@ public class ExamController {
     public Map<String, Object> evaluateStudentAnswer(Question question, Object studentAnswer) {
         Map<String, Object> result = new HashMap<>();
 
-        boolean isCorrect = examService.evaluateAnswer(question, studentAnswer);
-        int earnedPoints = isCorrect ? question.getPoints() : 0;
+        System.out.println("Evaluating question " + question.getId() + " of type " + question.getQuestionType()
+                + " with student answer: " + studentAnswer);
+
+        boolean isCorrect = false;
+        int earnedPoints = 0;
+
+        try {
+            isCorrect = examService.evaluateAnswer(question, studentAnswer);
+            earnedPoints = isCorrect ? question.getPoints() : 0;
+        } catch (Exception e) {
+            System.err.println("Error evaluating answer: " + e.getMessage());
+            e.printStackTrace();
+        }
 
         result.put("isCorrect", isCorrect);
         result.put("earnedPoints", earnedPoints);
@@ -660,11 +666,18 @@ public class ExamController {
                 }
                 result.put("correctAnswer", correctMatches);
                 break;
+
             case FILL_IN_THE_BLANKS:
-                List<String> correctAnswers = question.getAnswers().stream()
-                        .map(Answer::getText)
+                List<String> correctAnswers = question.getBlankAnswers().stream()
+                        .map(BlankAnswer::getCorrectAnswer)
                         .collect(Collectors.toList());
                 result.put("correctAnswer", correctAnswers);
+                break;
+
+            case SHORT_ANSWER:
+            case ESSAY:
+                // برای این نوع سوالات، پاسخ صحیح خاصی نداریم
+                result.put("correctAnswer", "نیاز به بررسی دستی");
                 break;
         }
 
