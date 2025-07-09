@@ -1,5 +1,10 @@
 package com.example.demo.controller;
 
+
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import java.io.ByteArrayOutputStream;
 import com.example.demo.dto.ExamDTO;
 import com.example.demo.dto.QuestionDTO;
 import com.example.demo.dto.SubmissionDTO;
@@ -15,13 +20,17 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import com.example.demo.repository.LessonRepository;
 
+import java.io.ByteArrayOutputStream;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import com.example.demo.dto.ExamWithDetailsDTO;
@@ -557,6 +566,27 @@ public class ExamController {
                     System.out.println("Question " + questionId + " not found, trying index " + questionIndex + ": " + studentAnswer);
                 }
 
+
+
+                if (studentAnswer == null) {
+                    // تنظیم پاسخ خالی برای نمایش بهتر
+                    switch (question.getQuestionType()) {
+                        case MATCHING:
+                        case CATEGORIZATION:
+                            studentAnswer = new HashMap<>();
+                            break;
+                        case FILL_IN_THE_BLANKS:
+                            studentAnswer = new ArrayList<>();
+                            break;
+                        case ESSAY:
+                        case SHORT_ANSWER:
+                            studentAnswer = "";
+                            break;
+                        default:
+                            studentAnswer = null;
+                    }
+                }
+
                 System.out.println("Processing question " + questionId + " with answer: " + studentAnswer);
 
                 // ارزیابی پاسخ
@@ -566,7 +596,7 @@ public class ExamController {
                 evaluation.put("studentAnswer", studentAnswer);
                 evaluation.put("questionType", question.getQuestionType().toString());
                 evaluation.put("questionText", question.getText());
-
+                evaluation.put("questionOptions", getQuestionOptions(question));
                 answersDetails.put(questionId, evaluation);
                 totalEarnedPoints += (Integer) evaluation.get("earnedPoints");
             }
@@ -708,6 +738,493 @@ public class ExamController {
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    private Map<String, Object> getQuestionOptions(Question question) {
+        Map<String, Object> options = new HashMap<>();
+
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                List<Map<String, Object>> answers = question.getAnswers().stream()
+                        .map(answer -> {
+                            Map<String, Object> answerMap = new HashMap<>();
+                            answerMap.put("id", answer.getId());
+                            answerMap.put("text", answer.getText());
+                            answerMap.put("isCorrect", answer.getCorrect());
+                            return answerMap;
+                        })
+                        .collect(Collectors.toList());
+                options.put("answers", answers);
+                break;
+
+            case MATCHING:
+                List<Map<String, Object>> pairs = question.getMatchingPairs().stream()
+                        .map(pair -> {
+                            Map<String, Object> pairMap = new HashMap<>();
+                            pairMap.put("leftItem", pair.getLeftItem());
+                            pairMap.put("rightItem", pair.getRightItem());
+                            return pairMap;
+                        })
+                        .collect(Collectors.toList());
+                options.put("matchingPairs", pairs);
+                break;
+
+            case CATEGORIZATION:
+                List<Map<String, Object>> categories = question.getAnswers().stream()
+                        .map(answer -> {
+                            Map<String, Object> categoryMap = new HashMap<>();
+                            categoryMap.put("text", answer.getText());
+                            categoryMap.put("category", answer.getCategory());
+                            return categoryMap;
+                        })
+                        .collect(Collectors.toList());
+                options.put("categories", categories);
+                break;
+
+            case FILL_IN_THE_BLANKS:
+                List<String> correctAnswers = question.getBlankAnswers().stream()
+                        .map(BlankAnswer::getCorrectAnswer)
+                        .collect(Collectors.toList());
+                options.put("blankAnswers", correctAnswers);
+                break;
+        }
+
+        return options;
+    }
+    @PostMapping("/submissions/{submissionId}/manual-grade")
+    @Operation(summary = "Manual grading for essay and short answer questions")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> manualGradeSubmission(
+            @PathVariable Long submissionId,
+            @RequestBody Map<String, Object> gradingData,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // پیدا کردن submission
+            Submission submission = submissionRepository.findById(submissionId)
+                    .orElseThrow(() -> new RuntimeException("Submission not found"));
+
+            // بررسی دسترسی معلم
+            if (!submission.getExam().getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied"));
+            }
+
+            // دریافت نمرات دستی از request
+            @SuppressWarnings("unchecked")
+            Map<String, Object> manualGrades = (Map<String, Object>) gradingData.get("manualGrades");
+            String feedback = (String) gradingData.get("feedback");
+
+            // Parse کردن answers فعلی
+            Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
+
+            // اعمال نمرات دستی
+            List<Question> questions = submission.getExam().getQuestions();
+            int totalScore = 0;
+
+            for (Question question : questions) {
+                String questionId = String.valueOf(question.getId());
+
+                if (manualGrades.containsKey(questionId)) {
+                    // نمره دستی برای این سوال
+                    int manualScore = ((Number) manualGrades.get(questionId)).intValue();
+                    totalScore += manualScore;
+                } else {
+                    // نمره خودکار برای سوالات غیرتشریحی
+                    Object studentAnswer = studentAnswers.get(questionId);
+                    boolean isCorrect = examService.evaluateAnswer(question, studentAnswer);
+                    totalScore += isCorrect ? question.getPoints() : 0;
+                }
+            }
+
+            // به‌روزرسانی submission
+            submission.setScore(totalScore);
+            submission.setPassed(totalScore >= submission.getExam().getPassingScore());
+            submission.setGradedManually(true);
+            submission.setGradedBy(teacher);
+            submission.setGradedAt(LocalDateTime.now());
+            submission.setFeedback(feedback);
+
+            // ذخیره نمرات دستی در JSON جداگانه
+            ObjectMapper objectMapper = new ObjectMapper();
+            String manualGradesJson = objectMapper.writeValueAsString(manualGrades);
+            submission.setManualGradesJson(manualGradesJson);
+
+            submissionRepository.save(submission);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "نمره‌گذاری با موفقیت انجام شد");
+            response.put("totalScore", totalScore);
+            response.put("passed", submission.getPassed());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error in manual grading: " + e.getMessage());
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در نمره‌گذاری: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{examId}/submissions-for-grading")
+    @Operation(summary = "Get submissions that need manual grading")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> getSubmissionsForGrading(
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // پیدا کردن آزمون
+            Exam exam = examRepository.findById(examId)
+                    .orElseThrow(() -> new RuntimeException("Exam not found"));
+
+            // بررسی دسترسی معلم
+            if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied"));
+            }
+
+            // پیدا کردن submissions
+            List<Submission> submissions = submissionRepository.findByExam(exam);
+
+            // بررسی اینکه آیا آزمون سوالات تشریحی/پاسخ کوتاه دارد
+            boolean hasManualQuestions = exam.getQuestions().stream()
+                    .anyMatch(q -> q.getQuestionType() == QuestionType.ESSAY ||
+                            q.getQuestionType() == QuestionType.SHORT_ANSWER);
+
+            List<Map<String, Object>> submissionData = new ArrayList<>();
+
+            for (Submission submission : submissions) {
+                Map<String, Object> submissionInfo = new HashMap<>();
+                submissionInfo.put("id", submission.getId());
+                submissionInfo.put("studentName", submission.getStudent().getFirstName() + " " +
+                        (submission.getStudent().getLastName() != null ? submission.getStudent().getLastName() : ""));
+                submissionInfo.put("studentUsername", submission.getStudent().getUsername());
+                submissionInfo.put("submissionTime", submission.getSubmissionTime());
+                submissionInfo.put("score", submission.getScore());
+                submissionInfo.put("passed", submission.getPassed());
+                submissionInfo.put("gradedManually", submission.getGradedManually() != null ? submission.getGradedManually() : false);
+                submissionInfo.put("gradedAt", submission.getGradedAt());
+                submissionInfo.put("feedback", submission.getFeedback());
+
+                if (submission.getGradedBy() != null) {
+                    submissionInfo.put("gradedBy", submission.getGradedBy().getFirstName() + " " +
+                            (submission.getGradedBy().getLastName() != null ? submission.getGradedBy().getLastName() : ""));
+                }
+
+                // محاسبه تعداد سوالات که نیاز به نمره‌دهی دستی دارند
+                long manualQuestionsCount = exam.getQuestions().stream()
+                        .filter(q -> q.getQuestionType() == QuestionType.ESSAY ||
+                                q.getQuestionType() == QuestionType.SHORT_ANSWER)
+                        .count();
+
+                submissionInfo.put("manualQuestionsCount", manualQuestionsCount);
+                submissionInfo.put("needsManualGrading", hasManualQuestions &&
+                        (submission.getGradedManually() == null || !submission.getGradedManually()));
+
+                submissionData.add(submissionInfo);
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("examTitle", exam.getTitle());
+            response.put("hasManualQuestions", hasManualQuestions);
+            response.put("submissions", submissionData);
+            response.put("totalSubmissions", submissions.size());
+
+            long needsGradingCount = submissionData.stream()
+                    .filter(s -> (Boolean) s.get("needsManualGrading"))
+                    .count();
+            response.put("needsGradingCount", needsGradingCount);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error getting submissions for grading: " + e.getMessage());
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در دریافت اطلاعات: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/submissions/{submissionId}/grading-detail")
+    @Operation(summary = "Get detailed submission for manual grading")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> getSubmissionGradingDetail(
+            @PathVariable Long submissionId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // پیدا کردن submission
+            Submission submission = submissionRepository.findById(submissionId)
+                    .orElseThrow(() -> new RuntimeException("Submission not found"));
+
+            // بررسی دسترسی معلم
+            if (!submission.getExam().getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied"));
+            }
+
+            Exam exam = submission.getExam();
+            List<Question> questions = exam.getQuestions();
+
+            // Parse کردن answers از JSON
+            Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
+            Map<String, Object> manualGrades = new HashMap<>();
+
+            // Parse کردن نمرات دستی قبلی (اگر وجود دارد)
+            if (submission.getManualGradesJson() != null && !submission.getManualGradesJson().trim().isEmpty()) {
+                try {
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    manualGrades = objectMapper.readValue(submission.getManualGradesJson(),
+                            new TypeReference<Map<String, Object>>() {});
+                } catch (Exception e) {
+                    System.err.println("Error parsing manual grades JSON: " + e.getMessage());
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            Map<String, Object> questionsData = new HashMap<>();
+
+            for (Question question : questions) {
+                String questionId = String.valueOf(question.getId());
+                Object studentAnswer = studentAnswers.get(questionId);
+
+                Map<String, Object> questionData = new HashMap<>();
+                questionData.put("id", question.getId());
+                questionData.put("text", question.getText());
+                questionData.put("questionType", question.getQuestionType().toString());
+                questionData.put("points", question.getPoints());
+                questionData.put("studentAnswer", studentAnswer != null ? studentAnswer : "");
+
+                // اگر سوال تشریحی یا پاسخ کوتاه باشد
+                if (question.getQuestionType() == QuestionType.ESSAY ||
+                        question.getQuestionType() == QuestionType.SHORT_ANSWER) {
+
+                    questionData.put("needsManualGrading", true);
+                    questionData.put("manualGrade", manualGrades.getOrDefault(questionId, 0));
+                } else {
+                    questionData.put("needsManualGrading", false);
+                    // محاسبه نمره خودکار
+                    boolean isCorrect = examService.evaluateAnswer(question, studentAnswer);
+                    questionData.put("autoGrade", isCorrect ? question.getPoints() : 0);
+                    questionData.put("isCorrect", isCorrect);
+                }
+
+                questionsData.put(questionId, questionData);
+            }
+
+            response.put("success", true);
+            response.put("submissionId", submission.getId());
+            response.put("examTitle", exam.getTitle());
+            response.put("studentName", submission.getStudent().getFirstName() + " " +
+                    (submission.getStudent().getLastName() != null ? submission.getStudent().getLastName() : ""));
+            response.put("submissionTime", submission.getSubmissionTime());
+            response.put("currentScore", submission.getScore());
+            response.put("currentFeedback", submission.getFeedback());
+            response.put("gradedManually", submission.getGradedManually() != null ? submission.getGradedManually() : false);
+            response.put("questions", questionsData);
+            response.put("totalPossibleScore", exam.getTotalPossibleScore());
+            response.put("passingScore", exam.getPassingScore());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error getting submission grading detail: " + e.getMessage());
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در دریافت جزئیات: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{examId}/submissions")
+    @Operation(summary = "Get all submissions for an exam")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> getExamSubmissions(
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // پیدا کردن آزمون
+            Exam exam = examRepository.findById(examId)
+                    .orElseThrow(() -> new RuntimeException("Exam not found"));
+
+            // بررسی دسترسی معلم
+            if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied"));
+            }
+
+            // دریافت submissions
+            List<Submission> submissions = submissionRepository.findByExam(exam);
+
+            List<Map<String, Object>> submissionData = new ArrayList<>();
+
+            for (Submission submission : submissions) {
+                Map<String, Object> submissionInfo = new HashMap<>();
+                submissionInfo.put("id", submission.getId());
+                submissionInfo.put("score", submission.getScore());
+                submissionInfo.put("passed", submission.getPassed());
+                submissionInfo.put("submissionTime", submission.getSubmissionTime());
+                submissionInfo.put("timeSpent", submission.getTimeSpent());
+                submissionInfo.put("gradedManually", submission.getGradedManually() != null ? submission.getGradedManually() : false);
+                submissionInfo.put("gradedAt", submission.getGradedAt());
+                submissionInfo.put("feedback", submission.getFeedback());
+
+                // اطلاعات دانش‌آموز
+                Map<String, Object> studentInfo = new HashMap<>();
+                studentInfo.put("id", submission.getStudent().getId());
+                studentInfo.put("username", submission.getStudent().getUsername());
+                studentInfo.put("firstName", submission.getStudent().getFirstName());
+                studentInfo.put("lastName", submission.getStudent().getLastName());
+                submissionInfo.put("student", studentInfo);
+
+                submissionData.add(submissionInfo);
+            }
+
+            return ResponseEntity.ok(submissionData);
+
+        } catch (Exception e) {
+            System.err.println("Error getting exam submissions: " + e.getMessage());
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در دریافت اطلاعات: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{examId}/export-results")
+    @Operation(summary = "Export exam results to Excel")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<byte[]> exportExamResults(
+            @PathVariable Long examId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // پیدا کردن آزمون
+            Exam exam = examRepository.findById(examId)
+                    .orElseThrow(() -> new RuntimeException("Exam not found"));
+
+            // بررسی دسترسی معلم
+            if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                throw new RuntimeException("Access denied");
+            }
+
+            // دریافت submissions
+            List<Submission> submissions = submissionRepository.findByExam(exam);
+
+            // ایجاد Excel file
+            XSSFWorkbook workbook = new XSSFWorkbook();
+            XSSFSheet sheet = workbook.createSheet("نتایج آزمون");
+
+            // Header style
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.LIGHT_BLUE.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+            // Create header row
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {
+                    "ردیف", "نام کاربری", "نام", "نام خانوادگی",
+                    "نمره", "حداکثر نمره", "درصد", "وضعیت",
+                    "زمان ارسال", "مدت زمان", "نمره‌گذاری دستی", "بازخورد"
+            };
+
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Data rows
+            for (int i = 0; i < submissions.size(); i++) {
+                Submission submission = submissions.get(i);
+                Row row = sheet.createRow(i + 1);
+
+                row.createCell(0).setCellValue(i + 1);
+                row.createCell(1).setCellValue(submission.getStudent().getUsername());
+                row.createCell(2).setCellValue(submission.getStudent().getFirstName());
+                row.createCell(3).setCellValue(submission.getStudent().getLastName() != null ?
+                        submission.getStudent().getLastName() : "");
+                row.createCell(4).setCellValue(submission.getScore() != null ? submission.getScore() : 0);
+                row.createCell(5).setCellValue(exam.getTotalPossibleScore());
+
+                // محاسبه درصد
+                double percentage = exam.getTotalPossibleScore() > 0 ?
+                        ((double)(submission.getScore() != null ? submission.getScore() : 0) / exam.getTotalPossibleScore()) * 100 : 0;
+                row.createCell(6).setCellValue(Math.round(percentage));
+
+                row.createCell(7).setCellValue(submission.getPassed() != null && submission.getPassed() ? "قبول" : "مردود");
+
+                // زمان ارسال
+                if (submission.getSubmissionTime() != null) {
+                    Cell timeCell = row.createCell(8);
+                    timeCell.setCellValue(submission.getSubmissionTime().toString());
+                } else {
+                    row.createCell(8).setCellValue("");
+                }
+
+                // مدت زمان
+                if (submission.getTimeSpent() != null) {
+                    int timeSpent = submission.getTimeSpent();
+                    int hours = timeSpent / 3600;
+                    int minutes = (timeSpent % 3600) / 60;
+                    int seconds = timeSpent % 60;
+                    String timeString = String.format("%d:%02d:%02d", hours, minutes, seconds);
+                    row.createCell(9).setCellValue(timeString);
+                } else {
+                    row.createCell(9).setCellValue("");
+                }
+
+                row.createCell(10).setCellValue(submission.getGradedManually() != null && submission.getGradedManually() ? "بله" : "خیر");
+                row.createCell(11).setCellValue(submission.getFeedback() != null ? submission.getFeedback() : "");
+            }
+
+            // Auto-size columns
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            // Convert to byte array
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            workbook.close();
+
+            byte[] excelBytes = outputStream.toByteArray();
+            outputStream.close();
+
+            // Response headers
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            responseHeaders.setContentDispositionFormData("attachment",
+                    "exam-results-" + examId + ".xlsx");
+            responseHeaders.setContentLength(excelBytes.length);
+
+            return new ResponseEntity<>(excelBytes, responseHeaders, HttpStatus.OK);
+
+        } catch (Exception e) {
+            System.err.println("Error exporting exam results: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("خطا در ایجاد فایل Excel: " + e.getMessage());
         }
     }
 
