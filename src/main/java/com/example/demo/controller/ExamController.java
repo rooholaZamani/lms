@@ -1,7 +1,7 @@
 package com.example.demo.controller;
 
 
-import com.example.demo.repository.ExamRepository;
+import com.example.demo.repository.*;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -10,8 +10,6 @@ import com.example.demo.dto.ExamDTO;
 import com.example.demo.dto.QuestionDTO;
 import com.example.demo.dto.SubmissionDTO;
 import com.example.demo.model.*;
-import com.example.demo.repository.QuestionRepository;
-import com.example.demo.repository.SubmissionRepository;
 import com.example.demo.service.ExamService;
 import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,7 +26,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-import com.example.demo.repository.LessonRepository;
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
@@ -54,10 +51,11 @@ public class ExamController {
     private final LessonRepository lessonRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExamRepository examRepository;
+    private final UserRepository userRepository;
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository, ExamRepository examRepository) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository, ExamRepository examRepository, UserRepository userRepository) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
@@ -66,6 +64,7 @@ public class ExamController {
         this.submissionService = submissionService;
         this.lessonRepository = lessonRepository;
         this.examRepository = examRepository;
+        this.userRepository = userRepository;
     }
 
 
@@ -1296,6 +1295,133 @@ public class ExamController {
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "خطا در دریافت اطلاعات: " + e.getMessage()));
+        }
+    }
+    @GetMapping("/{examId}/student-answers/{studentId}")
+    @Operation(summary = "Get student answers for teacher", description = "Teacher can view specific student's detailed answers")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentAnswersForTeacher(
+            @PathVariable Long examId,
+            @PathVariable Long studentId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // بررسی که کاربر معلم باشد
+            boolean isTeacher = teacher.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+            if (!isTeacher) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied: Only teachers allowed"));
+            }
+
+            // بررسی که آزمون متعلق به معلم باشد
+            Exam exam = examRepository.findById(examId)
+                    .orElseThrow(() -> new RuntimeException("Exam not found"));
+
+            if (!exam.getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied: This exam doesn't belong to you"));
+            }
+
+            // پیدا کردن دانش‌آموز
+            User student = userRepository.findById(studentId)
+                    .orElseThrow(() -> new RuntimeException("Student not found"));
+
+            // پیدا کردن submission دانش‌آموز
+            Submission submission = submissionRepository.findByExamIdAndStudent(examId, student)
+                    .orElseThrow(() -> new RuntimeException("Student submission not found"));
+
+            List<Question> questions = exam.getQuestions();
+
+            // Parse کردن answers از JSON
+            Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
+            System.out.println("Parsed student answers: " + studentAnswers);
+
+            Map<String, Object> response = new HashMap<>();
+            Map<String, Object> answersDetails = new HashMap<>();
+
+            int totalEarnedPoints = 0;
+
+            for (Question question : questions) {
+                String questionId = String.valueOf(question.getId());
+
+                // پیدا کردن پاسخ دانش‌آموز برای این سوال
+                Object studentAnswer = studentAnswers.get(questionId);
+
+                // اگر پاسخی پیدا نشد، تلاش کن با ایندکس سوال نیز بیابی
+                if (studentAnswer == null) {
+                    // تلاش با ایندکس سوال
+                    int questionIndex = questions.indexOf(question);
+                    studentAnswer = studentAnswers.get(String.valueOf(questionIndex));
+                    System.out.println("Question " + questionId + " not found, trying index " + questionIndex + ": " + studentAnswer);
+                }
+
+
+
+                if (studentAnswer == null) {
+                    // تنظیم پاسخ خالی برای نمایش بهتر
+                    switch (question.getQuestionType()) {
+                        case MATCHING:
+                        case CATEGORIZATION:
+                            studentAnswer = new HashMap<>();
+                            break;
+                        case FILL_IN_THE_BLANKS:
+                            studentAnswer = new ArrayList<>();
+                            break;
+                        case ESSAY:
+                        case SHORT_ANSWER:
+                            studentAnswer = "";
+                            break;
+                        default:
+                            studentAnswer = null;
+                    }
+                }
+
+                System.out.println("Processing question " + questionId + " with answer: " + studentAnswer);
+
+                // ارزیابی پاسخ
+                Map<String, Object> evaluation = evaluateStudentAnswer(question, studentAnswer);
+
+                // اضافه کردن اطلاعات اضافی
+                evaluation.put("studentAnswer", studentAnswer);
+                evaluation.put("questionType", question.getQuestionType().toString());
+                evaluation.put("questionText", question.getText());
+                evaluation.put("questionOptions", getQuestionOptions(question));
+                answersDetails.put(questionId, evaluation);
+                totalEarnedPoints += (Integer) evaluation.get("earnedPoints");
+            }
+
+            response.put("answers", answersDetails);
+            response.put("score", totalEarnedPoints);
+            response.put("totalPossibleScore", submission.getExam().getTotalPossibleScore());
+            response.put("passed", totalEarnedPoints >= submission.getExam().getPassingScore());
+            response.put("submissionTime", submission.getSubmissionTime());
+            response.put("timeSpent", submission.getTimeSpent());
+            response.put("success", true);
+
+            // اگر نمره محاسبه شده با نمره ذخیره شده متفاوت است، به‌روزرسانی کن
+            if (!Objects.equals(submission.getScore(), totalEarnedPoints)) {
+                System.out.println("Score mismatch detected. Stored: " + submission.getScore() +
+                        ", Calculated: " + totalEarnedPoints + ". Updating submission...");
+
+                submission.setScore(totalEarnedPoints);
+                submission.setPassed(totalEarnedPoints >= exam.getPassingScore());
+                submission = submissionRepository.save(submission);
+            }
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error getting student answers: " + e.getMessage());
+            e.printStackTrace();
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "خطا در دریافت پاسخ‌ها: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 }
