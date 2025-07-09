@@ -1217,4 +1217,85 @@ public class ExamController {
         }
     }
 
+    @GetMapping("/manual-grading-overview")
+    @Operation(summary = "Get overview of exams needing manual grading")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> getManualGradingOverview(Authentication authentication) {
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // دریافت تمام آزمون‌های معلم که دارای سوالات تشریحی هستند
+            List<Exam> teacherExams = examRepository.findByTeacher(teacher);
+
+            List<Map<String, Object>> examList = new ArrayList<>();
+
+            for (Exam exam : teacherExams) {
+                // بررسی اینکه آزمون دارای سوالات تشریحی است یا نه
+                boolean hasManualQuestions = exam.getQuestions().stream()
+                        .anyMatch(q -> q.getQuestionType() == QuestionType.ESSAY ||
+                                q.getQuestionType() == QuestionType.SHORT_ANSWER);
+
+                if (!hasManualQuestions) {
+                    continue; // اگر سوال تشریحی ندارد، رد شو
+                }
+
+                // شمارش سوالات تشریحی
+                long manualQuestionsCount = exam.getQuestions().stream()
+                        .filter(q -> q.getQuestionType() == QuestionType.ESSAY ||
+                                q.getQuestionType() == QuestionType.SHORT_ANSWER)
+                        .count();
+
+                // دریافت submissions این آزمون
+                List<Submission> submissions = submissionRepository.findByExam(exam);
+
+                // شمارش submissions که نیاز به نمره‌گذاری دستی دارند
+                long pendingSubmissions = submissions.stream()
+                        .filter(s -> s.getGradedManually() == null || !s.getGradedManually())
+                        .count();
+
+                // یافتن آخرین submission
+                Optional<Submission> lastSubmission = submissions.stream()
+                        .max((s1, s2) -> s1.getSubmissionTime().compareTo(s2.getSubmissionTime()));
+
+                Map<String, Object> examInfo = new HashMap<>();
+                examInfo.put("id", exam.getId());
+                examInfo.put("title", exam.getTitle());
+                examInfo.put("lessonTitle", exam.getLesson().getTitle());
+                examInfo.put("courseTitle", exam.getLesson().getCourse().getTitle());
+                examInfo.put("totalQuestions", exam.getQuestions().size());
+                examInfo.put("manualQuestionsCount", manualQuestionsCount);
+                examInfo.put("totalPossibleScore", exam.getTotalPossibleScore());
+                examInfo.put("pendingSubmissions", pendingSubmissions);
+                examInfo.put("totalSubmissions", submissions.size());
+                examInfo.put("lastSubmission", lastSubmission.map(Submission::getSubmissionTime).orElse(null));
+
+                examList.add(examInfo);
+            }
+
+            // مرتب‌سازی بر اساس تعداد submissions در انتظار (نزولی)
+            examList.sort((e1, e2) -> Long.compare(
+                    (Long) e2.get("pendingSubmissions"),
+                    (Long) e1.get("pendingSubmissions")
+            ));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("exams", examList);
+            response.put("totalExams", examList.size());
+
+            long totalPending = examList.stream()
+                    .mapToLong(e -> (Long) e.get("pendingSubmissions"))
+                    .sum();
+            response.put("totalPendingSubmissions", totalPending);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error getting manual grading overview: " + e.getMessage());
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در دریافت اطلاعات: " + e.getMessage()));
+        }
+    }
 }
