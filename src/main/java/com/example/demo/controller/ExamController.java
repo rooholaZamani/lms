@@ -848,7 +848,7 @@ public class ExamController {
             response.put("success", true);
             response.put("message", "نمره‌گذاری با موفقیت انجام شد");
             response.put("totalScore", totalScore);
-            response.put("passed", submission.getPassed());
+            response.put("passed", submission.isPassed());
 
             return ResponseEntity.ok(response);
 
@@ -899,7 +899,7 @@ public class ExamController {
                 submissionInfo.put("studentUsername", submission.getStudent().getUsername());
                 submissionInfo.put("submissionTime", submission.getSubmissionTime());
                 submissionInfo.put("score", submission.getScore());
-                submissionInfo.put("passed", submission.getPassed());
+                submissionInfo.put("passed", submission.isPassed());
                 submissionInfo.put("gradedManually", submission.getGradedManually() != null ? submission.getGradedManually() : false);
                 submissionInfo.put("gradedAt", submission.getGradedAt());
                 submissionInfo.put("feedback", submission.getFeedback());
@@ -1067,7 +1067,7 @@ public class ExamController {
                 Map<String, Object> submissionInfo = new HashMap<>();
                 submissionInfo.put("id", submission.getId());
                 submissionInfo.put("score", submission.getScore());
-                submissionInfo.put("passed", submission.getPassed());
+                submissionInfo.put("passed", submission.isPassed());
                 submissionInfo.put("submissionTime", submission.getSubmissionTime());
                 submissionInfo.put("timeSpent", submission.getTimeSpent());
                 submissionInfo.put("gradedManually", submission.getGradedManually() != null ? submission.getGradedManually() : false);
@@ -1162,7 +1162,7 @@ public class ExamController {
                         ((double)(submission.getScore() != null ? submission.getScore() : 0) / exam.getTotalPossibleScore()) * 100 : 0;
                 row.createCell(6).setCellValue(Math.round(percentage));
 
-                row.createCell(7).setCellValue(submission.getPassed() != null && submission.getPassed() ? "قبول" : "مردود");
+                row.createCell(7).setCellValue(submission.isPassed() ? "قبول" : "مردود");
 
                 // زمان ارسال
                 if (submission.getSubmissionTime() != null) {
@@ -1174,10 +1174,10 @@ public class ExamController {
 
                 // مدت زمان
                 if (submission.getTimeSpent() != null) {
-                    int timeSpent = submission.getTimeSpent();
-                    int hours = timeSpent / 3600;
-                    int minutes = (timeSpent % 3600) / 60;
-                    int seconds = timeSpent % 60;
+                    long  timeSpent = submission.getTimeSpent();
+                    long  hours = timeSpent / 3600;
+                    long  minutes = (timeSpent % 3600) / 60;
+                    long  seconds = timeSpent % 60;
                     String timeString = String.format("%d:%02d:%02d", hours, minutes, seconds);
                     row.createCell(9).setCellValue(timeString);
                 } else {

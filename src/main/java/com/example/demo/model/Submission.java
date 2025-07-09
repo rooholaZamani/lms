@@ -50,4 +50,5 @@ public class Submission {
 
     @Column(name = "manual_grades_json", columnDefinition = "TEXT")
     private String manualGradesJson;
+
 }
