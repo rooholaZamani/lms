@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 
+import com.example.demo.repository.ExamRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -52,10 +53,11 @@ public class ExamController {
     private final SubmissionService submissionService;
     private final LessonRepository lessonRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ExamRepository examRepository;
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository, ExamRepository examRepository) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
@@ -63,6 +65,7 @@ public class ExamController {
         this.submissionRepository = submissionRepository;
         this.submissionService = submissionService;
         this.lessonRepository = lessonRepository;
+        this.examRepository = examRepository;
     }
 
 
@@ -269,20 +272,6 @@ public class ExamController {
         return ResponseEntity.ok(submissionDTOs);
     }
 
-    @GetMapping("/{examId}/submissions")
-    @Operation(summary = "Get exam submissions", description = "Retrieve all submissions for a specific exam (teacher only)")
-    @SecurityRequirement(name = "basicAuth")
-    public ResponseEntity<List<SubmissionDTO>> getExamSubmissions(
-            @PathVariable Long examId,
-            Authentication authentication) {
-
-        User teacher = userService.findByUsername(authentication.getName());
-        List<Submission> submissions = examService.getExamSubmissions(examId);
-        List<SubmissionDTO> submissionDTOs = submissions.stream()
-                .map(dtoMapperService::mapToSubmissionDTO)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(submissionDTOs);
-    }
 
     @PutMapping("/{examId}/finalize")
     @Operation(
