@@ -5,6 +5,7 @@ import com.example.demo.model.Content;
 import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
+import com.example.demo.repository.ContentRepository;
 import com.example.demo.service.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
@@ -24,17 +26,21 @@ public class ProgressController {
     private final CourseService courseService;
     private final DTOMapperService dtoMapperService;
     private final ActivityTrackingService activityTrackingService;
+    private final ContentService contentService;
+    private final ContentRepository contentRepository;
 
     public ProgressController(
             ProgressService progressService,
             UserService userService,
             CourseService courseService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, ContentService contentService, ContentRepository contentRepository) {
         this.progressService = progressService;
         this.userService = userService;
         this.courseService = courseService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
+        this.contentService = contentService;
+        this.contentRepository = contentRepository;
     }
 
     @GetMapping
@@ -119,8 +125,9 @@ public class ProgressController {
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markContentViewed(student, contentId);
 
+
         // بهبود لاگ گیری با اطلاعات تکمیلی
-        Content content = contentService.findById(contentId); // نیاز به اضافه کردن این متد
+        Content content = contentService.getContentById(contentId);
         Map<String, String> metadata = new HashMap<>();
         metadata.put("contentType", content.getType().toString()); // TEXT, VIDEO, PDF
         metadata.put("contentTitle", content.getTitle());
@@ -135,23 +142,8 @@ public class ProgressController {
 
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
         return ResponseEntity.ok(progressDTO);
-    }    public ResponseEntity<ProgressDTO> markContentViewed(
-            @PathVariable Long contentId,
-            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
-            Authentication authentication) {
-
-        User student = userService.findByUsername(authentication.getName());
-        Progress updatedProgress = progressService.markContentViewed(student, contentId);
-
-        // ADD ACTIVITY TRACKING
-        activityTrackingService.logActivity(student, "CONTENT_VIEW", contentId, timeSpent);
-        if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(student, timeSpent);
-        }
-
-        ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
-        return ResponseEntity.ok(progressDTO);
     }
+
     @PostMapping("/content/{contentId}/complete")
     public ResponseEntity<ProgressDTO> markContentComplete(
             @PathVariable Long contentId,

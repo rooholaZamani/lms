@@ -9,4 +9,5 @@ import java.util.List;
 public interface ContentRepository extends JpaRepository<Content, Long> {
     List<Content> findByLessonOrderByOrderIndex(Lesson lesson);
     List<Content> findByLessonIdOrderByOrderIndex(Long lessonId);
+    Content findById(long id);
 }
