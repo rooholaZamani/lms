@@ -64,7 +64,13 @@ public class ContentController {
 
             // ADD ACTIVITY TRACKING
 
-            activityTrackingService.logActivity(currentUser, "CONTENT_VIEW", contentId, timeSpent);
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put("contentType", content.getType().toString()); // TEXT, VIDEO, PDF
+            metadata.put("contentTitle", content.getTitle());
+            metadata.put("lessonId", content.getLesson().getId().toString());
+            metadata.put("lessonTitle", content.getLesson().getTitle());
+
+            activityTrackingService.logActivity(currentUser, "CONTENT_VIEW", contentId, timeSpent,metadata);
             if (timeSpent > 0) {
                 activityTrackingService.updateStudyTime(currentUser, timeSpent);
             }

@@ -2,14 +2,15 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.ChatMessageDTO;
 import com.example.demo.model.ChatMessage;
+import com.example.demo.model.Content;
+import com.example.demo.model.Course;
 import com.example.demo.model.User;
-import com.example.demo.service.ActivityTrackingService;
-import com.example.demo.service.ChatService;
-import com.example.demo.service.DTOMapperService;
-import com.example.demo.service.UserService;
+import com.example.demo.service.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,15 +22,17 @@ public class ChatController {
     private final UserService userService;
     private final DTOMapperService dtoMapperService;
     private final ActivityTrackingService activityTrackingService;
+    private final CourseService courseService;
 
     public ChatController(
             ChatService chatService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, CourseService courseService) {
         this.chatService = chatService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
         this.activityTrackingService = activityTrackingService;
+        this.courseService = courseService;
     }
 
     @PostMapping("/course/{courseId}/send")
@@ -41,8 +44,12 @@ public class ChatController {
         User sender = userService.findByUsername(authentication.getName());
         ChatMessage message = chatService.sendMessage(courseId, sender, messageContent);
 
-        // لاگ گیری ارسال پیام
-        activityTrackingService.logActivity(sender, "CHAT_MESSAGE_SEND", courseId, timeSpent);
+        Course course = courseService.getCourseById(courseId);
+        Map<String, String> metadata = new HashMap<>();
+
+        metadata.put("courseTitle", course.getTitle());
+
+        activityTrackingService.logActivity(sender, "CHAT_MESSAGE_SEND", courseId, timeSpent,metadata);
         if (timeSpent > 0) {
             activityTrackingService.updateStudyTime(sender, timeSpent);
         }
@@ -61,7 +68,12 @@ public class ChatController {
         // لاگ گیری مشاهده چت
         if (authentication != null && timeSpent > 0) {
             User user = userService.findByUsername(authentication.getName());
-            activityTrackingService.logActivity(user, "CHAT_VIEW", courseId, timeSpent);
+
+            Course course = courseService.getCourseById(courseId);
+            Map<String, String> metadata = new HashMap<>();
+
+            metadata.put("courseTitle", course.getTitle());
+            activityTrackingService.logActivity(user, "CHAT_VIEW", courseId, timeSpent,metadata);
             activityTrackingService.updateStudyTime(user, timeSpent);
         }
 

@@ -53,6 +53,4 @@ public class Progress {
     private Long totalStudyTime; // in seconds
     private LocalDateTime lastLoginTime;
     private Integer currentStreak;
-
-
 }

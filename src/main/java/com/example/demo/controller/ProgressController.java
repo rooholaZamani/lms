@@ -1,10 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.ProgressDTO;
-import com.example.demo.model.Content;
-import com.example.demo.model.Course;
-import com.example.demo.model.Progress;
-import com.example.demo.model.User;
+import com.example.demo.model.*;
 import com.example.demo.repository.ContentRepository;
 import com.example.demo.service.*;
 import org.springframework.http.ResponseEntity;
@@ -28,12 +25,13 @@ public class ProgressController {
     private final ActivityTrackingService activityTrackingService;
     private final ContentService contentService;
     private final ContentRepository contentRepository;
+    private final LessonService lessonService;
 
     public ProgressController(
             ProgressService progressService,
             UserService userService,
             CourseService courseService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, ContentService contentService, ContentRepository contentRepository) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, ContentService contentService, ContentRepository contentRepository, LessonService lessonService) {
         this.progressService = progressService;
         this.userService = userService;
         this.courseService = courseService;
@@ -41,6 +39,7 @@ public class ProgressController {
         this.activityTrackingService = activityTrackingService;
         this.contentService = contentService;
         this.contentRepository = contentRepository;
+        this.lessonService = lessonService;
     }
 
     @GetMapping
@@ -105,9 +104,14 @@ public class ProgressController {
 
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markLessonComplete(student, lessonId);
+        Lesson lesson = lessonService.getLessonById(lessonId);
+        Map<String, String> metadata = new HashMap<>();
+
+        metadata.put("courseTitle", updatedProgress.getCourse().getTitle());
+        metadata.put("lessonTitle", lesson.getTitle());
 
         // ADD ACTIVITY TRACKING
-        activityTrackingService.logActivity(student, "LESSON_COMPLETION", lessonId, timeSpent);
+        activityTrackingService.logActivity(student, "LESSON_COMPLETION", lessonId, timeSpent,metadata);
         if (timeSpent > 0) {
             activityTrackingService.updateStudyTime(student, timeSpent);
         }
@@ -124,7 +128,6 @@ public class ProgressController {
 
         User student = userService.findByUsername(authentication.getName());
         Progress updatedProgress = progressService.markContentViewed(student, contentId);
-
 
         // بهبود لاگ گیری با اطلاعات تکمیلی
         Content content = contentService.getContentById(contentId);
@@ -151,10 +154,18 @@ public class ProgressController {
             Authentication authentication) {
 
         User student = userService.findByUsername(authentication.getName());
-        Progress updatedProgress = progressService.markContentComplete(student, contentId);
 
+        Progress updatedProgress = progressService.markContentComplete(student, contentId);
         // ADD ACTIVITY TRACKING
-        activityTrackingService.logActivity(student, "CONTENT_COMPLETION", contentId, timeSpent);
+
+        Content content = contentService.getContentById(contentId);
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("contentType", content.getType().toString()); // TEXT, VIDEO, PDF
+        metadata.put("contentTitle", content.getTitle());
+        metadata.put("lessonId", content.getLesson().getId().toString());
+        metadata.put("lessonTitle", content.getLesson().getTitle());
+
+        activityTrackingService.logActivity(student, "CONTENT_COMPLETION", contentId, timeSpent,metadata);
         if (timeSpent > 0) {
             activityTrackingService.updateStudyTime(student, timeSpent);
         }

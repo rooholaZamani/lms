@@ -409,6 +409,9 @@ public class AnalyticsService {
             activityData.put("timestamp", activity.getTimestamp());
             activityData.put("timeSpent", activity.getTimeSpent());
             activityData.put("description", generateActivityDescription(activity));
+            if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
+                activityData.put("metadata", activity.getMetadata());
+            }
 
             // Add score if it's an exam or assignment submission
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
@@ -801,6 +804,9 @@ public class AnalyticsService {
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
             activityData.put("description", generateActivityDescription(activity));
+            if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
+                activityData.put("metadata", activity.getMetadata());
+            }
             recentActivities.add(activityData);
         }
 
@@ -1312,6 +1318,10 @@ public class AnalyticsService {
             activityData.put("timeSpent", activity.getTimeSpent() != null ?
                     Math.round(activity.getTimeSpent() * 10.0) / 10.0 : 0.0);
             activityData.put("description", generateActivityDescription(activity));
+
+            if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
+                activityData.put("metadata", activity.getMetadata());
+            }
 
             if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
                 Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());

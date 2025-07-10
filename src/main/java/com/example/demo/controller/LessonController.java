@@ -93,10 +93,17 @@ public class LessonController {
                 }
             }
 
-            activityTrackingService.logActivity(user, "LESSON_ACCESS", lessonId, timeSpent);
-            if (timeSpent > 0) {
-                activityTrackingService.updateStudyTime(user, timeSpent);
-            }
+//            Content content = contentService.getContentById(contentId);
+//            Map<String, String> metadata = new HashMap<>();
+//            metadata.put("contentType", content.getType().toString()); // TEXT, VIDEO, PDF
+//            metadata.put("contentTitle", content.getTitle());
+//            metadata.put("lessonId", content.getLesson().getId().toString());
+//            metadata.put("lessonTitle", content.getLesson().getTitle());
+//
+//            activityTrackingService.logActivity(user, "LESSON_ACCESS", lessonId, timeSpent);
+//            if (timeSpent > 0) {
+//                activityTrackingService.updateStudyTime(user, timeSpent);
+//            }
         }
 
         Lesson lesson = lessonService.getLessonById(lessonId);
