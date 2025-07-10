@@ -131,11 +131,19 @@ public class ExamController {
         User user = null;
         if (authentication != null) {
             user = userService.findByUsername(authentication.getName());
-            activityTrackingService.logActivity(user, "EXAM_START", examId, 0L);
         }
-
         Exam exam = examService.getExamById(examId);
         ExamDTO examDTO = dtoMapperService.mapToExamDTO(exam, user);
+
+
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("examTitle", exam.getTitle());
+        metadata.put("lessonId", exam.getLesson().getId().toString());
+        metadata.put("lessonTitle", exam.getLesson().getTitle());
+        metadata.put("courseId", exam.getLesson().getCourse().getId().toString());
+        metadata.put("courseTitle", exam.getLesson().getCourse().getTitle());
+
+        activityTrackingService.logActivity(user, "EXAM_START", examId, 0L, metadata);
 
         return ResponseEntity.ok(examDTO);
     }
@@ -215,7 +223,16 @@ public class ExamController {
         submission = examService.updateSubmissionTimeSpent(submission, timeSpent);
 
         // Activity tracking
-        activityTrackingService.logActivity(student, "EXAM_SUBMISSION", examId, timeSpent);
+        Exam exam = examService.findById(examId);
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("examTitle", exam.getTitle());
+        metadata.put("lessonId", exam.getLesson().getId().toString());
+        metadata.put("lessonTitle", exam.getLesson().getTitle());
+        metadata.put("courseId", exam.getLesson().getCourse().getId().toString());
+        metadata.put("courseTitle", exam.getLesson().getCourse().getTitle());
+        metadata.put("questionsCount", String.valueOf(exam.getQuestions().size()));
+
+        activityTrackingService.logActivity(student, "EXAM_SUBMISSION", examId, timeSpent, metadata);
         if (timeSpent > 0) {
             activityTrackingService.updateStudyTime(student, timeSpent);
         }

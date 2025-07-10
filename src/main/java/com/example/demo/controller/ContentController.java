@@ -63,6 +63,7 @@ public class ContentController {
             }
 
             // ADD ACTIVITY TRACKING
+
             activityTrackingService.logActivity(currentUser, "CONTENT_VIEW", contentId, timeSpent);
             if (timeSpent > 0) {
                 activityTrackingService.updateStudyTime(currentUser, timeSpent);
@@ -181,10 +182,20 @@ public class ContentController {
             HttpServletRequest request) {
 
         // ADD ACTIVITY TRACKING FOR FILE ACCESS
-        if (authentication != null && timeSpent > 0) {
+        if (authentication != null) {
             User user = userService.findByUsername(authentication.getName());
-            activityTrackingService.logActivity(user, "FILE_ACCESS", fileId, timeSpent);
-            activityTrackingService.updateStudyTime(user, timeSpent);
+            FileMetadata metadata = contentService.getFileMetadataById(fileId);
+
+
+            Map<String, String> fileMetadata = new HashMap<>();
+            fileMetadata.put("fileName", metadata.getOriginalFilename());
+            fileMetadata.put("fileType", metadata.getContentType());
+            fileMetadata.put("fileSize", metadata.getFileSize().toString());
+
+            activityTrackingService.logActivity(user, "FILE_ACCESS", fileId, timeSpent,fileMetadata);
+            if (timeSpent > 0) {
+                activityTrackingService.updateStudyTime(user, timeSpent);
+            }
         }
 
         FileMetadata metadata = contentService.getFileMetadataById(fileId);

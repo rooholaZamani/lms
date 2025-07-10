@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -29,13 +30,16 @@ public class ActivityTrackingService {
         this.userRepository = userRepository;
     }
 
-    public void logActivity(User user, String activityType, Long entityId, Long timeSpent) {
+    public void logActivity(User user, String activityType, Long entityId, Long timeSpent, Map<String, String> metadata) {
         ActivityLog log = new ActivityLog();
         log.setUser(user);
         log.setActivityType(activityType);
         log.setRelatedEntityId(entityId);
         log.setTimestamp(LocalDateTime.now());
         log.setTimeSpent(timeSpent);
+        if (metadata != null) {
+            log.setMetadata(metadata);
+        }
         activityLogRepository.save(log);
     }
 

@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.dto.ProgressDTO;
+import com.example.demo.model.Content;
 import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
@@ -111,6 +112,30 @@ public class ProgressController {
 
     @PostMapping("/content/{contentId}/view")
     public ResponseEntity<ProgressDTO> markContentViewed(
+            @PathVariable Long contentId,
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+        Progress updatedProgress = progressService.markContentViewed(student, contentId);
+
+        // بهبود لاگ گیری با اطلاعات تکمیلی
+        Content content = contentService.findById(contentId); // نیاز به اضافه کردن این متد
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("contentType", content.getType().toString()); // TEXT, VIDEO, PDF
+        metadata.put("contentTitle", content.getTitle());
+        metadata.put("lessonId", content.getLesson().getId().toString());
+        metadata.put("lessonTitle", content.getLesson().getTitle());
+
+        activityTrackingService.logActivity(student, "CONTENT_VIEW", contentId, timeSpent, metadata);
+
+        if (timeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, timeSpent);
+        }
+
+        ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
+        return ResponseEntity.ok(progressDTO);
+    }    public ResponseEntity<ProgressDTO> markContentViewed(
             @PathVariable Long contentId,
             @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
             Authentication authentication) {

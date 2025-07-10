@@ -77,7 +77,10 @@ public class AuthController {
             User user = userService.findByUsername(username);
 
             // ADD ACTIVITY TRACKING
-            activityTrackingService.logActivity(user, "LOGIN", user.getId(), 0L);
+            Map<String, String> loginMetadata = new HashMap<>();
+            loginMetadata.put("userType", user.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER")) ? "TEACHER" : "STUDENT");
+            activityTrackingService.logActivity(user, "LOGIN", user.getId(), 0L, loginMetadata);
             activityTrackingService.updateStreak(user);
 
             // Create session if one doesn't exist
