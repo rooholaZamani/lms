@@ -8,7 +8,9 @@ import com.example.demo.service.AnalyticsService;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -455,5 +457,47 @@ public class AnalyticsController {
 
         Map<String, Object> trendAnalysis = analyticsService.getTrendAnalysis(courseId, period);
         return ResponseEntity.ok(trendAnalysis);
+    }
+    /**
+     * دریافت آنالیز پیشرفته فعالیت‌های دانش‌آموز
+     */
+    @GetMapping("/teacher/student/{studentId}/advanced-analytics")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<Map<String, Object>> getAdvancedStudentAnalytics(
+            @PathVariable Long studentId,
+            @RequestParam Long courseId,
+            @RequestParam(defaultValue = "month") String timeFilter,
+            Authentication authentication) {
+
+        try {
+            // بررسی دسترسی معلم به دوره
+            String username = authentication.getName();
+            User teacher = userService.findByUsername(username);
+
+            Course course = courseRepository.findById(courseId)
+                    .orElseThrow(() -> new RuntimeException("Course not found"));
+
+            if (!course.getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            // بررسی اینکه دانش‌آموز در دوره ثبت‌نام کرده باشد
+            boolean isStudentEnrolled = course.getEnrolledStudents().stream()
+                    .anyMatch(student -> student.getId().equals(studentId));
+
+            if (!isStudentEnrolled) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("error", "Student is not enrolled in this course"));
+            }
+
+            Map<String, Object> analytics = analyticsService.getAdvancedStudentAnalytics(studentId, courseId, timeFilter);
+            return ResponseEntity.ok(analytics);
+
+        } catch (Exception e) {
+//            logger.error("Error fetching advanced student analytics", e);
+            System.out.println("Error fetching advanced student analytics" + e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch analytics"));
+        }
     }
 }

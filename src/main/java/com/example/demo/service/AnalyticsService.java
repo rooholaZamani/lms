@@ -3319,4 +3319,216 @@ public class AnalyticsService {
 
         return answers;
     }
+    /**
+     * دریافت آنالیز پیشرفته فعالیت‌های دانش‌آموز
+     */
+    public Map<String, Object> getAdvancedStudentAnalytics(Long studentId, Long courseId, String timeFilter) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        LocalDateTime startDate = getStartDateByFilter(timeFilter);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
+                .stream()
+                .filter(log -> isCourseRelatedActivity(log, courseId))
+                .collect(Collectors.toList());
+
+        Map<String, Object> analytics = new HashMap<>();
+
+        // 1. توزیع انواع فعالیت‌ها
+        analytics.put("activityTypeDistribution", getActivityTypeDistribution(activities));
+
+        // 2. فعالیت در هر درس
+        analytics.put("lessonActivityBreakdown", getLessonActivityBreakdown(activities, course));
+
+        // 3. Timeline فعالیت‌ها
+        analytics.put("activityTimeline", getActivityTimeline(activities));
+
+        // 4. تحلیل زمان بر اساس نوع فعالیت
+        analytics.put("timeAnalysisByActivityType", getTimeAnalysisByActivityType(activities));
+
+        return analytics;
+    }
+
+    /**
+     * محاسبه توزیع انواع فعالیت‌ها
+     */
+    private Map<String, Object> getActivityTypeDistribution(List<ActivityLog> activities) {
+        Map<String, Long> distribution = activities.stream()
+                .collect(Collectors.groupingBy(
+                        ActivityLog::getActivityType,
+                        Collectors.counting()
+                ));
+
+        long total = activities.size();
+        Map<String, Object> result = new HashMap<>();
+
+        distribution.forEach((type, count) -> {
+            Map<String, Object> typeData = new HashMap<>();
+            typeData.put("count", count);
+            typeData.put("percentage", total > 0 ? Math.round((double) count / total * 100 * 10.0) / 10.0 : 0);
+            typeData.put("label", getActivityTypeLabel(type));
+            result.put(type, typeData);
+        });
+
+        return result;
+    }
+
+    /**
+     * محاسبه فعالیت در هر درس
+     */
+    private Map<String, Object> getLessonActivityBreakdown(List<ActivityLog> activities, Course course) {
+        Map<String, Map<String, Long>> lessonActivities = new HashMap<>();
+
+        // گروه‌بندی فعالیت‌ها بر اساس درس
+        for (ActivityLog activity : activities) {
+            String lessonTitle = getLessonTitleFromActivity(activity, course);
+            if (lessonTitle != null) {
+                lessonActivities.computeIfAbsent(lessonTitle, k -> new HashMap<>())
+                        .merge(activity.getActivityType(), 1L, Long::sum);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        lessonActivities.forEach((lessonTitle, activityCounts) -> {
+            Map<String, Object> lessonData = new HashMap<>();
+            lessonData.put("totalActivities", activityCounts.values().stream().mapToLong(Long::longValue).sum());
+            lessonData.put("activitiesByType", activityCounts);
+
+            // محاسبه متریک‌های خاص
+            lessonData.put("contentViews", activityCounts.getOrDefault("CONTENT_VIEW", 0L));
+            lessonData.put("assignments", activityCounts.getOrDefault("ASSIGNMENT_SUBMISSION", 0L));
+            lessonData.put("exams", activityCounts.getOrDefault("EXAM_SUBMISSION", 0L));
+            lessonData.put("completions", activityCounts.getOrDefault("LESSON_COMPLETION", 0L));
+
+            result.put(lessonTitle, lessonData);
+        });
+
+        return result;
+    }
+
+    /**
+     * ایجاد Timeline فعالیت‌ها
+     */
+    private List<Map<String, Object>> getActivityTimeline(List<ActivityLog> activities) {
+        return activities.stream()
+                .limit(50) // محدود کردن به 50 فعالیت اخیر
+                .map(activity -> {
+                    Map<String, Object> timelineItem = new HashMap<>();
+                    timelineItem.put("id", activity.getId());
+                    timelineItem.put("type", activity.getActivityType());
+                    timelineItem.put("typeLabel", getActivityTypeLabel(activity.getActivityType()));
+                    timelineItem.put("description", generateActivityDescription(activity));
+                    timelineItem.put("timestamp", activity.getTimestamp());
+                    timelineItem.put("timeSpent", activity.getTimeSpent());
+
+                    // اضافه کردن metadata
+                    if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
+                        timelineItem.put("metadata", activity.getMetadata());
+                    }
+
+                    // اضافه کردن اطلاعات نمره در صورت وجود
+                    if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
+                        Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
+                        submission.ifPresent(s -> timelineItem.put("score", s.getScore()));
+                    } else if ("ASSIGNMENT_SUBMISSION".equals(activity.getActivityType())) {
+                        Optional<AssignmentSubmission> submission = assignmentSubmissionRepository.findById(activity.getRelatedEntityId());
+                        submission.ifPresent(s -> timelineItem.put("score", s.getScore()));
+                    }
+
+                    return timelineItem;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * تحلیل زمان بر اساس نوع فعالیت
+     */
+    private Map<String, Object> getTimeAnalysisByActivityType(List<ActivityLog> activities) {
+        Map<String, Double> timeByType = activities.stream()
+                .filter(activity -> activity.getTimeSpent() != null && activity.getTimeSpent() > 0)
+                .collect(Collectors.groupingBy(
+                        ActivityLog::getActivityType,
+                        Collectors.summingDouble(activity -> activity.getTimeSpent() / 60.0) // تبدیل به دقیقه
+                ));
+
+        double totalTime = timeByType.values().stream().mapToDouble(Double::doubleValue).sum();
+
+        Map<String, Object> result = new HashMap<>();
+        timeByType.forEach((type, timeInMinutes) -> {
+            Map<String, Object> typeData = new HashMap<>();
+            typeData.put("totalMinutes", Math.round(timeInMinutes * 10.0) / 10.0);
+            typeData.put("totalHours", Math.round(timeInMinutes / 60.0 * 10.0) / 10.0);
+            typeData.put("percentage", totalTime > 0 ? Math.round((timeInMinutes / totalTime) * 100 * 10.0) / 10.0 : 0);
+            typeData.put("label", getActivityTypeLabel(type));
+            result.put(type, typeData);
+        });
+
+        return result;
+    }
+
+    /**
+     * دریافت عنوان درس از فعالیت
+     */
+    private String getLessonTitleFromActivity(ActivityLog activity, Course course) {
+        if (activity.getRelatedEntityId() == null) return null;
+
+        try {
+            switch (activity.getActivityType()) {
+                case "LESSON_COMPLETION":
+                case "LESSON_ACCESS":
+                    Optional<Lesson> lesson = lessonRepository.findById(activity.getRelatedEntityId());
+                    return lesson.map(Lesson::getTitle).orElse(null);
+
+                case "EXAM_SUBMISSION":
+                    Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
+                    if (submission.isPresent()) {
+                        return submission.get().getExam().getLesson().getTitle();
+                    }
+                    break;
+
+                case "ASSIGNMENT_SUBMISSION":
+                    Optional<AssignmentSubmission> assignmentSub = assignmentSubmissionRepository.findById(activity.getRelatedEntityId());
+                    if (assignmentSub.isPresent()) {
+                        return assignmentSub.get().getAssignment().getLesson().getTitle();
+                    }
+                    break;
+
+                case "CONTENT_VIEW":
+                    // اگر metadata شامل lesson title باشد
+                    if (activity.getMetadata() != null && activity.getMetadata().containsKey("lessonTitle")) {
+                        return activity.getMetadata().get("lessonTitle").toString();
+                    }
+                    break;
+            }
+        } catch (Exception e) {
+            // در صورت خطا، null برگردان
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * دریافت تاریخ شروع بر اساس فیلتر زمانی
+     */
+    private LocalDateTime getStartDateByFilter(String timeFilter) {
+        switch (timeFilter) {
+            case "week":
+                return LocalDateTime.now().minusWeeks(1);
+            case "month":
+                return LocalDateTime.now().minusMonths(1);
+            case "3months":
+                return LocalDateTime.now().minusMonths(3);
+            case "semester":
+                return LocalDateTime.now().minusMonths(6);
+            default:
+                return LocalDateTime.now().minusWeeks(2);
+        }
+    }
 }
