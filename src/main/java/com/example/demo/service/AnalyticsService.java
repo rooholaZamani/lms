@@ -3319,6 +3319,76 @@ public class AnalyticsService {
 
         return answers;
     }
+
+    /**
+     * محاسبه فعالیت در هر درس
+     */
+    private Map<String, Object> getLessonActivityBreakdown(List<ActivityLog> activities, Course course) {
+        Map<String, Map<String, Long>> lessonActivities = new HashMap<>();
+
+        // گروه‌بندی فعالیت‌ها بر اساس درس
+        for (ActivityLog activity : activities) {
+            String lessonTitle = getLessonTitleFromActivity(activity, course);
+            if (lessonTitle != null) {
+                lessonActivities.computeIfAbsent(lessonTitle, k -> new HashMap<>())
+                        .merge(activity.getActivityType(), 1L, Long::sum);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        lessonActivities.forEach((lessonTitle, activityCounts) -> {
+            Map<String, Object> lessonData = new HashMap<>();
+            lessonData.put("totalActivities", activityCounts.values().stream().mapToLong(Long::longValue).sum());
+            lessonData.put("activitiesByType", activityCounts);
+
+            // محاسبه متریک‌های خاص
+            lessonData.put("contentViews", activityCounts.getOrDefault("CONTENT_VIEW", 0L));
+            lessonData.put("assignments", activityCounts.getOrDefault("ASSIGNMENT_SUBMISSION", 0L));
+            lessonData.put("exams", activityCounts.getOrDefault("EXAM_SUBMISSION", 0L));
+            lessonData.put("completions", activityCounts.getOrDefault("LESSON_COMPLETION", 0L));
+
+            result.put(lessonTitle, lessonData);
+        });
+
+        return result;
+    }
+
+    /**
+     * دریافت برچسب فارسی برای انواع فعالیت‌ها
+     */
+    private String getActivityTypeLabel(String activityType) {
+        switch (activityType) {
+            case "LOGIN":
+                return "ورود به سیستم";
+            case "CONTENT_VIEW":
+                return "مشاهده محتوا";
+            case "LESSON_COMPLETION":
+                return "تکمیل درس";
+            case "EXAM_SUBMISSION":
+                return "شرکت در آزمون";
+            case "ASSIGNMENT_SUBMISSION":
+                return "ارسال تکلیف";
+            case "CHAT_MESSAGE_SEND":
+                return "ارسال پیام در چت";
+            case "CHAT_VIEW":
+                return "مشاهده چت";
+            case "FILE_ACCESS":
+                return "دسترسی به فایل";
+            case "LESSON_ACCESS":
+                return "دسترسی به درس";
+            case "EXAM_START":
+                return "شروع آزمون";
+            case "ASSIGNMENT_VIEW":
+                return "مشاهده تکلیف";
+            case "CONTENT_COMPLETION":
+                return "تکمیل محتوا";
+            default:
+                return "فعالیت نامشخص";
+        }
+    }
+
+    // اضافه کردن این متدها به AnalyticsService.java
+
     /**
      * دریافت آنالیز پیشرفته فعالیت‌های دانش‌آموز
      */
@@ -3374,39 +3444,6 @@ public class AnalyticsService {
             typeData.put("percentage", total > 0 ? Math.round((double) count / total * 100 * 10.0) / 10.0 : 0);
             typeData.put("label", getActivityTypeLabel(type));
             result.put(type, typeData);
-        });
-
-        return result;
-    }
-
-    /**
-     * محاسبه فعالیت در هر درس
-     */
-    private Map<String, Object> getLessonActivityBreakdown(List<ActivityLog> activities, Course course) {
-        Map<String, Map<String, Long>> lessonActivities = new HashMap<>();
-
-        // گروه‌بندی فعالیت‌ها بر اساس درس
-        for (ActivityLog activity : activities) {
-            String lessonTitle = getLessonTitleFromActivity(activity, course);
-            if (lessonTitle != null) {
-                lessonActivities.computeIfAbsent(lessonTitle, k -> new HashMap<>())
-                        .merge(activity.getActivityType(), 1L, Long::sum);
-            }
-        }
-
-        Map<String, Object> result = new HashMap<>();
-        lessonActivities.forEach((lessonTitle, activityCounts) -> {
-            Map<String, Object> lessonData = new HashMap<>();
-            lessonData.put("totalActivities", activityCounts.values().stream().mapToLong(Long::longValue).sum());
-            lessonData.put("activitiesByType", activityCounts);
-
-            // محاسبه متریک‌های خاص
-            lessonData.put("contentViews", activityCounts.getOrDefault("CONTENT_VIEW", 0L));
-            lessonData.put("assignments", activityCounts.getOrDefault("ASSIGNMENT_SUBMISSION", 0L));
-            lessonData.put("exams", activityCounts.getOrDefault("EXAM_SUBMISSION", 0L));
-            lessonData.put("completions", activityCounts.getOrDefault("LESSON_COMPLETION", 0L));
-
-            result.put(lessonTitle, lessonData);
         });
 
         return result;
@@ -3529,39 +3566,6 @@ public class AnalyticsService {
                 return LocalDateTime.now().minusMonths(6);
             default:
                 return LocalDateTime.now().minusWeeks(2);
-        }
-    }
-    /**
-     * دریافت برچسب فارسی برای انواع فعالیت‌ها
-     */
-    private String getActivityTypeLabel(String activityType) {
-        switch (activityType) {
-            case "LOGIN":
-                return "ورود به سیستم";
-            case "CONTENT_VIEW":
-                return "مشاهده محتوا";
-            case "LESSON_COMPLETION":
-                return "تکمیل درس";
-            case "EXAM_SUBMISSION":
-                return "شرکت در آزمون";
-            case "ASSIGNMENT_SUBMISSION":
-                return "ارسال تکلیف";
-            case "CHAT_MESSAGE_SEND":
-                return "ارسال پیام در چت";
-            case "CHAT_VIEW":
-                return "مشاهده چت";
-            case "FILE_ACCESS":
-                return "دسترسی به فایل";
-            case "LESSON_ACCESS":
-                return "دسترسی به درس";
-            case "EXAM_START":
-                return "شروع آزمون";
-            case "ASSIGNMENT_VIEW":
-                return "مشاهده تکلیف";
-            case "CONTENT_COMPLETION":
-                return "تکمیل محتوا";
-            default:
-                return "فعالیت نامشخص";
         }
     }
 }
