@@ -500,4 +500,53 @@ public class AnalyticsController {
                     .body(Map.of("error", "Failed to fetch analytics"));
         }
     }
+
+    /**
+     * دریافت داده‌های Heatmap فعالیت روزانه
+     */
+    @GetMapping("/student/{studentId}/course/{courseId}/daily-heatmap")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<Map<String, Object>> getStudentDailyHeatmap(
+            @PathVariable Long studentId,
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "30") String timeFilter,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // بررسی دسترسی معلم به دوره
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied");
+        }
+
+        Map<String, Object> heatmapData = analyticsService.getStudentDailyHeatmap(studentId, courseId, timeFilter);
+        return ResponseEntity.ok(heatmapData);
+    }
+
+    /**
+     * دریافت Timeline فعالیت‌های دانش‌آموز
+     */
+    @GetMapping("/student/{studentId}/course/{courseId}/activity-timeline")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<Map<String, Object>> getStudentActivityTimeline(
+            @PathVariable Long studentId,
+            @PathVariable Long courseId,
+            @RequestParam(defaultValue = "30") String timeFilter,
+            @RequestParam(defaultValue = "100") int limit,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // بررسی دسترسی معلم به دوره
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied");
+        }
+
+        Map<String, Object> timelineData = analyticsService.getStudentActivityTimeline(studentId, courseId, timeFilter, limit);
+        return ResponseEntity.ok(timelineData);
+    }
 }

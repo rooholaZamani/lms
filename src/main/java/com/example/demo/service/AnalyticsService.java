@@ -3568,4 +3568,314 @@ public class AnalyticsService {
                 return LocalDateTime.now().minusWeeks(2);
         }
     }
+
+
+    /**
+     * دریافت داده‌های Heatmap فعالیت روزانه دانش‌آموز
+     */
+    public Map<String, Object> getStudentDailyHeatmap(Long studentId, Long courseId, String timeFilter) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        LocalDateTime startDate = getStartDateByFilterHeatmap(timeFilter);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        // دریافت فعالیت‌های مربوط به دوره
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
+                .stream()
+                .filter(log -> isCourseRelatedActivity(log, courseId))
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new HashMap<>();
+
+        // ایجاد داده‌های Heatmap
+        List<Map<String, Object>> heatmapData = createHeatmapData(activities);
+        result.put("heatmapData", heatmapData);
+
+        // آنالیز داده‌ها
+        Map<String, Object> analytics = analyzeHeatmapData(heatmapData);
+        result.put("analytics", analytics);
+
+        return result;
+    }
+
+    /**
+     * دریافت Timeline فعالیت‌های دانش‌آموز
+     */
+    public Map<String, Object> getStudentActivityTimeline(Long studentId, Long courseId, String timeFilter, int limit) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        LocalDateTime startDate = getStartDateByFilter(timeFilter);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        // دریافت فعالیت‌های مربوط به دوره
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
+                .stream()
+                .filter(log -> isCourseRelatedActivity(log, courseId))
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new HashMap<>();
+
+        // تبدیل فعالیت‌ها به فرمت Timeline
+        List<Map<String, Object>> timelineData = createTimelineData(activities);
+        result.put("activities", timelineData);
+
+        // آمار Timeline
+        Map<String, Object> statistics = createTimelineStatistics(activities);
+        result.put("statistics", statistics);
+
+        return result;
+    }
+
+    /**
+     * ایجاد داده‌های Heatmap برای 7 روز هفته × 24 ساعت
+     */
+    private List<Map<String, Object>> createHeatmapData(List<ActivityLog> activities) {
+        List<Map<String, Object>> heatmapData = new ArrayList<>();
+
+        // گروه‌بندی فعالیت‌ها بر اساس روز هفته و ساعت
+        Map<String, Long> activityCounts = activities.stream()
+                .collect(Collectors.groupingBy(
+                        activity -> {
+                            LocalDateTime timestamp = activity.getTimestamp();
+                            int dayOfWeek = timestamp.getDayOfWeek().getValue() % 7; // شنبه = 0
+                            int hour = timestamp.getHour();
+                            return dayOfWeek + "-" + hour;
+                        },
+                        Collectors.counting()
+                ));
+
+        // ایجاد داده برای هر ترکیب روز-ساعت
+        for (int day = 0; day < 7; day++) {
+            for (int hour = 0; hour < 24; hour++) {
+                String key = day + "-" + hour;
+                long count = activityCounts.getOrDefault(key, 0L);
+
+                Map<String, Object> dataPoint = new HashMap<>();
+                dataPoint.put("dayOfWeek", day);
+                dataPoint.put("hour", hour);
+                dataPoint.put("activityCount", count);
+                dataPoint.put("dayName", getDayName(day));
+
+                heatmapData.add(dataPoint);
+            }
+        }
+
+        return heatmapData;
+    }
+
+    /**
+     * تحلیل داده‌های Heatmap
+     */
+    private Map<String, Object> analyzeHeatmapData(List<Map<String, Object>> heatmapData) {
+        Map<String, Object> analytics = new HashMap<>();
+
+        // یافتن فعال‌ترین روز و ساعت
+        Map<String, Object> mostActivePoint = heatmapData.stream()
+                .max(Comparator.comparingLong(d -> (Long) d.get("activityCount")))
+                .orElse(new HashMap<>());
+
+        if (!mostActivePoint.isEmpty()) {
+            analytics.put("mostActiveDay", getDayName((Integer) mostActivePoint.get("dayOfWeek")));
+            analytics.put("mostActiveHour", mostActivePoint.get("hour") + ":00");
+        } else {
+            analytics.put("mostActiveDay", "نامشخص");
+            analytics.put("mostActiveHour", "نامشخص");
+        }
+
+        // محاسبه کل فعالیت‌ها
+        long totalActivities = heatmapData.stream()
+                .mapToLong(d -> (Long) d.get("activityCount"))
+                .sum();
+        analytics.put("totalActivities", totalActivities);
+
+        // محاسبه میانگین فعالیت در روز
+        Map<Integer, Long> dailyTotals = new HashMap<>();
+        for (Map<String, Object> data : heatmapData) {
+            int day = (Integer) data.get("dayOfWeek");
+            long count = (Long) data.get("activityCount");
+            dailyTotals.merge(day, count, Long::sum);
+        }
+
+        double avgDailyActivity = dailyTotals.values().stream()
+                .mapToLong(Long::longValue)
+                .average()
+                .orElse(0.0);
+        analytics.put("averageDailyActivity", Math.round(avgDailyActivity * 10.0) / 10.0);
+
+        // تشخیص الگوی مطالعه
+        String studyPattern = determineStudyPattern(heatmapData);
+        analytics.put("studyPattern", studyPattern);
+
+        return analytics;
+    }
+
+    /**
+     * ایجاد داده‌های Timeline
+     */
+    private List<Map<String, Object>> createTimelineData(List<ActivityLog> activities) {
+        return activities.stream()
+                .map(activity -> {
+                    Map<String, Object> timelineItem = new HashMap<>();
+
+                    timelineItem.put("id", activity.getId());
+                    timelineItem.put("type", activity.getActivityType());
+                    timelineItem.put("description", generateActivityDescription(activity));
+                    timelineItem.put("timestamp", activity.getTimestamp());
+                    timelineItem.put("timeSpent", activity.getTimeSpent() != null ?
+                            Math.round(activity.getTimeSpent() * 10.0) / 10.0 : 0.0);
+
+                    // اضافه کردن metadata
+                    if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
+                        timelineItem.put("metadata", activity.getMetadata());
+                    }
+
+                    // اضافه کردن نمره در صورت وجود
+                    if ("EXAM_SUBMISSION".equals(activity.getActivityType())) {
+                        Optional<Submission> submission = submissionRepository.findById(activity.getRelatedEntityId());
+                        submission.ifPresent(s -> timelineItem.put("score", s.getScore()));
+                    } else if ("ASSIGNMENT_SUBMISSION".equals(activity.getActivityType())) {
+                        Optional<AssignmentSubmission> submission = assignmentSubmissionRepository.findById(activity.getRelatedEntityId());
+                        submission.ifPresent(s -> timelineItem.put("score", s.getScore()));
+                    }
+
+                    return timelineItem;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * ایجاد آمار Timeline
+     */
+    private Map<String, Object> createTimelineStatistics(List<ActivityLog> activities) {
+        Map<String, Object> stats = new HashMap<>();
+
+        // تعداد کل فعالیت‌ها
+        stats.put("totalActivities", activities.size());
+
+        // توزیع انواع فعالیت‌ها
+        Map<String, Long> activityTypeDistribution = activities.stream()
+                .collect(Collectors.groupingBy(
+                        ActivityLog::getActivityType,
+                        Collectors.counting()
+                ));
+        stats.put("activityTypeDistribution", activityTypeDistribution);
+
+        // محاسبه میانگین زمان صرف شده
+        double avgTimeSpent = activities.stream()
+                .filter(a -> a.getTimeSpent() != null && a.getTimeSpent() > 0)
+                .mapToDouble(ActivityLog::getTimeSpent)
+                .average()
+                .orElse(0.0);
+        stats.put("averageTimeSpent", Math.round(avgTimeSpent * 10.0) / 10.0);
+
+        // آخرین فعالیت
+        if (!activities.isEmpty()) {
+            ActivityLog lastActivity = activities.get(0); // فهرست به ترتیب نزولی است
+            stats.put("lastActivityType", lastActivity.getActivityType());
+            stats.put("lastActivityTime", lastActivity.getTimestamp());
+        }
+
+        // محاسبه فعالیت در روزهای مختلف هفته
+        Map<String, Long> weeklyDistribution = activities.stream()
+                .collect(Collectors.groupingBy(
+                        activity -> getDayName(activity.getTimestamp().getDayOfWeek().getValue() % 7),
+                        Collectors.counting()
+                ));
+        stats.put("weeklyDistribution", weeklyDistribution);
+
+        return stats;
+    }
+
+    /**
+     * تشخیص الگوی مطالعه بر اساس داده‌های Heatmap
+     */
+    private String determineStudyPattern(List<Map<String, Object>> heatmapData) {
+        // محاسبه فعالیت در بازه‌های زمانی مختلف
+        long morningActivity = heatmapData.stream()
+                .filter(d -> {
+                    int hour = (Integer) d.get("hour");
+                    return hour >= 6 && hour < 12;
+                })
+                .mapToLong(d -> (Long) d.get("activityCount"))
+                .sum();
+
+        long afternoonActivity = heatmapData.stream()
+                .filter(d -> {
+                    int hour = (Integer) d.get("hour");
+                    return hour >= 12 && hour < 18;
+                })
+                .mapToLong(d -> (Long) d.get("activityCount"))
+                .sum();
+
+        long eveningActivity = heatmapData.stream()
+                .filter(d -> {
+                    int hour = (Integer) d.get("hour");
+                    return hour >= 18 && hour < 24;
+                })
+                .mapToLong(d -> (Long) d.get("activityCount"))
+                .sum();
+
+        long nightActivity = heatmapData.stream()
+                .filter(d -> {
+                    int hour = (Integer) d.get("hour");
+                    return hour >= 0 && hour < 6;
+                })
+                .mapToLong(d -> (Long) d.get("activityCount"))
+                .sum();
+
+        // تشخیص الگو
+        long maxActivity = Math.max(Math.max(morningActivity, afternoonActivity),
+                Math.max(eveningActivity, nightActivity));
+
+        if (maxActivity == morningActivity) {
+            return "صبحگاه";
+        } else if (maxActivity == afternoonActivity) {
+            return "بعدازظهر";
+        } else if (maxActivity == eveningActivity) {
+            return "عصرگاه";
+        } else if (maxActivity == nightActivity) {
+            return "شبگرد";
+        } else {
+            return "نامنظم";
+        }
+    }
+
+    /**
+     * دریافت نام روز به فارسی
+     */
+    private String getDayName(int dayOfWeek) {
+        String[] days = {"شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه"};
+        return days[dayOfWeek % 7];
+    }
+
+    /**
+     * دریافت تاریخ شروع بر اساس فیلتر زمانی
+     */
+    private LocalDateTime getStartDateByFilterHeatmap(String timeFilter) {
+        LocalDateTime now = LocalDateTime.now();
+
+        switch (timeFilter) {
+            case "7":
+                return now.minusDays(7);
+            case "30":
+                return now.minusDays(30);
+            case "90":
+                return now.minusDays(90);
+            case "365":
+                return now.minusDays(365);
+            default:
+                return now.minusDays(30);
+        }
+    }
 }
