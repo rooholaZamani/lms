@@ -3531,4 +3531,37 @@ public class AnalyticsService {
                 return LocalDateTime.now().minusWeeks(2);
         }
     }
+    /**
+     * دریافت برچسب فارسی برای انواع فعالیت‌ها
+     */
+    private String getActivityTypeLabel(String activityType) {
+        switch (activityType) {
+            case "LOGIN":
+                return "ورود به سیستم";
+            case "CONTENT_VIEW":
+                return "مشاهده محتوا";
+            case "LESSON_COMPLETION":
+                return "تکمیل درس";
+            case "EXAM_SUBMISSION":
+                return "شرکت در آزمون";
+            case "ASSIGNMENT_SUBMISSION":
+                return "ارسال تکلیف";
+            case "CHAT_MESSAGE_SEND":
+                return "ارسال پیام در چت";
+            case "CHAT_VIEW":
+                return "مشاهده چت";
+            case "FILE_ACCESS":
+                return "دسترسی به فایل";
+            case "LESSON_ACCESS":
+                return "دسترسی به درس";
+            case "EXAM_START":
+                return "شروع آزمون";
+            case "ASSIGNMENT_VIEW":
+                return "مشاهده تکلیف";
+            case "CONTENT_COMPLETION":
+                return "تکمیل محتوا";
+            default:
+                return "فعالیت نامشخص";
+        }
+    }
 }
