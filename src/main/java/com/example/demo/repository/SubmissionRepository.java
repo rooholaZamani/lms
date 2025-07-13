@@ -38,4 +38,5 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     @Query("SELECT s FROM Submission s WHERE s.exam.id = :examId AND s.student = :student")
     Optional<Submission> findByExamIdAndStudent(@Param("examId") Long examId, @Param("student") User student);
+
 }

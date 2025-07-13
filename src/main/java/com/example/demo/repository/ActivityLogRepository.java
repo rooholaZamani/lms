@@ -21,4 +21,5 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
     List<ActivityLog> findByActivityType(String activityType);
 
     List<ActivityLog> findByUserOrderByTimestampDesc(User user);
+
 }
