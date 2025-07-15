@@ -12,6 +12,8 @@ import com.example.demo.repository.LessonRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,7 +21,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class AssignmentService {
-
+    private static final Logger log = LoggerFactory.getLogger(AssignmentService.class);
     private final AssignmentRepository assignmentRepository;
     private final AssignmentSubmissionRepository submissionRepository;
     private final LessonRepository lessonRepository;
@@ -71,18 +73,44 @@ public class AssignmentService {
 
         // Handle file upload if provided
         if (file != null && !file.isEmpty()) {
-            try {
-                String subdirectory = fileStorageService.generatePath(
-                        lesson.getCourse().getId(),
-                        lessonId,
-                        "assignments");
+            log.info("=== Assignment File Upload Debug ===");
+            log.info("File name: {}", file.getOriginalFilename());
+            log.info("File size: {}", file.getSize());
 
+            String subdirectory = fileStorageService.generatePath(
+                    lesson.getCourse().getId(),
+                    lessonId,
+                    "assignments");
+            log.info("Generated subdirectory: {}", subdirectory);
+
+            try {
                 FileMetadata metadata = fileStorageService.storeFile(file, subdirectory);
+                log.info("FileMetadata created with ID: {}", metadata.getId());
+                log.info("FileMetadata details: {}", metadata);
+
+                // Check if FileMetadata actually exists in database
+                if (metadata.getId() != null) {
+                    boolean exists = fileMetadataRepository.existsById(metadata.getId());
+                    log.info("FileMetadata exists in database: {}", exists);
+
+                    if (!exists) {
+                        log.error("CRITICAL: FileMetadata was created with ID {} but doesn't exist in database!", metadata.getId());
+                    }
+                }
+
                 assignment.setFile(metadata);
+                log.info("FileMetadata assigned to assignment");
+
             } catch (Exception e) {
-                throw new RuntimeException("Failed to store file: " + file.getOriginalFilename(), e);
+                log.error("Error during file storage: ", e);
+                throw e;
             }
+        } else {
+            log.info("No file provided for assignment");
         }
+
+        log.info("About to save assignment with file ID: {}",
+                assignment.getFile() != null ? assignment.getFile().getId() : "null");
 
         return assignmentRepository.save(assignment);
     }
