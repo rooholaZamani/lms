@@ -25,7 +25,7 @@ public class AssignmentSubmission {
     @Column(length = 2000)
     private String comment;
 
-    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(orphanRemoval = true)
     private FileMetadata file;
 
     private LocalDateTime submittedAt;

@@ -27,7 +27,7 @@ public class Assignment {
     @ManyToOne
     private User teacher;
 
-    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(orphanRemoval = true)
 //    @JoinColumn(name = "file_id")
     private FileMetadata file;
 

@@ -29,7 +29,7 @@ public class Content {
     @Column(length = 4000)
     private String textContent; // Used for TEXT type
 
-    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToOne(orphanRemoval = true)
     private FileMetadata file; // Used for VIDEO and PDF types
 
     @ManyToOne

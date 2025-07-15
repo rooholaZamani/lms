@@ -15,8 +15,13 @@ import org.springframework.web.multipart.MultipartFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -63,50 +68,30 @@ public class AssignmentService {
         assignment.setTeacher(teacher);
         assignment.setCreatedAt(LocalDateTime.now());
 
-        // Parse due date with validation
-        try {
-            LocalDateTime dueDate = LocalDateTime.parse(dueDateStr);
-            assignment.setDueDate(dueDate);
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid due date format: " + dueDateStr, e);
-        }
+        // Parse due date
+        LocalDateTime dueDate = LocalDateTime.parse(dueDateStr);
+        assignment.setDueDate(dueDate);
 
         // Handle file upload if provided
         if (file != null && !file.isEmpty()) {
             log.info("=== Assignment File Upload Debug ===");
-            log.info("File name: {}", file.getOriginalFilename());
-            log.info("File size: {}", file.getSize());
-
             String subdirectory = fileStorageService.generatePath(
                     lesson.getCourse().getId(),
                     lessonId,
                     "assignments");
-            log.info("Generated subdirectory: {}", subdirectory);
 
-            try {
-                FileMetadata metadata = fileStorageService.storeFile(file, subdirectory);
-                log.info("FileMetadata created with ID: {}", metadata.getId());
-                log.info("FileMetadata details: {}", metadata);
+            FileMetadata metadata = fileStorageService.storeFile(file, subdirectory);
+            log.info("FileMetadata created with ID: {}", metadata.getId());
 
-                // Check if FileMetadata actually exists in database
-                if (metadata.getId() != null) {
-                    boolean exists = fileMetadataRepository.existsById(metadata.getId());
-                    log.info("FileMetadata exists in database: {}", exists);
+            // فلاش کردن برای اطمینان از save شدن
+            fileMetadataRepository.flush();
 
-                    if (!exists) {
-                        log.error("CRITICAL: FileMetadata was created with ID {} but doesn't exist in database!", metadata.getId());
-                    }
-                }
+            // دوباره fetch کردن
+            metadata = fileMetadataRepository.findById(metadata.getId())
+                    .orElseThrow(() -> new RuntimeException("FileMetadata not found after save"));
 
-                assignment.setFile(metadata);
-                log.info("FileMetadata assigned to assignment");
-
-            } catch (Exception e) {
-                log.error("Error during file storage: ", e);
-                throw e;
-            }
-        } else {
-            log.info("No file provided for assignment");
+            assignment.setFile(metadata);
+            log.info("FileMetadata assigned to assignment");
         }
 
         log.info("About to save assignment with file ID: {}",
@@ -242,44 +227,5 @@ public class AssignmentService {
         return submissions.stream()
                 .filter(submission -> submission.getAssignment().getTeacher().getId().equals(teacher.getId()))
                 .collect(Collectors.toList());
-    }
-    /**
-     * Create a new assignment for a lesson using file ID
-     */
-    @Transactional
-    public Assignment createAssignmentWithFileId(
-            Long lessonId,
-            String title,
-            String description,
-            Long fileId,
-            String dueDateStr,
-            User teacher) {
-
-        Lesson lesson = lessonRepository.findById(lessonId)
-                .orElseThrow(() -> new RuntimeException("Lesson not found"));
-
-        Assignment assignment = new Assignment();
-        assignment.setTitle(title);
-        assignment.setDescription(description);
-        assignment.setLesson(lesson);
-        assignment.setTeacher(teacher);
-        assignment.setCreatedAt(LocalDateTime.now());
-
-        // Parse due date with validation
-        try {
-            LocalDateTime dueDate = LocalDateTime.parse(dueDateStr);
-            assignment.setDueDate(dueDate);
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid due date format: " + dueDateStr + ". Expected format: yyyy-MM-ddTHH:mm:ss", e);
-        }
-
-        // Handle file reference if provided
-        if (fileId != null) {
-            FileMetadata metadata = fileMetadataRepository.findById(fileId)
-                    .orElseThrow(() -> new RuntimeException("File not found with ID: " + fileId));
-            assignment.setFile(metadata);
-        }
-
-        return assignmentRepository.save(assignment);
     }
 }
