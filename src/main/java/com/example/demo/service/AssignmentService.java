@@ -61,21 +61,28 @@ public class AssignmentService {
         assignment.setTeacher(teacher);
         assignment.setCreatedAt(LocalDateTime.now());
 
-        // Parse due date
-        LocalDateTime dueDate = LocalDateTime.parse(dueDateStr);
-        assignment.setDueDate(dueDate);
+        // Parse due date with validation
+        try {
+            LocalDateTime dueDate = LocalDateTime.parse(dueDateStr);
+            assignment.setDueDate(dueDate);
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid due date format: " + dueDateStr, e);
+        }
 
         // Handle file upload if provided
         if (file != null && !file.isEmpty()) {
-            String subdirectory = fileStorageService.generatePath(
-                    lesson.getCourse().getId(),
-                    lessonId,
-                    "assignments");
+            try {
+                String subdirectory = fileStorageService.generatePath(
+                        lesson.getCourse().getId(),
+                        lessonId,
+                        "assignments");
 
-            FileMetadata metadata = fileStorageService.createFileMetadata(file, subdirectory);
-            assignment.setFile(metadata);
+                FileMetadata metadata = fileStorageService.storeFile(file, subdirectory);
+                assignment.setFile(metadata);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to store file: " + file.getOriginalFilename(), e);
+            }
         }
-
 
         return assignmentRepository.save(assignment);
     }
@@ -207,5 +214,44 @@ public class AssignmentService {
         return submissions.stream()
                 .filter(submission -> submission.getAssignment().getTeacher().getId().equals(teacher.getId()))
                 .collect(Collectors.toList());
+    }
+    /**
+     * Create a new assignment for a lesson using file ID
+     */
+    @Transactional
+    public Assignment createAssignmentWithFileId(
+            Long lessonId,
+            String title,
+            String description,
+            Long fileId,
+            String dueDateStr,
+            User teacher) {
+
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new RuntimeException("Lesson not found"));
+
+        Assignment assignment = new Assignment();
+        assignment.setTitle(title);
+        assignment.setDescription(description);
+        assignment.setLesson(lesson);
+        assignment.setTeacher(teacher);
+        assignment.setCreatedAt(LocalDateTime.now());
+
+        // Parse due date with validation
+        try {
+            LocalDateTime dueDate = LocalDateTime.parse(dueDateStr);
+            assignment.setDueDate(dueDate);
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid due date format: " + dueDateStr + ". Expected format: yyyy-MM-ddTHH:mm:ss", e);
+        }
+
+        // Handle file reference if provided
+        if (fileId != null) {
+            FileMetadata metadata = fileMetadataRepository.findById(fileId)
+                    .orElseThrow(() -> new RuntimeException("File not found with ID: " + fileId));
+            assignment.setFile(metadata);
+        }
+
+        return assignmentRepository.save(assignment);
     }
 }

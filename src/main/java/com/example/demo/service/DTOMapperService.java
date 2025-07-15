@@ -206,19 +206,19 @@ public class DTOMapperService {
         return dto;
     }
 
-    public FileMetadataDTO mapToFileMetadataDTO(FileMetadata metadata) {
-        if (metadata == null) {
-            return null;
-        }
-
-        FileMetadataDTO dto = new FileMetadataDTO();
-        dto.setId(metadata.getId());
-        dto.setOriginalFilename(metadata.getOriginalFilename());
-        dto.setContentType(metadata.getContentType());
-        dto.setFileSize(metadata.getFileSize());
-
-        return dto;
-    }
+//    public FileMetadataDTO mapToFileMetadataDTO(FileMetadata metadata) {
+//        if (metadata == null) {
+//            return null;
+//        }
+//
+//        FileMetadataDTO dto = new FileMetadataDTO();
+//        dto.setId(metadata.getId());
+//        dto.setOriginalFilename(metadata.getOriginalFilename());
+//        dto.setContentType(metadata.getContentType());
+//        dto.setFileSize(metadata.getFileSize());
+//
+//        return dto;
+//    }
 
     public ExamDTO mapToExamDTO(Exam exam, User currentStudent) {
         ExamDTO dto = mapToExamDTO(exam); // Previous method
@@ -979,5 +979,14 @@ public class DTOMapperService {
 
         // سایر انواع قابل تبدیل نیستند
         return null;
+    }
+    public FileMetadataDTO mapToFileMetadataDTO(FileMetadata metadata) {
+        FileMetadataDTO dto = new FileMetadataDTO();
+        dto.setId(metadata.getId());
+        dto.setOriginalFilename(metadata.getOriginalFilename());
+        dto.setContentType(metadata.getContentType());
+        dto.setFileSize(metadata.getFileSize());
+        dto.setDownloadUrl("/api/files/" + metadata.getId());
+        return dto;
     }
 }

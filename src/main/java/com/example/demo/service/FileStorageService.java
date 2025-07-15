@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -118,5 +119,26 @@ public class FileStorageService {
         } catch (IOException ex) {
             throw new RuntimeException("Could not store file " + originalFilename, ex);
         }
+    }
+    /**
+     * Get file metadata by ID
+     */
+    public FileMetadata getFileById(Long fileId) {
+        return fileMetadataRepository.findById(fileId)
+                .orElseThrow(() -> new RuntimeException("File not found with ID: " + fileId));
+    }
+
+    /**
+     * Delete file by ID
+     */
+    @Transactional
+    public void deleteFileById(Long fileId) {
+        FileMetadata metadata = getFileById(fileId);
+
+        // Delete physical file
+        deleteFile(metadata);
+
+        // Delete metadata record
+        fileMetadataRepository.delete(metadata);
     }
 }

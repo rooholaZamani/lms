@@ -28,6 +28,7 @@ public class Assignment {
     private User teacher;
 
     @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
+//    @JoinColumn(name = "file_id")
     private FileMetadata file;
 
     private LocalDateTime createdAt;

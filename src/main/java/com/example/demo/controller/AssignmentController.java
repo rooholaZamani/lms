@@ -42,7 +42,7 @@ public class AssignmentController {
         this.dtoMapperService = dtoMapperService;
     }
 
-    @PostMapping("/lesson/{lessonId}")
+    @PostMapping(value = "/lesson/{lessonId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(
             summary = "Create a new assignment",
             description = "Create a new assignment for a specific lesson with optional file attachment"
@@ -166,5 +166,42 @@ public class AssignmentController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTOList(filteredSubmissions));
+    }
+
+    @PostMapping("/lesson/{lessonId}")
+    @Operation(
+            summary = "Create a new assignment",
+            description = "Create a new assignment for a specific lesson with optional file ID"
+    )
+    public ResponseEntity<AssignmentDTO> createAssignment(
+            @Parameter(description = "ID of the lesson") @PathVariable Long lessonId,
+            @Parameter(description = "Title of the assignment") @RequestParam("title") String title,
+            @Parameter(description = "Description of the assignment") @RequestParam("description") String description,
+            @Parameter(description = "File ID (from /api/files/upload)") @RequestParam(value = "fileId", required = false) Long fileId,
+            @Parameter(description = "Due date in ISO-8601 format (yyyy-MM-ddTHH:mm:ss)") @RequestParam("dueDate") String dueDate,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Assignment assignment = assignmentService.createAssignmentWithFileId(lessonId, title, description, fileId, dueDate, teacher);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentDTO(assignment));
+    }
+
+    // Keep the old method for backward compatibility
+    @PostMapping("/lesson/{lessonId}/upload")
+    @Operation(
+            summary = "Create assignment with file upload (legacy)",
+            description = "Create a new assignment with direct file upload"
+    )
+    public ResponseEntity<AssignmentDTO> createAssignmentWithUpload(
+            @Parameter(description = "ID of the lesson") @PathVariable Long lessonId,
+            @Parameter(description = "Title of the assignment") @RequestParam("title") String title,
+            @Parameter(description = "Description of the assignment") @RequestParam("description") String description,
+            @Parameter(description = "File attachment (optional)") @RequestParam(value = "file", required = false) MultipartFile file,
+            @Parameter(description = "Due date in ISO-8601 format (yyyy-MM-ddTHH:mm:ss)") @RequestParam("dueDate") String dueDate,
+            Authentication authentication) {
+
+        User teacher = userService.findByUsername(authentication.getName());
+        Assignment assignment = assignmentService.createAssignment(lessonId, title, description, file, dueDate, teacher);
+        return ResponseEntity.ok(dtoMapperService.mapToAssignmentDTO(assignment));
     }
 }

@@ -9,4 +9,5 @@ public class FileMetadataDTO {
     private String originalFilename;
     private String contentType;
     private Long fileSize;
+    private String downloadUrl;
 }
