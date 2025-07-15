@@ -92,31 +92,4 @@ public class FileStorageService {
     public String generatePath(Long courseId, Long lessonId, String type) {
         return String.format("courses/%d/lessons/%d/%s", courseId, lessonId, type);
     }
-    public FileMetadata createFileMetadata(MultipartFile file, String subdirectory) {
-        // Generate unique filename
-        String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
-        String storedFilename = UUID.randomUUID().toString() + "_" + originalFilename;
-
-        try {
-            // Create subdirectory if it doesn't exist
-            Path targetLocation = this.fileStorageLocation.resolve(subdirectory);
-            Files.createDirectories(targetLocation);
-
-            // Store the file
-            Path filePath = targetLocation.resolve(storedFilename);
-            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-            // Create metadata WITHOUT saving it
-            FileMetadata metadata = new FileMetadata();
-            metadata.setOriginalFilename(originalFilename);
-            metadata.setStoredFilename(storedFilename);
-            metadata.setFilePath(subdirectory + "/" + storedFilename);
-            metadata.setContentType(file.getContentType());
-            metadata.setFileSize(file.getSize());
-
-            return metadata; // بدون save کردن برمی‌گردانیم
-        } catch (IOException ex) {
-            throw new RuntimeException("Could not store file " + originalFilename, ex);
-        }
-    }
 }

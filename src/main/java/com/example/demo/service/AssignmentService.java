@@ -72,7 +72,7 @@ public class AssignmentService {
                     lessonId,
                     "assignments");
 
-            FileMetadata metadata = fileStorageService.createFileMetadata(file, subdirectory);
+            FileMetadata metadata = fileStorageService.storeFile(file, subdirectory);
             assignment.setFile(metadata);
         }
 
