@@ -10,12 +10,14 @@ import com.example.demo.service.ProgressService;
 import com.example.demo.service.UserService;
 import com.example.demo.service.DTOMapperService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -172,6 +174,46 @@ public class CourseController {
         // به‌روزرسانی دوره
         Course updatedCourse = courseService.updateCourse(courseId, courseData);
         return ResponseEntity.ok(dtoMapperService.mapToCourseDTO(updatedCourse));
+    }
+    @DeleteMapping("/{courseId}")
+    @Operation(
+            summary = "Delete course",
+            description = "Delete a course (only course owner can delete)"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> deleteCourse(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // بررسی نقش معلم
+            boolean isTeacher = teacher.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+            if (!isTeacher) {
+                throw new RuntimeException("Access denied: Only teachers can delete courses");
+            }
+
+            // حذف دوره
+            courseService.deleteCourse(courseId, teacher);
+
+            // پاسخ موفقیت‌آمیز
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Course deleted successfully");
+            response.put("courseId", courseId);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("courseId", courseId);
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
     }
 
 }

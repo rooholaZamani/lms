@@ -1,11 +1,10 @@
 package com.example.demo.service;
 
 import com.example.demo.model.*;
-import com.example.demo.repository.AssignmentSubmissionRepository;
-import com.example.demo.repository.CourseRepository;
-import com.example.demo.repository.ProgressRepository;
-import com.example.demo.repository.SubmissionRepository;
+import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -17,16 +16,20 @@ public class CourseService {
     private final ProgressRepository progressRepository;
     private final SubmissionRepository submissionRepository;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
+    private final AssignmentRepository assignmentRepository;
+    private final FileStorageService fileStorageService;
 
     public CourseService(
             CourseRepository courseRepository,
             ProgressRepository progressRepository,
             SubmissionRepository submissionRepository,
-            AssignmentSubmissionRepository assignmentSubmissionRepository) {
+            AssignmentSubmissionRepository assignmentSubmissionRepository, AssignmentRepository assignmentRepository, FileStorageService fileStorageService) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
         this.assignmentSubmissionRepository = assignmentSubmissionRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.fileStorageService = fileStorageService;
     }
 
     // اضافه کردن این متد
@@ -197,5 +200,67 @@ public class CourseService {
 
     public List<Course> getTeacherActiveCourses(User teacher) {
         return courseRepository.findByTeacherAndActiveTrue(teacher);
+    }
+    @Transactional
+    public void deleteCourse(Long courseId, User teacher) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // بررسی مالکیت
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied: Only course owner can delete this course");
+        }
+
+        // حذف فایل‌ها قبل از حذف entities
+        deleteCourseFiles(course);
+
+        // حذف Progress های مرتبط
+        List<Progress> courseProgresses = progressRepository.findByCourse(course);
+        progressRepository.deleteAll(courseProgresses);
+
+        // حذف دوره (بقیه روابط به دلیل cascade حذف می‌شوند)
+        courseRepository.delete(course);
+    }
+    private void deleteCourseFiles(Course course) {
+        for (Lesson lesson : course.getLessons()) {
+
+            // 1. حذف فایل‌های محتوای درس
+            for (Content content : lesson.getContents()) {
+                if (content.getFile() != null) {
+                    try {
+                        fileStorageService.deleteFile(content.getFile());
+                    } catch (Exception e) {
+                        // Log error but continue
+                        System.err.println("Error deleting content file: " + e.getMessage());
+                    }
+                }
+            }
+
+            // 2. حذف فایل‌های Assignment
+            List<Assignment> assignments = assignmentRepository.findByLesson(lesson);
+            for (Assignment assignment : assignments) {
+
+                // حذف فایل Assignment
+                if (assignment.getFile() != null) {
+                    try {
+                        fileStorageService.deleteFile(assignment.getFile());
+                    } catch (Exception e) {
+                        System.err.println("Error deleting assignment file: " + e.getMessage());
+                    }
+                }
+
+                // 3. حذف فایل‌های AssignmentSubmission
+                List<AssignmentSubmission> submissions = assignmentSubmissionRepository.findByAssignment(assignment);
+                for (AssignmentSubmission submission : submissions) {
+                    if (submission.getFile() != null) {
+                        try {
+                            fileStorageService.deleteFile(submission.getFile());
+                        } catch (Exception e) {
+                            System.err.println("Error deleting submission file: " + e.getMessage());
+                        }
+                    }
+                }
+            }
+        }
     }
 }

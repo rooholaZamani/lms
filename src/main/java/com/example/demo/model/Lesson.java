@@ -46,6 +46,9 @@ public class Lesson {
     @OneToOne(cascade = CascadeType.ALL)
     private Exam exam;
 
+    @OneToMany(mappedBy = "lesson", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Assignment> assignments = new ArrayList<>();
+
     @PrePersist
     private void setDefaultValues() {
         if (this.duration == null) {

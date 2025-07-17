@@ -93,22 +93,30 @@ public class AssignmentController {
 
         User teacher = userService.findByUsername(authentication.getName());
 
-        // دریافت assignment برای دسترسی به course
         Assignment assignment = assignmentService.getAssignmentById(assignmentId);
 
         List<AssignmentSubmission> submissions = assignmentService.getAssignmentSubmissions(assignmentId);
 
-        // تعداد کل دانش‌آموزان کورس
         int totalStudents = assignment.getLesson().getCourse().getEnrolledStudents().size();
 
-        // تعداد دانش‌آموزانی که تکلیف ارسال کرده‌اند
         int submittedStudents = submissions.size();
 
-        // ساخت پاسخ
+        double averageScore = submissions.stream()
+                .filter(s -> s.isGraded() && s.getScore() != null)
+                .mapToInt(AssignmentSubmission::getScore)
+                .average()
+                .orElse(0.0);
+
+        long lateSubmissions = submissions.stream()
+                .filter(s -> s.getSubmittedAt().isAfter(assignment.getDueDate()))
+                .count();
+
         Map<String, Object> response = new HashMap<>();
         response.put("submissions", dtoMapperService.mapToAssignmentSubmissionDTOList(submissions));
         response.put("totalStudents", totalStudents);
         response.put("submittedStudents", submittedStudents);
+        response.put("averageScore", averageScore);
+        response.put("lateSubmissions", lateSubmissions);
 
         return ResponseEntity.ok(response);
     }
