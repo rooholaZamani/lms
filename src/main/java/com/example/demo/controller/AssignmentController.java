@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -85,13 +87,30 @@ public class AssignmentController {
     }
 
     @GetMapping("/{assignmentId}/submissions")
-    public ResponseEntity<List<AssignmentSubmissionDTO>> getAssignmentSubmissions(
+    public ResponseEntity<Map<String, Object>> getAssignmentSubmissions(
             @PathVariable Long assignmentId,
             Authentication authentication) {
 
         User teacher = userService.findByUsername(authentication.getName());
+
+        // دریافت assignment برای دسترسی به course
+        Assignment assignment = assignmentService.getAssignmentById(assignmentId);
+
         List<AssignmentSubmission> submissions = assignmentService.getAssignmentSubmissions(assignmentId);
-        return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTOList(submissions));
+
+        // تعداد کل دانش‌آموزان کورس
+        int totalStudents = assignment.getLesson().getCourse().getEnrolledStudents().size();
+
+        // تعداد دانش‌آموزانی که تکلیف ارسال کرده‌اند
+        int submittedStudents = submissions.size();
+
+        // ساخت پاسخ
+        Map<String, Object> response = new HashMap<>();
+        response.put("submissions", dtoMapperService.mapToAssignmentSubmissionDTOList(submissions));
+        response.put("totalStudents", totalStudents);
+        response.put("submittedStudents", submittedStudents);
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/submissions/{submissionId}/grade")

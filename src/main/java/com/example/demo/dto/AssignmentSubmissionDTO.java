@@ -3,6 +3,7 @@ package com.example.demo.dto;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class AssignmentSubmissionDTO {
@@ -18,4 +19,7 @@ public class AssignmentSubmissionDTO {
     private String feedback;
     private boolean graded;
     private LocalDateTime gradedAt;
+    private int totalStudents;
+    private int submittedCount;
+    private List<AssignmentSubmissionDTO> submissions;
 }
