@@ -3,6 +3,7 @@ package com.example.demo.service;
 import com.example.demo.dto.*;
 import com.example.demo.model.*;
 import com.example.demo.repository.AssignmentRepository;
+import com.example.demo.repository.ProgressRepository;
 import com.example.demo.repository.SubmissionRepository;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,10 +19,14 @@ public class DTOMapperService {
     private final SubmissionRepository submissionRepository;
     private final AssignmentRepository assignmentRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ProgressRepository progressRepository;
+    private  final LessonCompletionService lessonCompletionService;
 
-    public DTOMapperService(SubmissionRepository submissionRepository, AssignmentRepository assignmentRepository) {
+    public DTOMapperService(SubmissionRepository submissionRepository, AssignmentRepository assignmentRepository, ProgressRepository progressRepository, LessonCompletionService lessonCompletionService) {
         this.submissionRepository = submissionRepository;
         this.assignmentRepository = assignmentRepository;
+        this.progressRepository = progressRepository;
+        this.lessonCompletionService = lessonCompletionService;
     }
 
     public UserSummaryDTO mapToUserSummary(User user) {
@@ -769,7 +774,7 @@ public class DTOMapperService {
     /**
      * Maps Content entity to ContentDetailsDTO with enhanced information
      */
-    public ContentDetailsDTO mapToContentDetailsDTO(Content content) {
+    public ContentDetailsDTO mapToContentDetailsDTO(Content content,User currentUser) {
         if (content == null) {
             return null;
         }
@@ -804,6 +809,29 @@ public class DTOMapperService {
             }
 
             dto.setLesson(lessonInfo);
+        }
+
+        if (currentUser != null) {
+            // بررسی تکمیل محتوا
+            Progress progress = progressRepository.findByStudentAndCourse(
+                    currentUser, content.getLesson().getCourse()).orElse(null);
+
+            if (progress != null) {
+                dto.setIsCompleted(progress.getCompletedContent().contains(content.getId()));
+                dto.setIsViewed(progress.getViewedContent().contains(content.getId()));
+            }
+
+            // بررسی تکمیل درس
+            LessonCompletionService.LessonCompletionStatus lessonStatus = lessonCompletionService
+                    .getLessonCompletionStatus(currentUser, content.getLesson());
+
+            ContentDetailsDTO.CompletionInfo completionInfo = new ContentDetailsDTO.CompletionInfo();
+            completionInfo.setIsLessonCompleted(lessonStatus.isCompleted());
+            completionInfo.setLessonCompletionPercentage(lessonStatus.getCompletionPercentage());
+            completionInfo.setTotalLessonContents(lessonStatus.getTotalContents());
+            completionInfo.setCompletedLessonContents(lessonStatus.getCompletedContents());
+
+            dto.setCompletion(completionInfo);
         }
 
         return dto;

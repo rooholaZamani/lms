@@ -30,19 +30,23 @@ public class ContentController {
     private final DTOMapperService dtoMapperService;
     private final UserService userService;
     private final ActivityTrackingService activityTrackingService;
+    private final LessonCompletionService lessonCompletionService;
+    private final ProgressService progressService;
 
     public ContentController(
             ContentService contentService,
             LessonService lessonService,
             FileStorageService fileStorageService,
             DTOMapperService dtoMapperService,
-            UserService userService, ActivityTrackingService activityTrackingService) {
+            UserService userService, ActivityTrackingService activityTrackingService, LessonCompletionService lessonCompletionService, ProgressService progressService) {
         this.contentService = contentService;
         this.lessonService = lessonService;
         this.fileStorageService = fileStorageService;
         this.dtoMapperService = dtoMapperService;
         this.userService = userService;
         this.activityTrackingService = activityTrackingService;
+        this.lessonCompletionService = lessonCompletionService;
+        this.progressService = progressService;
     }
 
     @GetMapping("/{contentId}")
@@ -75,7 +79,8 @@ public class ContentController {
                 activityTrackingService.updateStudyTime(currentUser, timeSpent);
             }
 
-            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content);
+//            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content);
+            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content, currentUser);
             return ResponseEntity.ok(contentDetails);
 
         } catch (RuntimeException e) {

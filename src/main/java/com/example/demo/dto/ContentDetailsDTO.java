@@ -16,6 +16,9 @@ public class ContentDetailsDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LessonInfo lesson;
+    private Boolean isCompleted;
+    private Boolean isViewed;
+    private CompletionInfo completion;
 
     @Data
     public static class LessonInfo {
@@ -23,5 +26,13 @@ public class ContentDetailsDTO {
         private String title;
         private Long courseId;
         private String courseTitle;
+    }
+
+    @Data
+    public static class CompletionInfo {
+        private Boolean isLessonCompleted;
+        private Double lessonCompletionPercentage;
+        private Integer totalLessonContents;
+        private Integer completedLessonContents;
     }
 }
