@@ -549,4 +549,28 @@ public class AnalyticsController {
         Map<String, Object> timelineData = analyticsService.getStudentActivityTimeline(studentId, courseId, timeFilter, limit);
         return ResponseEntity.ok(timelineData);
     }
+
+    @GetMapping("/student/my-activities")
+    @Operation(summary = "Get student's own activities", description = "Get activity timeline for the authenticated student")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getMyActivities(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(defaultValue = "month") String timeFilter,
+            @RequestParam(defaultValue = "50") int limit,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+
+        // بررسی که کاربر دانش‌آموز باشه
+        boolean isStudent = student.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        if (!isStudent) {
+            throw new RuntimeException("Access denied: Only students can access this endpoint");
+        }
+
+        Map<String, Object> activities = analyticsService.getStudentActivityTimeline(
+                student.getId(), courseId, timeFilter, limit);
+        return ResponseEntity.ok(activities);
+    }
 }
