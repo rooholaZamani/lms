@@ -551,7 +551,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/student/my-activities")
-    @Operation(summary = "Get student's own activities", description = "Get activity timeline for the authenticated student")
+    @Operation(summary = "Get student's own activities")
     @SecurityRequirement(name = "basicAuth")
     public ResponseEntity<Map<String, Object>> getMyActivities(
             @RequestParam(required = false) Long courseId,
@@ -569,7 +569,8 @@ public class AnalyticsController {
             throw new RuntimeException("Access denied: Only students can access this endpoint");
         }
 
-        Map<String, Object> activities = analyticsService.getStudentActivityTimeline(
+        // استفاده از method جدید
+        Map<String, Object> activities = analyticsService.getMyActivities(
                 student.getId(), courseId, timeFilter, limit);
         return ResponseEntity.ok(activities);
     }

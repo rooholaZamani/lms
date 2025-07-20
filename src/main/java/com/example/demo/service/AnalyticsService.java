@@ -3610,8 +3610,8 @@ public class AnalyticsService {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
+//        Course course = courseRepository.findById(courseId)
+//                .orElseThrow(() -> new RuntimeException("Course not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
         LocalDateTime endDate = LocalDateTime.now();
@@ -3877,5 +3877,242 @@ public class AnalyticsService {
             default:
                 return now.minusDays(30);
         }
+    }
+
+    /**
+     * Helper method برای استخراج نام دوره از ActivityLog
+     */
+    private String extractCourseName(ActivityLog log) {
+        // 1. اول metadata رو چک کن
+        if (log.getMetadata() != null && !log.getMetadata().isEmpty()) {
+            // چک کردن کلیدهای مختلف که ممکنه نام دوره رو داشته باشن
+            if (log.getMetadata().containsKey("courseTitle")) {
+                return log.getMetadata().get("courseTitle");
+            }
+            if (log.getMetadata().containsKey("courseName")) {
+                return log.getMetadata().get("courseName");
+            }
+        }
+
+        // 2. اگر از metadata نتونستیم بگیریم، از relatedEntityId استفاده کن
+        if (log.getRelatedEntityId() != null) {
+            try {
+                switch (log.getActivityType()) {
+                    case "LESSON_COMPLETION":
+                    case "LESSON_ACCESS":
+                        return getLessonCourseName(log.getRelatedEntityId());
+
+                    case "CONTENT_VIEW":
+                        return getContentCourseName(log.getRelatedEntityId());
+
+                    case "EXAM_SUBMISSION":
+                    case "EXAM_START":
+                        return getExamCourseName(log.getRelatedEntityId());
+
+                    case "ASSIGNMENT_SUBMISSION":
+                    case "ASSIGNMENT_VIEW":
+                        return getAssignmentCourseName(log.getRelatedEntityId());
+
+                    case "FILE_ACCESS":
+                        return getFileCourseName(log.getRelatedEntityId());
+
+                    default:
+                        // برای سایر انواع فعالیت که مستقیماً به دوره مربوط نیستن
+                        return null;
+                }
+            } catch (Exception e) {
+                // در صورت خطا، null برگردان
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * دریافت نام دوره از طریق درس
+     */
+    private String getLessonCourseName(Long lessonId) {
+        try {
+            Optional<Lesson> lesson = lessonRepository.findById(lessonId);
+            if (lesson.isPresent() && lesson.get().getCourse() != null) {
+                return lesson.get().getCourse().getTitle();
+            }
+        } catch (Exception e) {
+            // در صورت خطا یا نبود، null برگردان
+        }
+        return null;
+    }
+
+    /**
+     * دریافت نام دوره از طریق محتوا
+     */
+    private String getContentCourseName(Long contentId) {
+        try {
+            Optional<Content> content = contentRepository.findById(contentId);
+            if (content.isPresent() && content.get().getLesson() != null
+                    && content.get().getLesson().getCourse() != null) {
+                return content.get().getLesson().getCourse().getTitle();
+            }
+        } catch (Exception e) {
+            // در صورت خطا یا نبود، null برگردان
+        }
+        return null;
+    }
+
+    /**
+     * دریافت نام دوره از طریق آزمون
+     */
+    private String getExamCourseName(Long examId) {
+        try {
+            // برای EXAM_SUBMISSION، relatedEntityId ممکنه submission id باشه
+            Optional<Submission> submission = submissionRepository.findById(examId);
+            if (submission.isPresent() && submission.get().getExam() != null
+                    && submission.get().getExam().getLesson() != null
+                    && submission.get().getExam().getLesson().getCourse() != null) {
+                return submission.get().getExam().getLesson().getCourse().getTitle();
+            }
+
+            // یا ممکنه مستقیماً exam id باشه
+            Optional<Exam> exam = examRepository.findById(examId);
+            if (exam.isPresent() && exam.get().getLesson() != null
+                    && exam.get().getLesson().getCourse() != null) {
+                return exam.get().getLesson().getCourse().getTitle();
+            }
+        } catch (Exception e) {
+            // در صورت خطا یا نبود، null برگردان
+        }
+        return null;
+    }
+
+    /**
+     * دریافت نام دوره از طریق تکلیف
+     */
+    private String getAssignmentCourseName(Long assignmentId) {
+        try {
+            // برای ASSIGNMENT_SUBMISSION، relatedEntityId ممکنه submission id باشه
+            Optional<AssignmentSubmission> assignmentSub = assignmentSubmissionRepository.findById(assignmentId);
+            if (assignmentSub.isPresent() && assignmentSub.get().getAssignment() != null
+                    && assignmentSub.get().getAssignment().getLesson() != null
+                    && assignmentSub.get().getAssignment().getLesson().getCourse() != null) {
+                return assignmentSub.get().getAssignment().getLesson().getCourse().getTitle();
+            }
+
+            // یا ممکنه مستقیماً assignment id باشه
+            Optional<Assignment> assignment = assignmentRepository.findById(assignmentId);
+            if (assignment.isPresent() && assignment.get().getLesson() != null
+                    && assignment.get().getLesson().getCourse() != null) {
+                return assignment.get().getLesson().getCourse().getTitle();
+            }
+        } catch (Exception e) {
+            // در صورت خطا یا نبود، null برگردان
+        }
+        return null;
+    }
+
+    /**
+     * دریافت نام دوره از طریق فایل (اگر فایل به درسی مرتبط باشه)
+     */
+    private String getFileCourseName(Long fileId) {
+        try {
+            // اینجا باید بر اساس ساختار فایل‌های سیستم کدنویسی کنی
+            // فعلاً فرض می‌کنیم که این اطلاعات در metadata موجوده
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Method جدید برای دریافت فعالیت‌های دانش‌آموز
+     */
+    public Map<String, Object> getMyActivities(Long studentId, Long courseId, String timeFilter, int limit) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        LocalDateTime startDate = getStartDateByFilter(timeFilter);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        // دریافت تمام فعالیت‌های دانش‌آموز
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate);
+
+        // فیلتر بر اساس دوره (اختیاری)
+        if (courseId != null) {
+            activities = activities.stream()
+                    .filter(log -> isCourseRelatedActivity(log, courseId))
+                    .collect(Collectors.toList());
+        }
+
+        // محدود کردن تعداد
+        activities = activities.stream()
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new HashMap<>();
+
+        // ساخت timeline data
+        List<Map<String, Object>> timelineData = createTimelineData(activities);
+        result.put("activities", timelineData);
+
+        // آمار کلی
+        Map<String, Object> statistics = new HashMap<>();
+        statistics.put("totalActivities", activities.size());
+        statistics.put("totalTime", activities.stream()
+                .mapToLong(a -> a.getTimeSpent() != null ? a.getTimeSpent() : 0L)
+                .sum());
+
+        // شمارش دوره‌های منحصر به فرد
+        Set<String> uniqueCourses = activities.stream()
+                .map(this::extractCourseName)
+                .filter(courseName -> courseName != null && !courseName.trim().isEmpty())
+                .collect(Collectors.toSet());
+        statistics.put("uniqueCourses", uniqueCourses.size());
+
+        // شمارش روزهای فعال
+        Set<String> activeDays = activities.stream()
+                .map(a -> a.getTimestamp().toLocalDate().toString())
+                .collect(Collectors.toSet());
+        statistics.put("activeDays", activeDays.size());
+
+        result.put("statistics", statistics);
+
+        return result;
+    }
+
+    /**
+     * ساخت توضیحات فعالیت
+     */
+    private String createActivityDescription(ActivityLog activity) {
+        String baseDescription = getActivityTypeLabel(activity.getActivityType());
+
+        if (activity.getMetadata() != null) {
+            Map<String, String> meta = activity.getMetadata();
+
+            switch (activity.getActivityType()) {
+                case "CONTENT_VIEW":
+                    if (meta.containsKey("contentTitle")) {
+                        return "مشاهده محتوای: " + meta.get("contentTitle");
+                    }
+                    break;
+                case "LESSON_COMPLETION":
+                    if (meta.containsKey("lessonTitle")) {
+                        return "تکمیل درس: " + meta.get("lessonTitle");
+                    }
+                    break;
+                case "EXAM_SUBMISSION":
+                    if (meta.containsKey("examTitle")) {
+                        return "شرکت در آزمون: " + meta.get("examTitle");
+                    }
+                    break;
+                case "ASSIGNMENT_SUBMISSION":
+                    if (meta.containsKey("assignmentTitle")) {
+                        return "ارسال تکلیف: " + meta.get("assignmentTitle");
+                    }
+                    break;
+            }
+        }
+
+        return baseDescription;
     }
 }
