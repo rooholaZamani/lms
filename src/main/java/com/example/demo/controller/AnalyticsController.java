@@ -343,9 +343,9 @@ public class AnalyticsController {
                 Long activityTime = analyticsService.calculateCourseStudyTime(student, course);
 
                 debug.put("progressStudyTime", progressTime);
-                debug.put("progressStudyTimeHours", progressTime != null ? Math.round(progressTime * 10.0) / 10.0 : 0);
+                debug.put("progressStudyTimeHours", progressTime != null ? Math.round(progressTime * 10.0) : 0);
                 debug.put("activityStudyTime", activityTime);
-                debug.put("activityStudyTimeHours", Math.round(activityTime * 10.0) / 10.0);
+                debug.put("activityStudyTimeHours", Math.round(activityTime * 10.0));
                 debug.put("difference", Math.abs((progressTime != null ? progressTime : 0L) - activityTime));
             }
         } else {
@@ -363,9 +363,9 @@ public class AnalyticsController {
             long totalActivityTime = analyticsService.calculateActualStudyTime(student, studentCourses);
 
             debug.put("totalProgressTime", totalProgressTime);
-            debug.put("totalProgressTimeHours", Math.round(totalProgressTime  * 10.0) / 10.0);
+            debug.put("totalProgressTimeHours", Math.round(totalProgressTime  * 10.0));
             debug.put("totalActivityTime", totalActivityTime);
-            debug.put("totalActivityTimeHours", Math.round(totalActivityTime * 10.0) / 10.0);
+            debug.put("totalActivityTimeHours", Math.round(totalActivityTime * 10.0));
             debug.put("difference", Math.abs(totalProgressTime - totalActivityTime));
         }
 

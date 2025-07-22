@@ -367,10 +367,10 @@ public class AnalyticsService {
         int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
 
          analysis.put("averageTimePerLessonSeconds", completedLessons > 0 ?
-                Math.round((totalStudyTime / completedLessons) * 10.0) / 10.0 : 0);
+                Math.round((totalStudyTime / completedLessons) * 10.0) : 0);
         analysis.put("averageTimePerExamSeconds", examSubmissions.isEmpty() ? 0 :
                 Math.round(examSubmissions.stream().mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
-                        .average().orElse(0.0) * 10.0) / 10.0);
+                        .average().orElse(0.0) * 10.0));
 
         // Calculate class rank
         List<Progress> allProgress = progressRepository.findAll().stream()
@@ -991,10 +991,10 @@ public class AnalyticsService {
         long totalStudyTimeFromActivities = calculateActualStudyTime(student, studentCourses);
 
         performance.put("enrolledCourses", studentCourses.size());
-        performance.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
-        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities  * 10.0) / 10.0); // Convert seconds to hours
+        performance.put("averageCompletion", Math.round(averageCompletion * 10.0));
+        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities  * 10.0)); // Convert seconds to hours
         performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 :
-                Math.round((totalStudyTimeFromActivities / studentCourses.size())  * 10.0) / 10.0);
+                Math.round((totalStudyTimeFromActivities / studentCourses.size())  * 10.0));
 
         // Exam performance
         List<Course> finalStudentCourses1 = studentCourses;
@@ -1013,9 +1013,9 @@ public class AnalyticsService {
                 .count();
 
         performance.put("examsTaken", examSubmissions.size());
-        performance.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
+        performance.put("averageExamScore", Math.round(averageExamScore * 10.0));
         performance.put("examPassRate", examSubmissions.isEmpty() ? 0 :
-                Math.round((double) passedExams / examSubmissions.size() * 100 * 10.0) / 10.0);
+                Math.round((double) passedExams / examSubmissions.size() * 100 * 10.0));
 
         // Assignment performance
         List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
@@ -1030,7 +1030,7 @@ public class AnalyticsService {
                 .orElse(0.0);
 
         performance.put("assignmentSubmissions", assignmentSubmissions.size());
-        performance.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0) / 10.0);
+        performance.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0));
 
         // Recent activity
         LocalDateTime oneWeekAgo = LocalDateTime.now().minusDays(7);
@@ -1066,7 +1066,7 @@ public class AnalyticsService {
 
             // Calculate study time for each course from ActivityLog
             long courseStudyTime = calculateCourseStudyTime(student, course);
-            courseData.put("studyTimeSeconds", Math.round(courseStudyTime * 10.0) / 10.0);
+            courseData.put("studyTimeSeconds", Math.round(courseStudyTime * 10.0));
 
             courseDetails.add(courseData);
         }
@@ -1142,13 +1142,13 @@ public class AnalyticsService {
         overview.put("totalStudents", totalStudents);
         overview.put("activeStudents", activeStudents);
         overview.put("inactiveStudents", totalStudents - activeStudents);
-        overview.put("averageCompletion", Math.round(averageCompletion * 10.0) / 10.0);
+        overview.put("averageCompletion", Math.round(averageCompletion * 10.0));
         overview.put("completedStudents", completedStudents);
         overview.put("totalCourses", teacherCourses.size());
         overview.put("totalExamsTaken", allSubmissions.size());
-        overview.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
+        overview.put("averageExamScore", Math.round(averageExamScore * 10.0));
         overview.put("examPassRate", allSubmissions.isEmpty() ? 0 :
-                Math.round((double) passedExams / allSubmissions.size() * 100 * 10.0) / 10.0);
+                Math.round((double) passedExams / allSubmissions.size() * 100 * 10.0));
         overview.put("totalAssignmentSubmissions", allAssignmentSubmissions.size());
 
         // Activity levels
@@ -1210,7 +1210,7 @@ public class AnalyticsService {
                     .orElse(0.0);
 
             studentData.put("examsTaken", examSubmissions.size());
-            studentData.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
+            studentData.put("averageScore", Math.round(averageScore * 10.0));
 
             // Assignment performance
             List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
@@ -1316,7 +1316,7 @@ public class AnalyticsService {
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
             activityData.put("timeSpent", activity.getTimeSpent() != null ?
-                    Math.round(activity.getTimeSpent() * 10.0) / 10.0 : 0.0);
+                    Math.round(activity.getTimeSpent() * 10.0) : 0.0);
             activityData.put("description", generateActivityDescription(activity));
 
             if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
@@ -1348,13 +1348,13 @@ public class AnalyticsService {
                 .mapToDouble(Submission::getScore)
                 .average()
                 .orElse(0.0);
-        stats.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
+        stats.put("averageScore", Math.round(averageScore * 10.0));
 
         // درصد تکمیل دوره
         int totalLessons = course.getLessons().size();
         int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
         double completionRate = totalLessons > 0 ? (double) completedLessons / totalLessons * 100 : 0;
-        stats.put("completionRate", Math.round(completionRate * 10.0) / 10.0);
+        stats.put("completionRate", Math.round(completionRate * 10.0));
 
         // مجموع ساعات مطالعه
         long totalStudyseconds = activityLogRepository
@@ -1363,11 +1363,11 @@ public class AnalyticsService {
                 .filter(log -> log.getRelatedEntityId() != null)
                 .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
                 .sum();
-        stats.put("totalStudyHours", Math.round(totalStudyseconds  * 10.0) / 10.0);
+        stats.put("totalStudyHours", Math.round(totalStudyseconds  * 10.0));
 
         // امتیاز پایداری (بر اساس فعالیت روزانه)
         double consistencyScore = calculateConsistencyScore(student, 30);
-        stats.put("consistencyScore", Math.round(consistencyScore * 10.0) / 10.0);
+        stats.put("consistencyScore", Math.round(consistencyScore * 10.0));
 
         // رتبه در کلاس
         List<Progress> allProgress = progressRepository.findAll()
@@ -1459,7 +1459,7 @@ public class AnalyticsService {
             dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
             dayData.put("totalTime", Math.round(dayActivities.stream()
                     .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                    .sum() * 10.0) / 10.0);
+                    .sum() * 10.0));
 
             weeklyData.add(dayData);
         }
@@ -1782,10 +1782,10 @@ public class AnalyticsService {
         result.put("period", period);
         result.put("examId", examId);
         result.put("totalSubmissions", submissions.size());
-        result.put("averageScore", Math.round(averageScore * 10.0) / 10.0);
+        result.put("averageScore", Math.round(averageScore * 10.0));
         result.put("highestScore", highestScore);
         result.put("lowestScore", lowestScore);
-        result.put("passRate", Math.round(passRate * 10.0) / 10.0);
+        result.put("passRate", Math.round(passRate * 10.0));
         result.put("scores", includeDetails ? scores : null);
         result.put("gradeDistribution", gradeDistribution);
         result.put("examBreakdown", examBreakdown);
@@ -1845,7 +1845,7 @@ public class AnalyticsService {
 
             lessonData.put("lessonId", lesson.getId());
             lessonData.put("lessonTitle", lesson.getTitle());
-            lessonData.put("completionRate", Math.round(completionRate * 10.0) / 10.0);
+            lessonData.put("completionRate", Math.round(completionRate * 10.0));
             lessonData.put("completedStudents", completedStudents);
             lessonData.put("totalStudents", totalStudents);
             lessonData.put("averageTime", Math.round(averageTime));
@@ -2841,7 +2841,7 @@ public class AnalyticsService {
                     if (student != null) {
                         studentData.put("studentId", student.getId());
                         studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
-                        studentData.put("value", Math.round(entry.getValue() * 10.0) / 10.0);
+                        studentData.put("value", Math.round(entry.getValue() * 10.0));
 
                         // Count exams taken
                         long examsTaken = allSubmissions.stream()
@@ -2876,7 +2876,7 @@ public class AnalyticsService {
                     if (student != null) {
                         studentData.put("studentId", student.getId());
                         studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
-                        studentData.put("value", Math.round(entry.getValue() * 10.0) / 10.0);
+                        studentData.put("value", Math.round(entry.getValue() * 10.0));
 
                         // Count assignments submitted
                         long assignmentsSubmitted = allAssignmentSubmissions.stream()
@@ -2901,7 +2901,7 @@ public class AnalyticsService {
                     User student = progress.getStudent();
                     studentData.put("studentId", student.getId());
                     studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
-                    studentData.put("value", Math.round(progress.getTotalStudyTime() * 10.0) / 10.0); // Convert to hours
+                    studentData.put("value", Math.round(progress.getTotalStudyTime() * 10.0)); // Convert to hours
                     studentData.put("totalseconds", progress.getTotalStudyTime());
                     return studentData;
                 })
@@ -3441,7 +3441,7 @@ public class AnalyticsService {
         distribution.forEach((type, count) -> {
             Map<String, Object> typeData = new HashMap<>();
             typeData.put("count", count);
-            typeData.put("percentage", total > 0 ? Math.round((double) count / total * 100 * 10.0) / 10.0 : 0);
+            typeData.put("percentage", total > 0 ? Math.round((double) count / total * 100 * 10.0) : 0);
             typeData.put("label", getActivityTypeLabel(type));
             result.put(type, typeData);
         });
@@ -3499,9 +3499,9 @@ public class AnalyticsService {
         Map<String, Object> result = new HashMap<>();
         timeByType.forEach((type, timeInMinutes) -> {
             Map<String, Object> typeData = new HashMap<>();
-            typeData.put("totalMinutes", Math.round(timeInMinutes * 10.0) / 10.0);
-            typeData.put("totalHours", Math.round(timeInMinutes / 60.0 * 10.0) / 10.0);
-            typeData.put("percentage", totalTime > 0 ? Math.round((timeInMinutes / totalTime) * 100 * 10.0) / 10.0 : 0);
+            typeData.put("totalMinutes", Math.round(timeInMinutes * 10.0));
+            typeData.put("totalHours", Math.round(timeInMinutes / 60.0 * 10.0));
+            typeData.put("percentage", totalTime > 0 ? Math.round((timeInMinutes / totalTime) * 100 * 10.0) : 0);
             typeData.put("label", getActivityTypeLabel(type));
             result.put(type, typeData);
         });
@@ -3711,7 +3711,7 @@ public class AnalyticsService {
                 .mapToLong(Long::longValue)
                 .average()
                 .orElse(0.0);
-        analytics.put("averageDailyActivity", Math.round(avgDailyActivity * 10.0) / 10.0);
+        analytics.put("averageDailyActivity", Math.round(avgDailyActivity * 10.0));
 
         // تشخیص الگوی مطالعه
         String studyPattern = determineStudyPattern(heatmapData);
@@ -3733,7 +3733,7 @@ public class AnalyticsService {
                     timelineItem.put("description", generateActivityDescription(activity));
                     timelineItem.put("timestamp", activity.getTimestamp());
                     timelineItem.put("timeSpent", activity.getTimeSpent() != null ?
-                            Math.round(activity.getTimeSpent() * 10.0) / 10.0 : 0.0);
+                            Math.round(activity.getTimeSpent() * 10.0) : 0.0);
 
                     // اضافه کردن metadata
                     if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
@@ -3777,7 +3777,7 @@ public class AnalyticsService {
                 .mapToDouble(ActivityLog::getTimeSpent)
                 .average()
                 .orElse(0.0);
-        stats.put("averageTimeSpent", Math.round(avgTimeSpent * 10.0) / 10.0);
+        stats.put("averageTimeSpent", Math.round(avgTimeSpent * 10.0));
 
         // آخرین فعالیت
         if (!activities.isEmpty()) {

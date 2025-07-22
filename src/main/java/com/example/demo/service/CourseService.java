@@ -138,7 +138,7 @@ public class CourseService {
                     .orElse(0.0);
 
             studentData.put("examsTaken", examSubmissions.size());
-            studentData.put("averageExamScore", Math.round(averageExamScore * 10.0) / 10.0);
+            studentData.put("averageExamScore", Math.round(averageExamScore * 10.0));
 
             // آمار تکالیف (تغییر از exercise به assignment)
             List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student)
@@ -153,7 +153,7 @@ public class CourseService {
                     .orElse(0.0);
 
             studentData.put("assignmentsDone", assignmentSubmissions.size()); // Changed from exercisesDone
-            studentData.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0) / 10.0); // New field
+            studentData.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0)); // New field
 
             // وضعیت فعالیت
             boolean isActive = progressOpt.isPresent() &&
