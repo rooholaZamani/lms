@@ -108,17 +108,6 @@ public class AnalyticsController {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
     @GetMapping("/teacher/engagement-trends")
     public ResponseEntity<List<Map<String, Object>>> getEngagementTrends(Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
@@ -342,11 +331,18 @@ public class AnalyticsController {
                 // زمان از ActivityLog
                 Long activityTime = analyticsService.calculateCourseStudyTime(student, course);
 
-                debug.put("progressStudyTime", progressTime);
-                debug.put("progressStudyTimeHours", progressTime != null ? Math.round(progressTime * 10.0) : 0);
-                debug.put("activityStudyTime", activityTime);
-                debug.put("activityStudyTimeHours", Math.round(activityTime * 10.0));
-                debug.put("difference", Math.abs((progressTime != null ? progressTime : 0L) - activityTime));
+//                debug.put("progressStudyTime", progressTime);
+//                debug.put("progressStudyTimeHours", Math.round(progressTime * 10.0));
+//                debug.put("activityStudyTime", activityTime);
+//                debug.put("activityStudyTimeHours", Math.round(activityTime * 10.0));
+//                debug.put("difference", Math.abs(progressTime - activityTime));
+                debug.put("progressStudyTimeSeconds", progressTime);
+                debug.put("progressStudyTimeHours", progressTime != null ? Math.round(progressTime / 3600.0 * 100.0) / 100.0 : 0);
+                debug.put("activityStudyTimeSeconds", activityTime);
+                debug.put("activityStudyTimeHours", Math.round(activityTime / 3600.0 * 100.0) / 100.0);
+                debug.put("differenceSeconds", Math.abs((progressTime != null ? progressTime : 0L) - activityTime));
+
+
             }
         } else {
             // همه دوره‌ها
@@ -362,11 +358,17 @@ public class AnalyticsController {
 
             long totalActivityTime = analyticsService.calculateActualStudyTime(student, studentCourses);
 
-            debug.put("totalProgressTime", totalProgressTime);
-            debug.put("totalProgressTimeHours", Math.round(totalProgressTime  * 10.0));
-            debug.put("totalActivityTime", totalActivityTime);
-            debug.put("totalActivityTimeHours", Math.round(totalActivityTime * 10.0));
-            debug.put("difference", Math.abs(totalProgressTime - totalActivityTime));
+//            debug.put("totalProgressTime", totalProgressTime);
+//            debug.put("totalProgressTimeHours", Math.round(totalProgressTime  * 10.0));
+//            debug.put("totalActivityTime", totalActivityTime);
+//            debug.put("totalActivityTimeHours", Math.round(totalActivityTime * 10.0));
+//            debug.put("difference", Math.abs(totalProgressTime - totalActivityTime));
+
+            debug.put("totalProgressTimeSeconds", totalProgressTime);
+            debug.put("totalProgressTimeHours", Math.round(totalProgressTime / 3600.0 * 100.0) / 100.0);
+            debug.put("totalActivityTimeSeconds", totalActivityTime);
+            debug.put("totalActivityTimeHours", Math.round(totalActivityTime / 3600.0 * 100.0) / 100.0);
+            debug.put("differenceSeconds", Math.abs(totalProgressTime - totalActivityTime));
         }
 
         // آخرین فعالیت‌های مطالعه
@@ -382,7 +384,7 @@ public class AnalyticsController {
                 .map(activity -> {
                     Map<String, Object> actData = new HashMap<>();
                     actData.put("type", activity.getActivityType());
-                    actData.put("timeSpent", activity.getTimeSpent());
+                    actData.put("timeSpentSeconds", activity.getTimeSpent());
                     actData.put("timestamp", activity.getTimestamp());
                     return actData;
                 })

@@ -1,0 +1,30 @@
+# backend/.dockerignore
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+src/
+pom.xml
+mvnw
+mvnw.cmd
+.mvn/
+target/*.original
+*.log
+
+# frontend/.dockerignore
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+node_modules/
+src/
+public/
+*.config.js
+*.config.ts
+package.json
+package-lock.json
+yarn.lock
+.env*
+*.log

@@ -321,14 +321,20 @@ public class AnalyticsService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new RuntimeException("Course not found"));
 
-        Progress progress = progressRepository.findByStudentAndCourse(student, course)
-                .orElse(null);
-
         Map<String, Object> analysis = new HashMap<>();
 
+        // اطلاعات پایه
+        analysis.put("courseId", courseId);
+        analysis.put("courseTitle", course.getTitle());
+        analysis.put("studentId", student.getId());
+        analysis.put("studentName", student.getFirstName() + " " + student.getLastName());
+
+        // Progress information
+        Progress progress = progressRepository.findByStudentAndCourse(student, course).orElse(null);
         if (progress != null) {
             analysis.put("completionPercentage", progress.getCompletionPercentage());
-            analysis.put("totalStudyTimeSeconds", progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L);
+            analysis.put("totalStudyTimeSeconds", progress.getTotalStudyTime() != null ?
+                    progress.getTotalStudyTime() : 0L);
             analysis.put("streak", progress.getCurrentStreak() != null ? progress.getCurrentStreak() : 0);
             analysis.put("lastAccessed", progress.getLastAccessed());
             analysis.put("completedLessons", progress.getCompletedLessons().size());
@@ -366,11 +372,12 @@ public class AnalyticsService {
         long totalStudyTime = progress != null && progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L;
         int completedLessons = progress != null ? progress.getCompletedLessons().size() : 0;
 
-         analysis.put("averageTimePerLessonSeconds", completedLessons > 0 ?
-                Math.round((totalStudyTime / completedLessons) * 10.0) : 0);
+        // اصلاح: نام صحیح و محاسبه درست
+        analysis.put("averageTimePerLessonSeconds", completedLessons > 0 ?
+                Math.round((double)totalStudyTime / completedLessons) : 0);
         analysis.put("averageTimePerExamSeconds", examSubmissions.isEmpty() ? 0 :
                 Math.round(examSubmissions.stream().mapToLong(s -> s.getTimeSpent() != null ? s.getTimeSpent() : 0L)
-                        .average().orElse(0.0) * 10.0));
+                        .average().orElse(0.0)));
 
         // Calculate class rank
         List<Progress> allProgress = progressRepository.findAll().stream()
@@ -382,12 +389,12 @@ public class AnalyticsService {
             analysis.put("totalStudents", 1);
         } else {
             long betterStudents = allProgress.stream()
-                    .filter(p -> p.getCompletionPercentage() > (progress != null ? progress.getCompletionPercentage() : 0))
+                    .filter(p -> p.getCompletionPercentage() > (progress != null ?
+                            progress.getCompletionPercentage() : 0.0))
                     .count();
-            analysis.put("classRank", (int) (betterStudents + 1));
+            analysis.put("classRank", betterStudents + 1);
             analysis.put("totalStudents", allProgress.size());
         }
-
 
         return analysis;
     }
@@ -1505,8 +1512,18 @@ public class AnalyticsService {
                 .map(entry -> {
                     Map<String, Object> item = new HashMap<>();
                     item.put("label", entry.getKey());
-                    item.put("value", entry.getValue());
-                    item.put("seconds", Math.round(entry.getValue()) );
+
+                    // اصلاح: value به دقیقه تبدیل می‌شود برای نمایش، ولی seconds هم ارسال می‌شود
+                    long totalSeconds = entry.getValue();
+                    item.put("valueSeconds", totalSeconds); // ثانیه خام
+                    item.put("valueMinutes", Math.round(totalSeconds / 60.0 * 10.0) / 10.0); // دقیقه
+                    item.put("valueHours", Math.round(totalSeconds / 3600.0 * 100.0) / 100.0); // ساعت
+
+                    // برای سازگاری با کد فعلی، value همان ثانیه باشد
+                    // Frontend باید خودش تبدیل کند
+                    item.put("value", totalSeconds);
+                    item.put("seconds", totalSeconds);
+
                     return item;
                 })
                 .collect(Collectors.toList());
