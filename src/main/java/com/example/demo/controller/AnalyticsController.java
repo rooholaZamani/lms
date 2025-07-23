@@ -576,4 +576,18 @@ public class AnalyticsController {
                 student.getId(), courseId, timeFilter, limit);
         return ResponseEntity.ok(activities);
     }
+    @GetMapping("/student/grades-distribution")
+    @Operation(summary = "Get student's grades distribution")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentGradesDistribution(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(defaultValue = "month") String timeFilter,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+
+        Map<String, Object> gradesData = analyticsService.getStudentGradesDistribution(
+                student.getId(), courseId, timeFilter);
+        return ResponseEntity.ok(gradesData);
+    }
 }

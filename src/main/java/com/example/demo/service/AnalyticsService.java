@@ -4132,4 +4132,41 @@ public class AnalyticsService {
 
         return baseDescription;
     }
+    public Map<String, Object> getStudentGradesDistribution(Long studentId, Long courseId, String timeFilter) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        LocalDateTime startDate = getStartDateByFilter(timeFilter);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        List<Submission> examSubmissions = submissionRepository.findByStudentAndTimestampBetween(
+                student, startDate, endDate);
+
+        if (courseId != null) {
+            examSubmissions = examSubmissions.stream()
+                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+        }
+
+        Map<String, Object> result = new HashMap<>();
+
+        Map<String, Integer> distribution = calculateGradeDistribution(
+                examSubmissions.stream()
+                        .map(Submission::getScore)
+                        .collect(Collectors.toList())
+        );
+
+        result.put("distribution", distribution);
+        result.put("examScores", examSubmissions.stream()
+                .map(s -> Map.of(
+                        "score", s.getScore(),
+                        "examTitle", s.getExam().getTitle(),
+                        "date", s.getSubmissionTime()
+                ))
+                .collect(Collectors.toList()));
+
+        result.put("assignmentScores", new ArrayList<>());
+
+        return result;
+    }
 }
