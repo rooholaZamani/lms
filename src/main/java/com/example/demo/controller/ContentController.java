@@ -204,9 +204,6 @@ public class ContentController {
             fileMetadata.put("fileSize", metadata.getFileSize().toString());
 
             activityTrackingService.logActivity(user, "FILE_ACCESS", fileId, timeSpent,fileMetadata);
-            if (timeSpent > 0) {
-                activityTrackingService.updateStudyTime(user, timeSpent);
-            }
         }
 
         FileMetadata metadata = contentService.getFileMetadataById(fileId);
