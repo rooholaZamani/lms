@@ -4156,7 +4156,43 @@ public class AnalyticsService {
                         .collect(Collectors.toList())
         );
 
-        result.put("distribution", distribution);
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository
+                .findByStudentAndSubmittedAtBetween(student, startDate, endDate);
+
+        if (courseId != null) {
+            assignmentSubmissions = assignmentSubmissions.stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+        }
+
+// Calculate separate distributions
+        Map<String, Integer> examDistribution = calculateGradeDistribution(
+                examSubmissions.stream()
+                        .map(Submission::getScore)
+                        .collect(Collectors.toList())
+        );
+
+        Map<String, Integer> assignmentDistribution = calculateGradeDistribution(
+                assignmentSubmissions.stream()
+                        .filter(as -> as.getScore() != null)
+                        .map(AssignmentSubmission::getScore)
+                        .collect(Collectors.toList())
+        );
+
+// Combined distribution (optional)
+        List<Integer> allScores = new ArrayList<>();
+        allScores.addAll(examSubmissions.stream().map(Submission::getScore).collect(Collectors.toList()));
+        allScores.addAll(assignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .map(AssignmentSubmission::getScore)
+                .collect(Collectors.toList()));
+
+        Map<String, Integer> overallDistribution = calculateGradeDistribution(allScores);
+
+        result.put("examDistribution", examDistribution);
+        result.put("assignmentDistribution", assignmentDistribution);
+        result.put("overallDistribution", overallDistribution);
+
         result.put("examScores", examSubmissions.stream()
                 .map(s -> Map.of(
                         "score", s.getScore(),
@@ -4165,7 +4201,14 @@ public class AnalyticsService {
                 ))
                 .collect(Collectors.toList()));
 
-        result.put("assignmentScores", new ArrayList<>());
+        result.put("assignmentScores", assignmentSubmissions.stream()
+                .filter(as -> as.getScore() != null)
+                .map(as -> Map.of(
+                        "score", as.getScore(),
+                        "assignmentTitle", as.getAssignment().getTitle(),
+                        "date", as.getSubmittedAt()
+                ))
+                .collect(Collectors.toList()));
 
         return result;
     }
