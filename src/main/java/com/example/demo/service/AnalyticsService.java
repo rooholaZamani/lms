@@ -1217,7 +1217,7 @@ public class AnalyticsService {
                     .orElse(0.0);
 
             studentData.put("examsTaken", examSubmissions.size());
-            studentData.put("averageScore", Math.round(averageScore * 10.0));
+            studentData.put("averageScore", Math.round(averageScore));
 
             // Assignment performance
             List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
@@ -1355,7 +1355,7 @@ public class AnalyticsService {
                 .mapToDouble(Submission::getScore)
                 .average()
                 .orElse(0.0);
-        stats.put("averageScore", Math.round(averageScore * 10.0));
+        stats.put("averageScore", Math.round(averageScore));
 
         // درصد تکمیل دوره
         int totalLessons = course.getLessons().size();
@@ -1799,7 +1799,7 @@ public class AnalyticsService {
         result.put("period", period);
         result.put("examId", examId);
         result.put("totalSubmissions", submissions.size());
-        result.put("averageScore", Math.round(averageScore * 10.0));
+        result.put("averageScore", Math.round(averageScore));
         result.put("highestScore", highestScore);
         result.put("lowestScore", lowestScore);
         result.put("passRate", Math.round(passRate * 10.0));

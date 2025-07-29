@@ -153,7 +153,7 @@ public class CourseService {
                     .orElse(0.0);
 
             studentData.put("assignmentsDone", assignmentSubmissions.size()); // Changed from exercisesDone
-            studentData.put("averageAssignmentScore", Math.round(averageAssignmentScore * 10.0)); // New field
+            studentData.put("averageAssignmentScore", Math.round(averageAssignmentScore)); // New field
 
             // وضعیت فعالیت
             boolean isActive = progressOpt.isPresent() &&
