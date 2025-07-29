@@ -50,9 +50,7 @@ public class ChatController {
         metadata.put("courseTitle", course.getTitle());
 
         activityTrackingService.logActivity(sender, "CHAT_MESSAGE_SEND", courseId, timeSpent,metadata);
-        if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(sender, timeSpent);
-        }
+
 
         return ResponseEntity.ok(dtoMapperService.mapToChatMessageDTO(message));
     }
@@ -66,7 +64,7 @@ public class ChatController {
             Authentication authentication) { // اضافه شد
 
         // لاگ گیری مشاهده چت
-        if (authentication != null && timeSpent > 0) {
+        if (authentication != null) {
             User user = userService.findByUsername(authentication.getName());
 
             Course course = courseService.getCourseById(courseId);
