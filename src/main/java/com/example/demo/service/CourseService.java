@@ -138,7 +138,7 @@ public class CourseService {
                     .orElse(0.0);
 
             studentData.put("examsTaken", examSubmissions.size());
-            studentData.put("averageExamScore", Math.round(averageExamScore * 10.0));
+            studentData.put("averageExamScore", Math.round(averageExamScore));
 
             // آمار تکالیف (تغییر از exercise به assignment)
             List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student)

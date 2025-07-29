@@ -52,10 +52,12 @@ public class ExamController {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ExamRepository examRepository;
     private final UserRepository userRepository;
+    private final LessonCompletionService lessonCompletionService;
+    private final ProgressService progressService;
     public ExamController(
             ExamService examService,
             UserService userService,
-            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository, ExamRepository examRepository, UserRepository userRepository) {
+            DTOMapperService dtoMapperService, ActivityTrackingService activityTrackingService, SubmissionRepository submissionRepository, SubmissionService submissionService, LessonRepository lessonRepository, ExamRepository examRepository, UserRepository userRepository, LessonCompletionService lessonCompletionService, ProgressService progressService) {
         this.examService = examService;
         this.userService = userService;
         this.dtoMapperService = dtoMapperService;
@@ -65,6 +67,9 @@ public class ExamController {
         this.lessonRepository = lessonRepository;
         this.examRepository = examRepository;
         this.userRepository = userRepository;
+        this.lessonCompletionService = lessonCompletionService;
+
+        this.progressService = progressService;
     }
 
 
@@ -236,7 +241,8 @@ public class ExamController {
         if (timeSpent > 0) {
             activityTrackingService.updateStudyTime(student, timeSpent);
         }
-
+        lessonCompletionService.checkAndAutoCompleteLesson(student, exam.getLesson());
+        progressService.markContentComplete(student, exam.getLesson().getId());
         return ResponseEntity.ok(dtoMapperService.mapToSubmissionDTO(submission));
     }
 
