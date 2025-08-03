@@ -1,32 +1,24 @@
-# Multi-stage build for Spring Boot layering optimization
-
-# Stage 1: Extract layers
-FROM openjdk:17-slim as builder
-WORKDIR /builder
-COPY target/demo-0.0.1-SNAPSHOT.jar app.jar
-RUN java -Djarmode=layertools -jar app.jar extract
-
-# Stage 2: Create final image with layers
-FROM openjdk:17-slim
-
-# Create app user for security
-RUN addgroup --system spring && adduser --system spring --ingroup spring
-USER spring:spring
+FROM maven:3.8.5-openjdk-17 AS build
 
 WORKDIR /app
 
-# Copy layers in optimal order (dependencies first, app code last)
-COPY --from=builder --chown=spring:spring builder/dependencies/ ./
-COPY --from=builder --chown=spring:spring builder/spring-boot-loader/ ./
-COPY --from=builder --chown=spring:spring builder/snapshot-dependencies/ ./
-COPY --from=builder --chown=spring:spring builder/application/ ./
+# Copy project files
+COPY . .
 
-# Environment variables
-ENV JAVA_OPTS=""
-ENV SERVER_PORT=8080
+# Build the project
+RUN mvn clean package -DskipTests
 
-# Expose port
+# Runtime stage
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+
+# Create directories
+RUN mkdir -p /app/data /app/uploads
+
+# Copy jar file
+COPY --from=build /app/target/*.jar app.jar
+
 EXPOSE 8080
 
-# Use Spring Boot's layered approach
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
