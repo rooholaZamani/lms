@@ -6,6 +6,9 @@ import com.example.demo.model.*;
 import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import org.apache.commons.io.input.BoundedInputStream;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -188,49 +192,100 @@ public class ContentController {
     @GetMapping("/files/{fileId}")
     public ResponseEntity<Resource> getFile(
             @PathVariable Long fileId,
-            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent, // ADD THIS
-            Authentication authentication, // ADD THIS
-            HttpServletRequest request) {
+            @RequestParam(value = "timeSpent", required = false, defaultValue = "0") Long timeSpent,
+            Authentication authentication,
+            HttpServletRequest request) throws IOException {
 
-        // ADD ACTIVITY TRACKING FOR FILE ACCESS
+        // Activity tracking همان کد قبلی...
         if (authentication != null) {
             User user = userService.findByUsername(authentication.getName());
             FileMetadata metadata = contentService.getFileMetadataById(fileId);
-
 
             Map<String, String> fileMetadata = new HashMap<>();
             fileMetadata.put("fileName", metadata.getOriginalFilename());
             fileMetadata.put("fileType", metadata.getContentType());
             fileMetadata.put("fileSize", metadata.getFileSize().toString());
 
-            activityTrackingService.logActivity(user, "FILE_ACCESS", fileId, timeSpent,fileMetadata);
+            activityTrackingService.logActivity(user, "FILE_ACCESS", fileId, timeSpent, fileMetadata);
         }
 
         FileMetadata metadata = contentService.getFileMetadataById(fileId);
         Resource resource = fileStorageService.loadFileAsResource(metadata.getFilePath());
 
-        // Try to determine content type
-        String contentType = null;
-        try {
-            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
-        } catch (IOException ex) {
-            // Logger could be used here
+        // برای ویدیو، از Range Request پشتیبانی کن
+        if (metadata.getContentType().startsWith("video/")) {
+            return handleVideoStreaming(request, resource, metadata);
         }
 
-        // Fallback to the content type stored in metadata
-        if (contentType == null) {
-            contentType = metadata.getContentType();
-        }
-
-        // For videos, use content-disposition: inline to enable streaming
-        String disposition = metadata.getContentType().startsWith("video/") ?
-                "inline; filename=\"" + metadata.getOriginalFilename() + "\"" :
-                "attachment; filename=\"" + metadata.getOriginalFilename() + "\"";
+        // برای سایر فایل‌ها، همان روش قبلی
+        String contentType = metadata.getContentType();
+        String disposition = "attachment; filename=\"" + metadata.getOriginalFilename() + "\"";
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
                 .body(resource);
+    }
+
+    private ResponseEntity<Resource> handleVideoStreaming(
+            HttpServletRequest request, Resource resource, FileMetadata metadata) throws IOException {
+
+        long fileSize = resource.contentLength();
+        String rangeHeader = request.getHeader("Range");
+
+        if (rangeHeader == null) {
+            // اگر Range header نباشد، کل فایل را بفرست
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(metadata.getContentType()))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileSize))
+                    .body(resource);
+        }
+
+        // پردازش Range Request
+        String[] ranges = rangeHeader.replace("bytes=", "").split("-");
+        long start = Long.parseLong(ranges[0]);
+        long end = ranges.length > 1 && !ranges[1].isEmpty()
+                ? Long.parseLong(ranges[1])
+                : fileSize - 1;
+
+        long contentLength = end - start + 1;
+
+        // ایجاد partial resource با استفاده از Apache Commons IO
+        Resource partialResource = new InputStreamResource(
+                new BoundedInputStream(resource.getInputStream(), contentLength) {
+                    {
+                        // skip کردن bytes شروع
+                        try {
+                            super.skip(start);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }
+        ) {
+            @Override
+            public long contentLength() {
+                return contentLength;
+            }
+
+            @Override
+            public String getFilename() {
+                return metadata.getOriginalFilename();
+            }
+        };
+
+        return ResponseEntity.status(206) // Partial Content
+                .contentType(MediaType.parseMediaType(metadata.getContentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .header(HttpHeaders.CONTENT_RANGE,
+                        String.format("bytes %d-%d/%d", start, end, fileSize))
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                .body(partialResource);
     }
 
     @DeleteMapping("/{contentId}")
