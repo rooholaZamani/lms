@@ -430,7 +430,7 @@ public class ContentController {
         }
 
         Map<String, String> response = new HashMap<>();
-        response.put("videoUrl", "/api/video/token/" + fileId);
+        response.put("videoUrl", "/video/token/" + fileId);
 
         return ResponseEntity.ok(response);
     }
