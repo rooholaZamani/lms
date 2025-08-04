@@ -6,11 +6,13 @@ import com.example.demo.model.*;
 import com.example.demo.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import lombok.Getter;
 import org.apache.commons.io.input.BoundedInputStream;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -23,6 +25,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/content")
@@ -36,6 +43,9 @@ public class ContentController {
     private final ActivityTrackingService activityTrackingService;
     private final LessonCompletionService lessonCompletionService;
     private final ProgressService progressService;
+    private final ConcurrentHashMap<String, VideoTokenInfo> videoTokens = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
 
     public ContentController(
             ContentService contentService,
@@ -316,5 +326,83 @@ public class ContentController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(contentDTOs);
+    }
+
+    @PostMapping("/files/{fileId}/video-token")
+    @Operation(summary = "Generate temporary token for video streaming")
+    public ResponseEntity<Map<String, String>> generateVideoToken(
+            @PathVariable Long fileId,
+            Authentication authentication) {
+
+        User user = userService.findByUsername(authentication.getName());
+        FileMetadata metadata = contentService.getFileMetadataById(fileId);
+
+        // بررسی دسترسی کاربر به فایل
+        Content content = contentService.getContentByFileId(fileId);
+        if (!hasAccessToContent(user, content)) { // استفاده از متد موجود
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // بررسی که فایل ویدیو باشه
+        if (!metadata.getContentType().startsWith("video/")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // ایجاد token
+        String token = UUID.randomUUID().toString();
+        videoTokens.put(token, new VideoTokenInfo(fileId, user.getId()));
+
+        // پاک کردن خودکار token بعد از 2 ساعت
+        scheduler.schedule(() -> videoTokens.remove(token), 2, TimeUnit.HOURS);
+
+        Map<String, String> response = new HashMap<>();
+        response.put("token", token);
+        response.put("streamUrl", "/api/content/video/stream/" + token);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/video/stream/{token}")
+    @Operation(summary = "Stream video with temporary token")
+    public ResponseEntity<Resource> streamVideo(
+            @PathVariable String token,
+            HttpServletRequest request) throws IOException {
+
+        VideoTokenInfo tokenInfo = videoTokens.get(token);
+
+        if (tokenInfo == null || tokenInfo.isExpired()) {
+            videoTokens.remove(token); // پاک کردن token منقضی شده
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        FileMetadata metadata = contentService.getFileMetadataById(tokenInfo.getFileId());
+        Resource resource = fileStorageService.loadFileAsResource(metadata.getFilePath());
+
+        return handleVideoStreaming(request, resource, metadata);
+    }
+
+
+
+
+
+
+
+    private static class VideoTokenInfo {
+        // getters
+        @Getter
+        private final Long fileId;
+        @Getter
+        private final Long userId;
+        private final long createdAt;
+
+        public VideoTokenInfo(Long fileId, Long userId) {
+            this.fileId = fileId;
+            this.userId = userId;
+            this.createdAt = System.currentTimeMillis();
+        }
+
+        public boolean isExpired() {
+            return System.currentTimeMillis() - createdAt > TimeUnit.HOURS.toMillis(2);
+        }
     }
 }

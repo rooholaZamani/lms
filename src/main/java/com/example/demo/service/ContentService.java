@@ -42,4 +42,8 @@ public class ContentService {
     public void deleteContent(Long contentId) {
         contentRepository.deleteById(contentId);
     }
+    public Content getContentByFileId(Long fileId) {
+        return contentRepository.findByFileId(fileId)
+                .orElseThrow(() -> new RuntimeException("Content not found for file: " + fileId));
+    }
 }

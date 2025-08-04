@@ -6,6 +6,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -49,6 +50,7 @@ public class SecurityConfig {
                                 "/swagger-resources",
                                 "/configuration/ui",
                                 "/configuration/security","/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**","/docs", "/api-docs/**").permitAll()
+                        .requestMatchers("/api/video/stream/**").permitAll()
                         // H2 Console
                         .requestMatchers("/h2-console/**").permitAll()
                         // Static files and public pages
@@ -70,7 +72,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 // Allow frames for H2 console
-                .headers(headers -> headers.frameOptions().sameOrigin())
+                .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
                 .httpBasic(Customizer.withDefaults())
                 .sessionManagement(session -> session
                  .sessionCreationPolicy(SessionCreationPolicy.STATELESS))

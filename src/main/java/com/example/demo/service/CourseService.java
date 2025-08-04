@@ -1,10 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.model.*;
-import com.example.demo.repository.AssignmentSubmissionRepository;
-import com.example.demo.repository.CourseRepository;
-import com.example.demo.repository.ProgressRepository;
-import com.example.demo.repository.SubmissionRepository;
+import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,16 +16,18 @@ public class CourseService {
     private final ProgressRepository progressRepository;
     private final SubmissionRepository submissionRepository;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
+    private final ContentRepository contentRepository;
 
     public CourseService(
             CourseRepository courseRepository,
             ProgressRepository progressRepository,
             SubmissionRepository submissionRepository,
-            AssignmentSubmissionRepository assignmentSubmissionRepository) {
+            AssignmentSubmissionRepository assignmentSubmissionRepository, ContentRepository contentRepository) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
         this.assignmentSubmissionRepository = assignmentSubmissionRepository;
+        this.contentRepository = contentRepository;
     }
 
     // اضافه کردن این متد
@@ -212,5 +211,9 @@ public class CourseService {
         progressRepository.deleteAll(courseProgresses);
 
         courseRepository.delete(course);
+    }
+    public Content getContentByFileId(Long fileId) {
+        return contentRepository.findByFileId(fileId)
+                .orElseThrow(() -> new RuntimeException("Content not found for file: " + fileId));
     }
 }
