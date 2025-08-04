@@ -31,6 +31,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.io.RandomAccessFile;
+import java.io.FileInputStream;
+
 @RestController
 @RequestMapping("/api/content")
 public class ContentController {
@@ -261,41 +267,63 @@ public class ContentController {
                 ? Long.parseLong(ranges[1])
                 : fileSize - 1;
 
+        // بررسی که range معتبر باشه
+        if (start >= fileSize || end >= fileSize || start > end) {
+            return ResponseEntity.status(416) // Range Not Satisfiable
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
+                    .build();
+        }
+
         long contentLength = end - start + 1;
 
-        // ایجاد partial resource با استفاده از Apache Commons IO
-        Resource partialResource = new InputStreamResource(
-                new BoundedInputStream(resource.getInputStream(), contentLength) {
-                    {
-                        // skip کردن bytes شروع
-                        try {
-                            super.skip(start);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
+        // استفاده از FileSystemResource برای بهتر کار کردن با Range Requests
+        if (resource instanceof FileSystemResource) {
+            FileSystemResource fileResource = (FileSystemResource) resource;
+
+            Resource partialResource = new InputStreamResource(
+                    fileResource.getInputStream()) {
+
+                private InputStream inputStream;
+
+                @Override
+                public InputStream getInputStream() throws IOException {
+                    if (inputStream == null) {
+                        inputStream = fileResource.getInputStream();
+                        inputStream.skip(start);
                     }
+                    return new BoundedInputStream(inputStream, contentLength);
                 }
-        ) {
-            @Override
-            public long contentLength() {
-                return contentLength;
-            }
 
-            @Override
-            public String getFilename() {
-                return metadata.getOriginalFilename();
-            }
-        };
+                @Override
+                public long contentLength() {
+                    return contentLength;
+                }
 
-        return ResponseEntity.status(206) // Partial Content
+                @Override
+                public String getFilename() {
+                    return metadata.getOriginalFilename();
+                }
+            };
+
+            return ResponseEntity.status(206) // Partial Content
+                    .contentType(MediaType.parseMediaType(metadata.getContentType()))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .header(HttpHeaders.CONTENT_RANGE,
+                            String.format("bytes %d-%d/%d", start, end, fileSize))
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                    .header(HttpHeaders.CACHE_CONTROL, "no-cache")
+                    .body(partialResource);
+        }
+
+        // Fallback برای سایر انواع Resource
+        return ResponseEntity.status(206)
                 .contentType(MediaType.parseMediaType(metadata.getContentType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                .header(HttpHeaders.CONTENT_RANGE,
-                        String.format("bytes %d-%d/%d", start, end, fileSize))
+                .header(HttpHeaders.CONTENT_RANGE, String.format("bytes %d-%d/%d", start, end, fileSize))
                 .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
-                .body(partialResource);
+                .body(resource);
     }
 
     @DeleteMapping("/{contentId}")
@@ -375,10 +403,21 @@ public class ContentController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        FileMetadata metadata = contentService.getFileMetadataById(tokenInfo.getFileId());
-        Resource resource = fileStorageService.loadFileAsResource(metadata.getFilePath());
+        // بروزرسانی آخرین دسترسی
+        tokenInfo.updateLastAccessed();
 
-        return handleVideoStreaming(request, resource, metadata);
+        try {
+            FileMetadata metadata = contentService.getFileMetadataById(tokenInfo.getFileId());
+            Resource resource = fileStorageService.loadFileAsResource(metadata.getFilePath());
+
+            return handleVideoStreaming(request, resource, metadata);
+
+        } catch (Exception e) {
+            // لاگ کردن خطا برای debugging
+            System.err.println("Error in video streaming: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
 
@@ -388,21 +427,31 @@ public class ContentController {
 
 
     private static class VideoTokenInfo {
-        // getters
-        @Getter
         private final Long fileId;
-        @Getter
         private final Long userId;
         private final long createdAt;
+        private volatile long lastAccessed; // برای tracking آخرین دسترسی
 
         public VideoTokenInfo(Long fileId, Long userId) {
             this.fileId = fileId;
             this.userId = userId;
             this.createdAt = System.currentTimeMillis();
+            this.lastAccessed = this.createdAt;
         }
 
         public boolean isExpired() {
-            return System.currentTimeMillis() - createdAt > TimeUnit.HOURS.toMillis(2);
+            // Token تا ۲ ساعت معتبر است یا ۳۰ دقیقه بدون استفاده
+            long now = System.currentTimeMillis();
+            boolean timeExpired = now - createdAt > TimeUnit.HOURS.toMillis(2);
+            boolean inactiveExpired = now - lastAccessed > TimeUnit.MINUTES.toMillis(30);
+            return timeExpired || inactiveExpired;
         }
+
+        public void updateLastAccessed() {
+            this.lastAccessed = System.currentTimeMillis();
+        }
+
+        public Long getFileId() { return fileId; }
+        public Long getUserId() { return userId; }
     }
 }
