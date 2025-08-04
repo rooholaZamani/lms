@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.UUID;
 
 @Service
@@ -140,5 +141,25 @@ public class FileStorageService {
 
         // Delete metadata record
         fileMetadataRepository.delete(metadata);
+    }
+    /**
+     * Delete a directory and all its contents
+     */
+    public void deleteDirectory(String subdirectory) {
+        Path directoryPath = this.fileStorageLocation.resolve(subdirectory);
+        try {
+            if (Files.exists(directoryPath) && Files.isDirectory(directoryPath)) {
+                Files.walk(directoryPath)
+                        .sorted(Comparator.reverseOrder())
+                        .map(Path::toFile)
+                        .forEach(file -> {
+                            if (!file.delete()) {
+                                System.err.println("Failed to delete file: " + file.getAbsolutePath());
+                            }
+                        });
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Error deleting directory: " + directoryPath, e);
+        }
     }
 }

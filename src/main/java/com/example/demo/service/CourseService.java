@@ -221,7 +221,7 @@ public class CourseService {
             throw new RuntimeException("Access denied: Only course owner can delete this course");
         }
 
-        // 1. جمع‌آوری تمام رکوردهای FileMetadata
+        // 1. جمع‌آوری تمام رکوردهای FileMetadata برای حذف فیزیکی
         List<FileMetadata> filesToDelete = new ArrayList<>();
         for (Lesson lesson : course.getLessons()) {
             List<Content> contents = contentRepository.findByLessonOrderByOrderIndex(lesson);
@@ -242,13 +242,12 @@ public class CourseService {
         List<Progress> courseProgresses = progressRepository.findByCourse(course);
         progressRepository.deleteAll(courseProgresses);
 
-        // 3. حذف خود دوره که به صورت Cascade تمام دروس، محتواها و تکالیف را حذف می‌کند.
+        // 3. حذف دوره که به صورت Cascade تمام دروس، محتواها و تکالیف را حذف می‌کند.
         // این کار باعث حذف رکوردهای FileMetadata از پایگاه داده نیز می‌شود.
         courseRepository.delete(course);
 
-        // 4. حذف فایل‌های فیزیکی پس از اتمام تراکنش
-        for (FileMetadata metadata : filesToDelete) {
-            fileStorageService.deleteFile(metadata);
-        }
+        // 4. حذف پوشه فیزیکی پس از اتمام تراکنش
+        String courseDirectoryPath = String.format("courses/%d", courseId);
+        fileStorageService.deleteDirectory(courseDirectoryPath);
     }
 }
