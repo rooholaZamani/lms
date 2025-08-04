@@ -17,17 +17,30 @@ public class CourseService {
     private final SubmissionRepository submissionRepository;
     private final AssignmentSubmissionRepository assignmentSubmissionRepository;
     private final ContentRepository contentRepository;
+    private final LessonRepository lessonRepository;
+    private final FileStorageService fileStorageService;
+    private final AssignmentRepository assignmentRepository;
+    private final FileMetadataRepository fileMetadataRepository;
 
     public CourseService(
             CourseRepository courseRepository,
             ProgressRepository progressRepository,
             SubmissionRepository submissionRepository,
-            AssignmentSubmissionRepository assignmentSubmissionRepository, ContentRepository contentRepository) {
+            AssignmentSubmissionRepository assignmentSubmissionRepository,
+            ContentRepository contentRepository,
+            LessonRepository lessonRepository,
+            FileStorageService fileStorageService,
+            AssignmentRepository assignmentRepository,
+            FileMetadataRepository fileMetadataRepository) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
         this.assignmentSubmissionRepository = assignmentSubmissionRepository;
         this.contentRepository = contentRepository;
+        this.lessonRepository = lessonRepository;
+        this.fileStorageService = fileStorageService;
+        this.assignmentRepository = assignmentRepository;
+        this.fileMetadataRepository = fileMetadataRepository;
     }
 
     // اضافه کردن این متد
@@ -198,6 +211,7 @@ public class CourseService {
     public List<Course> getTeacherActiveCourses(User teacher) {
         return courseRepository.findByTeacherAndActiveTrue(teacher);
     }
+
     @Transactional
     public void deleteCourse(Long courseId, User teacher) {
         Course course = courseRepository.findById(courseId)
@@ -207,13 +221,29 @@ public class CourseService {
             throw new RuntimeException("Access denied: Only course owner can delete this course");
         }
 
+        // 1. حذف فایل‌های مرتبط با محتوا و تکالیف
+        for (Lesson lesson : course.getLessons()) {
+            // حذف فایل‌های محتوای درس
+            List<Content> contents = contentRepository.findByLessonOrderByOrderIndex(lesson);
+            for (Content content : contents) {
+                if (content.getFile() != null) {
+                    fileStorageService.deleteFileById(content.getFile().getId());
+                }
+            }
+            // حذف فایل‌های تکالیف درس
+            List<Assignment> assignments = assignmentRepository.findByLesson(lesson);
+            for (Assignment assignment : assignments) {
+                if (assignment.getFile() != null) {
+                    fileStorageService.deleteFileById(assignment.getFile().getId());
+                }
+            }
+        }
+
+        // 2. حذف رکوردهای پیشرفت دانش‌آموزان
         List<Progress> courseProgresses = progressRepository.findByCourse(course);
         progressRepository.deleteAll(courseProgresses);
 
+        // 3. حذف خود دوره (حذف cascade به دروس، محتواها و تکالیف را هندل می‌کند)
         courseRepository.delete(course);
-    }
-    public Content getContentByFileId(Long fileId) {
-        return contentRepository.findByFileId(fileId)
-                .orElseThrow(() -> new RuntimeException("Content not found for file: " + fileId));
     }
 }
