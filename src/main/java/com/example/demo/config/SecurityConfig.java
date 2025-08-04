@@ -59,7 +59,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/register/**").permitAll()
                         .requestMatchers("/api/auth/check").authenticated()
                         // APIs requiring authentication
-                        .requestMatchers("/api/content/video/stream/**").permitAll()
+                        .requestMatchers("/api/video/**").permitAll()
                         .requestMatchers("/api/courses/**", "/api/lessons/**", "/api/content/**",
                                 "/api/exams/**", "/api/progress/**", "/api/user/**").authenticated()
                         // Role-based access

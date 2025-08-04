@@ -19,8 +19,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
-import java.io.IOException;
-import java.io.InputStream;
+
+import java.io.*;
+import java.net.URI;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +36,6 @@ import java.util.concurrent.TimeUnit;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.io.RandomAccessFile;
-import java.io.FileInputStream;
 
 @RestController
 @RequestMapping("/api/content")
@@ -49,8 +49,6 @@ public class ContentController {
     private final ActivityTrackingService activityTrackingService;
     private final LessonCompletionService lessonCompletionService;
     private final ProgressService progressService;
-    private final ConcurrentHashMap<String, VideoTokenInfo> videoTokens = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
 
     public ContentController(
@@ -243,6 +241,7 @@ public class ContentController {
                 .body(resource);
     }
 
+
     private ResponseEntity<Resource> handleVideoStreaming(
             HttpServletRequest request, Resource resource, FileMetadata metadata) throws IOException {
 
@@ -257,73 +256,133 @@ public class ContentController {
                             "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
                     .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                     .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileSize))
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
                     .body(resource);
         }
 
         // پردازش Range Request
-        String[] ranges = rangeHeader.replace("bytes=", "").split("-");
-        long start = Long.parseLong(ranges[0]);
-        long end = ranges.length > 1 && !ranges[1].isEmpty()
-                ? Long.parseLong(ranges[1])
-                : fileSize - 1;
+        try {
+            String[] ranges = rangeHeader.replace("bytes=", "").split("-");
+            long start = Long.parseLong(ranges[0]);
+            long end = ranges.length > 1 && !ranges[1].isEmpty()
+                    ? Long.parseLong(ranges[1])
+                    : Math.min(start + 1024 * 1024, fileSize - 1); // محدود کردن chunk size
 
-        // بررسی که range معتبر باشه
-        if (start >= fileSize || end >= fileSize || start > end) {
-            return ResponseEntity.status(416) // Range Not Satisfiable
-                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
-                    .build();
-        }
+            // بررسی که range معتبر باشه
+            if (start >= fileSize || end >= fileSize || start > end) {
+                return ResponseEntity.status(416) // Range Not Satisfiable
+                        .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
+                        .build();
+            }
 
-        long contentLength = end - start + 1;
+            long contentLength = end - start + 1;
 
-        // استفاده از FileSystemResource برای بهتر کار کردن با Range Requests
-        if (resource instanceof FileSystemResource) {
-            FileSystemResource fileResource = (FileSystemResource) resource;
+            // استفاده از RandomAccessFile برای بهتر handle کردن
+            if (resource instanceof FileSystemResource) {
+                FileSystemResource fileResource = (FileSystemResource) resource;
+                Path filePath = fileResource.getFile().toPath();
 
-            Resource partialResource = new InputStreamResource(
-                    fileResource.getInputStream()) {
+                Resource partialResource = new Resource() {
+                    @Override
+                    public InputStream getInputStream() throws IOException {
+                        RandomAccessFile randomAccessFile = new RandomAccessFile(fileResource.getFile(), "r");
+                        randomAccessFile.seek(start);
 
-                private InputStream inputStream;
+                        return new InputStream() {
+                            private long bytesRead = 0;
+                            private final long maxBytes = contentLength;
 
-                @Override
-                public InputStream getInputStream() throws IOException {
-                    if (inputStream == null) {
-                        inputStream = fileResource.getInputStream();
-                        inputStream.skip(start);
+                            @Override
+                            public int read() throws IOException {
+                                if (bytesRead >= maxBytes) {
+                                    return -1;
+                                }
+                                int data = randomAccessFile.read();
+                                if (data != -1) {
+                                    bytesRead++;
+                                }
+                                return data;
+                            }
+
+                            @Override
+                            public int read(byte[] b, int off, int len) throws IOException {
+                                if (bytesRead >= maxBytes) {
+                                    return -1;
+                                }
+                                long remainingBytes = maxBytes - bytesRead;
+                                int toRead = (int) Math.min(len, remainingBytes);
+                                int actualRead = randomAccessFile.read(b, off, toRead);
+                                if (actualRead > 0) {
+                                    bytesRead += actualRead;
+                                }
+                                return actualRead;
+                            }
+
+                            @Override
+                            public void close() throws IOException {
+                                try {
+                                    randomAccessFile.close();
+                                } catch (IOException e) {
+                                    // Log but don't throw
+                                    System.err.println("Error closing RandomAccessFile: " + e.getMessage());
+                                }
+                            }
+                        };
                     }
-                    return new BoundedInputStream(inputStream, contentLength);
-                }
 
-                @Override
-                public long contentLength() {
-                    return contentLength;
-                }
+                    @Override
+                    public boolean exists() { return fileResource.exists(); }
 
-                @Override
-                public String getFilename() {
-                    return metadata.getOriginalFilename();
-                }
-            };
+                    @Override
+                    public URL getURL() throws IOException { return fileResource.getURL(); }
 
-            return ResponseEntity.status(206) // Partial Content
-                    .contentType(MediaType.parseMediaType(metadata.getContentType()))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
-                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                    .header(HttpHeaders.CONTENT_RANGE,
-                            String.format("bytes %d-%d/%d", start, end, fileSize))
-                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
-                    .header(HttpHeaders.CACHE_CONTROL, "no-cache")
-                    .body(partialResource);
+                    @Override
+                    public URI getURI() throws IOException { return fileResource.getURI(); }
+
+                    @Override
+                    public File getFile() throws IOException { return fileResource.getFile(); }
+
+                    @Override
+                    public long contentLength() { return contentLength; }
+
+                    @Override
+                    public long lastModified() throws IOException { return fileResource.lastModified(); }
+
+                    @Override
+                    public Resource createRelative(String relativePath) throws IOException {
+                        return fileResource.createRelative(relativePath);
+                    }
+
+                    @Override
+                    public String getFilename() { return metadata.getOriginalFilename(); }
+
+                    @Override
+                    public String getDescription() { return "Partial video resource"; }
+                };
+
+                return ResponseEntity.status(206) // Partial Content
+                        .contentType(MediaType.parseMediaType(metadata.getContentType()))
+                        .header(HttpHeaders.CONTENT_DISPOSITION,
+                                "inline; filename=\"" + metadata.getOriginalFilename() + "\"")
+                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                        .header(HttpHeaders.CONTENT_RANGE,
+                                String.format("bytes %d-%d/%d", start, end, fileSize))
+                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                        .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                        .header("Connection", "keep-alive")
+                        .body(partialResource);
+            }
+
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(400).build();
+        } catch (Exception e) {
+            System.err.println("Error in handleVideoStreaming: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).build();
         }
 
-        // Fallback برای سایر انواع Resource
-        return ResponseEntity.status(206)
-                .contentType(MediaType.parseMediaType(metadata.getContentType()))
-                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                .header(HttpHeaders.CONTENT_RANGE, String.format("bytes %d-%d/%d", start, end, fileSize))
-                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
-                .body(resource);
+        // Fallback
+        return ResponseEntity.status(500).build();
     }
 
     @DeleteMapping("/{contentId}")
@@ -356,102 +415,24 @@ public class ContentController {
         return ResponseEntity.ok(contentDTOs);
     }
 
-    @PostMapping("/files/{fileId}/video-token")
-    @Operation(summary = "Generate temporary token for video streaming")
-    public ResponseEntity<Map<String, String>> generateVideoToken(
+    @PostMapping("/files/{fileId}/video-url")
+    @Operation(summary = "Get video streaming URL")
+    public ResponseEntity<Map<String, String>> getVideoUrl(
             @PathVariable Long fileId,
             Authentication authentication) {
 
         User user = userService.findByUsername(authentication.getName());
-        FileMetadata metadata = contentService.getFileMetadataById(fileId);
 
-        // بررسی دسترسی کاربر به فایل
+        // بررسی دسترسی
         Content content = contentService.getContentByFileId(fileId);
-        if (!hasAccessToContent(user, content)) { // استفاده از متد موجود
+        if (!hasAccessToContent(user, content)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        // بررسی که فایل ویدیو باشه
-        if (!metadata.getContentType().startsWith("video/")) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        // ایجاد token
-        String token = UUID.randomUUID().toString();
-        videoTokens.put(token, new VideoTokenInfo(fileId, user.getId()));
-
-        // پاک کردن خودکار token بعد از 2 ساعت
-        scheduler.schedule(() -> videoTokens.remove(token), 2, TimeUnit.HOURS);
-
         Map<String, String> response = new HashMap<>();
-        response.put("token", token);
-        response.put("streamUrl", "/api/content/video/stream/" + token);
+        response.put("videoUrl", "/api/video/token/" + fileId);
 
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/video/stream/{token}")
-    @Operation(summary = "Stream video with temporary token")
-    public ResponseEntity<Resource> streamVideo(
-            @PathVariable String token,
-            HttpServletRequest request) throws IOException {
-
-        VideoTokenInfo tokenInfo = videoTokens.get(token);
-
-        if (tokenInfo == null || tokenInfo.isExpired()) {
-            videoTokens.remove(token); // پاک کردن token منقضی شده
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        // بروزرسانی آخرین دسترسی
-        tokenInfo.updateLastAccessed();
-
-        try {
-            FileMetadata metadata = contentService.getFileMetadataById(tokenInfo.getFileId());
-            Resource resource = fileStorageService.loadFileAsResource(metadata.getFilePath());
-
-            return handleVideoStreaming(request, resource, metadata);
-
-        } catch (Exception e) {
-            // لاگ کردن خطا برای debugging
-            System.err.println("Error in video streaming: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-
-
-
-
-
-
-    private static class VideoTokenInfo {
-        private final Long fileId;
-        private final Long userId;
-        private final long createdAt;
-        private volatile long lastAccessed; // برای tracking آخرین دسترسی
-
-        public VideoTokenInfo(Long fileId, Long userId) {
-            this.fileId = fileId;
-            this.userId = userId;
-            this.createdAt = System.currentTimeMillis();
-            this.lastAccessed = this.createdAt;
-        }
-
-        public boolean isExpired() {
-            // Token تا ۲ ساعت معتبر است یا ۳۰ دقیقه بدون استفاده
-            long now = System.currentTimeMillis();
-            boolean timeExpired = now - createdAt > TimeUnit.HOURS.toMillis(2);
-            boolean inactiveExpired = now - lastAccessed > TimeUnit.MINUTES.toMillis(30);
-            return timeExpired || inactiveExpired;
-        }
-
-        public void updateLastAccessed() {
-            this.lastAccessed = System.currentTimeMillis();
-        }
-
-        public Long getFileId() { return fileId; }
-        public Long getUserId() { return userId; }
-    }
 }
