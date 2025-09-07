@@ -131,8 +131,11 @@ public class CourseService {
                 studentData.put("totalStudyTime", progress.getTotalStudyTime());
                 studentData.put("currentStreak", progress.getCurrentStreak());
             } else {
-                // در صورت عدم وجود پیشرفت، مقادیر پیش‌فرض
-                studentData.put("completionPercentage", 0.0);
+
+
+                double calculatedProgress = calculateProgressFromActivities(student, course);
+                studentData.put("completionPercentage", calculatedProgress);
+
                 studentData.put("completedLessons", 0);
                 studentData.put("totalLessons", course.getLessons().size());
                 studentData.put("lastAccessed", null);
@@ -313,5 +316,50 @@ public class CourseService {
         // 8. حذف دانش‌آموز از لیست ثبت‌نام‌شدگان
         course.getEnrolledStudents().remove(student);
         courseRepository.save(course);
+    }
+
+    private double calculateProgressFromActivities(User student, Course course) {
+        // تعداد کل دروس دوره
+        List<Lesson> lessons = lessonRepository.findByCourse(course);
+        int totalLessons = lessons.size();
+        if (totalLessons == 0) return 0.0;
+
+        // تعداد تکالیف انجام شده
+        List<AssignmentSubmission> assignments = assignmentSubmissionRepository.findByStudent(student);
+        // فیلتر کردن تکالیف مربوط به این دوره
+        assignments = assignments.stream()
+                .filter(sub -> sub.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
+                .collect(Collectors.toList());
+
+        // تعداد آزمون‌های انجام شده
+        List<Submission> exams = submissionRepository.findByStudent(student);
+        // فیلتر کردن آزمون‌های مربوط به این دوره
+        exams = exams.stream()
+                .filter(sub -> sub.getExam().getLesson().getCourse().getId().equals(course.getId()))
+                .collect(Collectors.toList());
+
+        // محاسبه پیشرفت بر اساس فعالیت‌ها
+        int completedActivities = assignments.size() + exams.size();
+
+        // محاسبه کل فعالیت‌های ممکن (هر درس می‌تواند تکلیف و آزمون داشته باشد)
+        int possibleAssignments = 0;
+        int possibleExams = 0;
+
+        for (Lesson lesson : lessons) {
+            // بررسی وجود تکلیف برای این درس
+            if (assignmentRepository.findByLesson(lesson) != null &&
+                    !assignmentRepository.findByLesson(lesson).isEmpty()) {
+                possibleAssignments++;
+            }
+            // بررسی وجود آزمون برای این درس
+            if (examRepository.findByLessonId(lesson.getId()).isPresent()) {
+                possibleExams++;
+            }
+        }
+
+        int totalPossibleActivities = possibleAssignments + possibleExams;
+
+        return totalPossibleActivities > 0 ?
+                Math.min(100.0, (double) completedActivities / totalPossibleActivities * 100) : 0.0;
     }
 }
