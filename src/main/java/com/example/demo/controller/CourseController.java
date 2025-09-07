@@ -215,5 +215,48 @@ public class CourseController {
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }
+    @DeleteMapping("/{courseId}/students/{studentId}")
+    @Operation(
+            summary = "Remove student from course",
+            description = "Remove a student from course and delete all related progress and submissions"
+    )
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> removeStudentFromCourse(
+            @PathVariable Long courseId,
+            @PathVariable Long studentId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // بررسی که کاربر معلم باشد
+            boolean isTeacher = teacher.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+
+            if (!isTeacher) {
+                throw new RuntimeException("Access denied: Only teachers can remove students from courses");
+            }
+
+            // حذف دانش‌آموز از درس
+            courseService.removeStudentFromCourse(courseId, studentId, teacher);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Student removed from course successfully");
+            response.put("courseId", courseId);
+            response.put("studentId", studentId);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("courseId", courseId);
+            errorResponse.put("studentId", studentId);
+
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 
 }

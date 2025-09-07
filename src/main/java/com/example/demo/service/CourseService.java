@@ -21,6 +21,7 @@ public class CourseService {
     private final FileStorageService fileStorageService;
     private final AssignmentRepository assignmentRepository;
     private final FileMetadataRepository fileMetadataRepository;
+    private final UserRepository userRepository;
 
     public CourseService(
             CourseRepository courseRepository,
@@ -31,7 +32,7 @@ public class CourseService {
             LessonRepository lessonRepository,
             FileStorageService fileStorageService,
             AssignmentRepository assignmentRepository,
-            FileMetadataRepository fileMetadataRepository) {
+            FileMetadataRepository fileMetadataRepository, UserRepository userRepository) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
@@ -41,6 +42,7 @@ public class CourseService {
         this.fileStorageService = fileStorageService;
         this.assignmentRepository = assignmentRepository;
         this.fileMetadataRepository = fileMetadataRepository;
+        this.userRepository = userRepository;
     }
 
     // اضافه کردن این متد
@@ -249,5 +251,67 @@ public class CourseService {
         // 4. حذف پوشه فیزیکی پس از اتمام تراکنش
         String courseDirectoryPath = String.format("courses/%d", courseId);
         fileStorageService.deleteDirectory(courseDirectoryPath);
+    }
+    @Transactional
+    public void removeStudentFromCourse(Long courseId, Long studentId, User teacher) {
+        // 1. بررسی وجود درس
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        // 2. بررسی مالکیت درس توسط معلم
+        if (!course.getTeacher().getId().equals(teacher.getId())) {
+            throw new RuntimeException("Access denied: You can only remove students from your own courses");
+        }
+
+        // 3. بررسی وجود دانش‌آموز
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        // 4. بررسی که دانش‌آموز در درس ثبت‌نام کرده باشد
+        if (!course.getEnrolledStudents().contains(student)) {
+            throw new RuntimeException("Student is not enrolled in this course");
+        }
+
+        // 5. حذف رکورد پیشرفت دانش‌آموز
+        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
+        if (progressOpt.isPresent()) {
+            progressRepository.delete(progressOpt.get());
+        }
+
+        // 6. حذف تمام ارسال‌های آزمون‌های مربوط به این درس
+        for (Lesson lesson : course.getLessons()) {
+            if (lesson.getExam() != null) {
+                Optional<Submission> submissionOpt = submissionRepository.findByStudentAndExam(student, lesson.getExam());
+                if (submissionOpt.isPresent()) {
+                    submissionRepository.delete(submissionOpt.get());
+                }
+            }
+        }
+
+        // 7. حذف تمام ارسال‌های تکالیف مربوط به این درس
+        for (Lesson lesson : course.getLessons()) {
+            List<Assignment> assignments = assignmentRepository.findByLesson(lesson);
+            for (Assignment assignment : assignments) {
+                Optional<AssignmentSubmission> assignmentSubmissionOpt =
+                        assignmentSubmissionRepository.findByStudentAndAssignment(student, assignment);
+                if (assignmentSubmissionOpt.isPresent()) {
+                    AssignmentSubmission submission = assignmentSubmissionOpt.get();
+                    // حذف فایل فیزیکی اگر وجود داشته باشد
+                    if (submission.getFile() != null) {
+                        try {
+                            fileStorageService.deleteFile(submission.getFile().getFilePath());
+                        } catch (Exception e) {
+                            // Log the error but don't fail the operation
+                            System.err.println("Could not delete submission file: " + e.getMessage());
+                        }
+                    }
+                    assignmentSubmissionRepository.delete(submission);
+                }
+            }
+        }
+
+        // 8. حذف دانش‌آموز از لیست ثبت‌نام‌شدگان
+        course.getEnrolledStudents().remove(student);
+        courseRepository.save(course);
     }
 }

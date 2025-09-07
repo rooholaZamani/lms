@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface AssignmentSubmissionRepository extends JpaRepository<AssignmentSubmission, Long> {
     List<AssignmentSubmission> findByAssignment(Assignment assignment);
@@ -21,4 +22,5 @@ public interface AssignmentSubmissionRepository extends JpaRepository<Assignment
     List<AssignmentSubmission> findBySubmittedAtBetween(LocalDateTime start, LocalDateTime end);
 
     List<AssignmentSubmission> findByAssignmentAndSubmittedAtBetween(Assignment assignment, LocalDateTime start, LocalDateTime end);
+    Optional<AssignmentSubmission> findByStudentAndAssignment(User student, Assignment assignment);
 }
