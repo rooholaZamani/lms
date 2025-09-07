@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import com.example.demo.repository.ExamRepository;
 
 @Service
 public class CourseService {
@@ -22,6 +23,7 @@ public class CourseService {
     private final AssignmentRepository assignmentRepository;
     private final FileMetadataRepository fileMetadataRepository;
     private final UserRepository userRepository;
+    private final ExamRepository examRepository;
 
     public CourseService(
             CourseRepository courseRepository,
@@ -32,7 +34,7 @@ public class CourseService {
             LessonRepository lessonRepository,
             FileStorageService fileStorageService,
             AssignmentRepository assignmentRepository,
-            FileMetadataRepository fileMetadataRepository, UserRepository userRepository) {
+            FileMetadataRepository fileMetadataRepository, UserRepository userRepository, ExamRepository examRepository) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
@@ -43,6 +45,7 @@ public class CourseService {
         this.assignmentRepository = assignmentRepository;
         this.fileMetadataRepository = fileMetadataRepository;
         this.userRepository = userRepository;
+        this.examRepository = examRepository;
     }
 
     // اضافه کردن این متد
@@ -302,7 +305,7 @@ public class CourseService {
                     // حذف فایل فیزیکی اگر وجود داشته باشد
                     if (submission.getFile() != null) {
                         try {
-                            fileStorageService.deleteFile(submission.getFile().getFilePath());
+                            fileStorageService.deleteFile(submission.getFile());
                         } catch (Exception e) {
                             // Log the error but don't fail the operation
                             System.err.println("Could not delete submission file: " + e.getMessage());
@@ -320,7 +323,7 @@ public class CourseService {
 
     private double calculateProgressFromActivities(User student, Course course) {
         // تعداد کل دروس دوره
-        List<Lesson> lessons = lessonRepository.findByCourse(course);
+        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
         int totalLessons = lessons.size();
         if (totalLessons == 0) return 0.0;
 
