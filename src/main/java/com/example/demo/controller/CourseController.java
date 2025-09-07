@@ -129,25 +129,34 @@ public class CourseController {
         return ResponseEntity.ok(courseDTOs);
     }
     @GetMapping("/{courseId}/students")
-    @Operation(summary = "Get course students", description = "Get list of students enrolled in a specific course")
+    @Operation(summary = "Get course students", description = "Get list of students enrolled in a specific course. Teachers can view students of their own courses. Students can view other students in courses they are enrolled in.")
     public ResponseEntity<List<Map<String, Object>>> getCourseStudents(
             @PathVariable Long courseId,
             Authentication authentication) {
 
-        User teacher = userService.findByUsername(authentication.getName());
+        User user = userService.findByUsername(authentication.getName());
 
-        // بررسی که کاربر معلم باشد
-        boolean isTeacher = teacher.getRoles().stream()
+        // بررسی نقش کاربر
+        boolean isTeacher = user.getRoles().stream()
                 .anyMatch(role -> role.getName().equals("ROLE_TEACHER"));
+        boolean isStudent = user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
 
-        if (!isTeacher) {
-            throw new RuntimeException("Access denied: Only teachers can access this endpoint");
+        Course course = courseService.getCourseById(courseId);
+
+        // اگر کاربر معلم است، باید مالک دوره باشد
+        if (isTeacher && !course.getTeacher().getId().equals(user.getId())) {
+            throw new RuntimeException("Access denied: You can only view students of your own courses");
         }
 
-        // بررسی که دوره متعلق به معلم باشد
-        Course course = courseService.getCourseById(courseId);
-        if (!course.getTeacher().getId().equals(teacher.getId())) {
-            throw new RuntimeException("Access denied: You can only view students of your own courses");
+        // اگر کاربر دانش‌آموز است، باید در دوره ثبت‌نام کرده باشد
+        if (isStudent && !course.getEnrolledStudents().contains(user)) {
+            throw new RuntimeException("Access denied: You can only view students of courses you are enrolled in");
+        }
+
+        // اگر نه معلم است و نه دانش‌آموز، دسترسی رد شود
+        if (!isTeacher && !isStudent) {
+            throw new RuntimeException("Access denied: Only teachers and enrolled students can access this endpoint");
         }
 
         // دریافت لیست دانش‌آموزان
