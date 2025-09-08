@@ -322,64 +322,63 @@ public class CourseService {
     }
 
     private double calculateProgressFromActivities(User student, Course course) {
-        // تعداد کل دروس دوره
+        // Get all lessons in the course
         List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
-        int totalLessons = lessons.size();
-        if (totalLessons == 0) return 0.0;
+        if (lessons.isEmpty()) return 0.0;
 
-        // تعداد تکالیف انجام شده
-        List<AssignmentSubmission> assignments = assignmentSubmissionRepository.findByStudent(student);
-        // فیلتر کردن تکالیف مربوط به این دوره
-        long completedAssignments = assignments.stream()
-                .filter(sub -> sub.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
-                .count();
-
-        // تعداد آزمون‌های انجام شده
-        List<Submission> exams = submissionRepository.findByStudent(student);
-        // فیلتر کردن آزمون‌های مربوط به این دوره
-        long completedExams = exams.stream()
-                .filter(sub -> sub.getExam().getLesson().getCourse().getId().equals(course.getId()))
-                .count();
-
-        // محاسبه کل فعالیت‌های ممکن
-        long totalPossibleAssignments = 0;
-        long totalPossibleExams = 0;
+        // Get student's progress record
+        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
+        
+        // Initialize counters for granular activities
+        int totalActivities = 0;
+        int completedActivities = 0;
 
         for (Lesson lesson : lessons) {
-            // شمارش تکالیف موجود برای این درس
-            List<Assignment> lessonAssignments = assignmentRepository.findByLesson(lesson);
-            if (lessonAssignments != null) {
-                totalPossibleAssignments += lessonAssignments.size();
-            }
+            // 1. COUNT AND CHECK CONTENT ACTIVITIES
+            List<Content> lessonContents = contentRepository.findByLessonOrderByOrderIndex(lesson);
+            totalActivities += lessonContents.size();
             
-            // بررسی وجود آزمون برای این درس
+            if (progressOpt.isPresent()) {
+                Progress progress = progressOpt.get();
+                // Count completed content (either viewed or explicitly completed)
+                for (Content content : lessonContents) {
+                    if (progress.getCompletedContent().contains(content.getId()) || 
+                        progress.getViewedContent().contains(content.getId())) {
+                        completedActivities++;
+                    }
+                }
+            }
+
+            // 2. COUNT AND CHECK EXAM ACTIVITIES
             if (examRepository.findByLessonId(lesson.getId()).isPresent()) {
-                totalPossibleExams++;
+                totalActivities++;
+                
+                Exam exam = examRepository.findByLessonId(lesson.getId()).get();
+                Optional<Submission> submission = submissionRepository.findByStudentAndExam(student, exam);
+                if (submission.isPresent()) {
+                    // Count any exam submission (regardless of pass/fail for progress tracking)
+                    completedActivities++;
+                }
+            }
+
+            // 3. COUNT AND CHECK ASSIGNMENT ACTIVITIES
+            List<Assignment> lessonAssignments = assignmentRepository.findByLesson(lesson);
+            totalActivities += lessonAssignments.size();
+            
+            for (Assignment assignment : lessonAssignments) {
+                Optional<AssignmentSubmission> submission = 
+                    assignmentSubmissionRepository.findByStudentAndAssignment(student, assignment);
+                if (submission.isPresent()) {
+                    completedActivities++;
+                }
             }
         }
 
-        long totalPossibleActivities = totalPossibleAssignments + totalPossibleExams;
-        long totalCompletedActivities = completedAssignments + completedExams;
-
-        // اگر هیچ فعالیتی وجود ندارد، پیشرفت بر اساس دروس محاسبه شود
-        if (totalPossibleActivities == 0) {
-            // فرض: اگر دانش‌آموز در آزمون یا تکلیفی شرکت کرده، آن درس را تکمیل کرده
-            Set<Long> completedLessonsFromActivities = new HashSet<>();
-            
-            // اضافه کردن دروسی که تکالیف آنها انجام شده
-            assignments.stream()
-                    .filter(sub -> sub.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
-                    .forEach(sub -> completedLessonsFromActivities.add(sub.getAssignment().getLesson().getId()));
-            
-            // اضافه کردن دروسی که آزمون‌های آنها انجام شده
-            exams.stream()
-                    .filter(sub -> sub.getExam().getLesson().getCourse().getId().equals(course.getId()))
-                    .forEach(sub -> completedLessonsFromActivities.add(sub.getExam().getLesson().getId()));
-            
-            return totalLessons > 0 ? 
-                    Math.min(100.0, (double) completedLessonsFromActivities.size() / totalLessons * 100) : 0.0;
+        // Calculate granular progress percentage
+        if (totalActivities == 0) {
+            return 0.0; // No activities in course
         }
 
-        return Math.min(100.0, (double) totalCompletedActivities / totalPossibleActivities * 100);
+        return Math.min(100.0, (double) completedActivities / totalActivities * 100);
     }
 }

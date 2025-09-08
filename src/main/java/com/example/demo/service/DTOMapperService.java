@@ -2,15 +2,10 @@ package com.example.demo.service;
 
 import com.example.demo.dto.*;
 import com.example.demo.model.*;
-import com.example.demo.repository.AssignmentRepository;
-import com.example.demo.repository.ProgressRepository;
-import com.example.demo.repository.SubmissionRepository;
+import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import org.springframework.stereotype.Service;
-import java.util.*;
-
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -20,13 +15,28 @@ public class DTOMapperService {
     private final AssignmentRepository assignmentRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ProgressRepository progressRepository;
-    private  final LessonCompletionService lessonCompletionService;
+    private final LessonCompletionService lessonCompletionService;
+    private final AssignmentSubmissionRepository assignmentSubmissionRepository;
+    private final LessonRepository lessonRepository;
+    private final ExamRepository examRepository;
+    private final ContentRepository contentRepository;
 
-    public DTOMapperService(SubmissionRepository submissionRepository, AssignmentRepository assignmentRepository, ProgressRepository progressRepository, LessonCompletionService lessonCompletionService) {
+    public DTOMapperService(SubmissionRepository submissionRepository, 
+                           AssignmentRepository assignmentRepository, 
+                           ProgressRepository progressRepository, 
+                           LessonCompletionService lessonCompletionService,
+                           AssignmentSubmissionRepository assignmentSubmissionRepository,
+                           LessonRepository lessonRepository,
+                           ExamRepository examRepository,
+                           ContentRepository contentRepository) {
         this.submissionRepository = submissionRepository;
         this.assignmentRepository = assignmentRepository;
         this.progressRepository = progressRepository;
         this.lessonCompletionService = lessonCompletionService;
+        this.assignmentSubmissionRepository = assignmentSubmissionRepository;
+        this.lessonRepository = lessonRepository;
+        this.examRepository = examRepository;
+        this.contentRepository = contentRepository;
     }
 
     public UserSummaryDTO mapToUserSummary(User user) {
@@ -337,7 +347,11 @@ public class DTOMapperService {
         dto.setLastAccessed(progress.getLastAccessed());
         dto.setTotalLessons(progress.getTotalLessons());
         dto.setCompletedLessonCount(progress.getCompletedLessonCount());
-        dto.setCompletionPercentage(progress.getCompletionPercentage());
+        
+        // Use real-time activity-based calculation instead of stored value
+        double calculatedProgress = calculateProgressFromActivities(progress.getStudent(), progress.getCourse());
+        dto.setCompletionPercentage(calculatedProgress);
+        
         dto.setCompletedContent(progress.getCompletedContent());
         return dto;
     }
@@ -1016,5 +1030,71 @@ public class DTOMapperService {
         dto.setFileSize(metadata.getFileSize());
         dto.setDownloadUrl("/api/files/" + metadata.getId());
         return dto;
+    }
+
+    /**
+     * Calculate course completion progress based on granular activities 
+     * (content viewing/completion, exam submissions, assignment submissions)
+     * This method provides fine-grained progress tracking
+     */
+    private double calculateProgressFromActivities(User student, Course course) {
+        // Get all lessons in the course
+        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+        if (lessons.isEmpty()) return 0.0;
+
+        // Get student's progress record
+        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
+        
+        // Initialize counters for granular activities
+        int totalActivities = 0;
+        int completedActivities = 0;
+
+        for (Lesson lesson : lessons) {
+            // 1. COUNT AND CHECK CONTENT ACTIVITIES
+            List<Content> lessonContents = contentRepository.findByLessonOrderByOrderIndex(lesson);
+            totalActivities += lessonContents.size();
+            
+            if (progressOpt.isPresent()) {
+                Progress progress = progressOpt.get();
+                // Count completed content (either viewed or explicitly completed)
+                for (Content content : lessonContents) {
+                    if (progress.getCompletedContent().contains(content.getId()) || 
+                        progress.getViewedContent().contains(content.getId())) {
+                        completedActivities++;
+                    }
+                }
+            }
+
+            // 2. COUNT AND CHECK EXAM ACTIVITIES
+            if (examRepository.findByLessonId(lesson.getId()).isPresent()) {
+                totalActivities++;
+                
+                Exam exam = examRepository.findByLessonId(lesson.getId()).get();
+                Optional<Submission> submission = submissionRepository.findByStudentAndExam(student, exam);
+                if (submission.isPresent()) {
+                    // Count any exam submission (regardless of pass/fail for progress tracking)
+                    completedActivities++;
+                }
+            }
+
+            // 3. COUNT AND CHECK ASSIGNMENT ACTIVITIES
+            List<Assignment> lessonAssignments = assignmentRepository.findByLesson(lesson);
+            totalActivities += lessonAssignments.size();
+            
+            for (Assignment assignment : lessonAssignments) {
+                Optional<AssignmentSubmission> submission = 
+                    assignmentSubmissionRepository.findByStudentAndAssignment(student, assignment);
+                if (submission.isPresent()) {
+                    completedActivities++;
+                }
+            }
+        }
+
+        // Calculate granular progress percentage
+        if (totalActivities == 0) {
+            return 0.0; // No activities in course
+        }
+
+        return Math.min(100.0, (double) completedActivities / totalActivities * 100);
     }
 }
