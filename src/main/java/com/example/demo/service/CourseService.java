@@ -86,7 +86,9 @@ public class CourseService {
             progress.setStudent(student);
             progress.setCourse(course);
             progress.setLastAccessed(LocalDateTime.now());
-            progress.setTotalLessons(course.getLessons().size());
+            // Use repository to get accurate lesson count instead of lazy-loaded collection
+            int totalLessons = lessonRepository.findByCourseOrderByOrderIndex(course).size();
+            progress.setTotalLessons(totalLessons);
             progress.setCompletedLessonCount(0);
             progress.setCompletionPercentage(0.0);
             progressRepository.save(progress);

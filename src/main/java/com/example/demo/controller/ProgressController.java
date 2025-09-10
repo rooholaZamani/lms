@@ -113,7 +113,7 @@ public class ProgressController {
         // ADD ACTIVITY TRACKING
         activityTrackingService.logActivity(student, "LESSON_COMPLETION", lessonId, timeSpent,metadata);
         if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(student, timeSpent);
+            activityTrackingService.updateStudyTime(student, updatedProgress.getCourse(), timeSpent);
         }
 
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
@@ -140,7 +140,7 @@ public class ProgressController {
         activityTrackingService.logActivity(student, "CONTENT_VIEW", contentId, timeSpent, metadata);
 
         if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(student, timeSpent);
+            activityTrackingService.updateStudyTime(student, updatedProgress.getCourse(), timeSpent);
         }
 
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
@@ -167,10 +167,33 @@ public class ProgressController {
 
         activityTrackingService.logActivity(student, "CONTENT_COMPLETION", contentId, timeSpent,metadata);
         if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(student, timeSpent);
+            activityTrackingService.updateStudyTime(student, updatedProgress.getCourse(), timeSpent);
         }
 
         ProgressDTO progressDTO = dtoMapperService.mapToProgressDTO(updatedProgress);
         return ResponseEntity.ok(progressDTO);
+    }
+
+    /**
+     * Fix existing Progress records with incorrect totalLessons counts
+     * This endpoint can be called to fix data corruption from lazy-loading issues
+     */
+    @PostMapping("/admin/fix-lesson-counts")
+    public ResponseEntity<Map<String, String>> fixIncorrectTotalLessons(Authentication authentication) {
+        // Optional: Add admin role check here if needed
+        User user = userService.findByUsername(authentication.getName());
+        boolean hasPermission = user.getRoles().stream()
+                .anyMatch(role -> "ADMIN".equals(role.getName()) || "TEACHER".equals(role.getName()));
+        
+        if (!hasPermission) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
+        
+        try {
+            progressService.fixIncorrectTotalLessons();
+            return ResponseEntity.ok(Map.of("message", "Progress lesson counts have been fixed successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to fix lesson counts: " + e.getMessage()));
+        }
     }
 }

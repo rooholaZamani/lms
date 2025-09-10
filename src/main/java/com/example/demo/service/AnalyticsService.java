@@ -999,9 +999,9 @@ public class AnalyticsService {
 
         performance.put("enrolledCourses", studentCourses.size());
         performance.put("averageCompletion", Math.round(averageCompletion * 10.0));
-        performance.put("totalStudyTime", Math.round(totalStudyTimeFromActivities  * 10.0)); // Convert seconds to hours
+        performance.put("totalStudyTime", totalStudyTimeFromActivities); // Return time in seconds for frontend to display correctly
         performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 :
-                Math.round((totalStudyTimeFromActivities / studentCourses.size())  * 10.0));
+                totalStudyTimeFromActivities / studentCourses.size()); // Return average time in seconds
 
         // Exam performance
         List<Course> finalStudentCourses1 = studentCourses;
@@ -2440,10 +2440,9 @@ public class AnalyticsService {
                 .filter(p -> p.getCourse().getId().equals(courseId))
                 .collect(Collectors.toList());
 
-        // Calculate overall course metrics
-        double averageCompletion = allProgress.stream()
-                .mapToDouble(p -> p.getTotalLessons() > 0 ?
-                        (double) p.getCompletedLessonCount() / p.getTotalLessons() * 100 : 0)
+        // Calculate overall course metrics using modern activity-based calculation
+        double averageCompletion = course.getEnrolledStudents().stream()
+                .mapToDouble(student -> calculateProgressFromActivities(student, course))
                 .average()
                 .orElse(0.0);
 
@@ -3504,21 +3503,30 @@ public class AnalyticsService {
      * تحلیل زمان بر اساس نوع فعالیت
      */
     private Map<String, Object> getTimeAnalysisByActivityType(List<ActivityLog> activities) {
-        Map<String, Double> timeByType = activities.stream()
+        // Sum time spent in seconds first, then convert to minutes for display
+        Map<String, Double> timeByTypeInSeconds = activities.stream()
                 .filter(activity -> activity.getTimeSpent() != null && activity.getTimeSpent() > 0)
                 .collect(Collectors.groupingBy(
                         ActivityLog::getActivityType,
-                        Collectors.summingDouble(activity -> activity.getTimeSpent() / 60.0) // تبدیل به دقیقه
+                        Collectors.summingDouble(activity -> activity.getTimeSpent().doubleValue()) // Keep as seconds
                 ));
 
-        double totalTime = timeByType.values().stream().mapToDouble(Double::doubleValue).sum();
+        double totalTimeInSeconds = timeByTypeInSeconds.values().stream().mapToDouble(Double::doubleValue).sum();
 
         Map<String, Object> result = new HashMap<>();
-        timeByType.forEach((type, timeInMinutes) -> {
+        
+        // Add total time information
+        result.put("totalActivityTimeSeconds", Math.round(totalTimeInSeconds));
+        result.put("totalActivityTimeMinutes", Math.round(totalTimeInSeconds / 60.0 * 10.0) / 10.0);
+        result.put("totalActivityTimeHours", Math.round(totalTimeInSeconds / 3600.0 * 10.0) / 10.0);
+        
+        // Add individual activity type data
+        timeByTypeInSeconds.forEach((type, timeInSeconds) -> {
+            double timeInMinutes = timeInSeconds / 60.0; // Convert to minutes for display
             Map<String, Object> typeData = new HashMap<>();
-            typeData.put("totalMinutes", Math.round(timeInMinutes * 10.0));
-            typeData.put("totalHours", Math.round(timeInMinutes / 60.0 * 10.0));
-            typeData.put("percentage", totalTime > 0 ? Math.round((timeInMinutes / totalTime) * 100 * 10.0) : 0);
+            typeData.put("totalMinutes", Math.round(timeInMinutes * 10.0) / 10.0); // Round to 1 decimal
+            typeData.put("totalHours", Math.round(timeInMinutes / 60.0 * 10.0) / 10.0); // Round to 1 decimal
+            typeData.put("percentage", totalTimeInSeconds > 0 ? Math.round((timeInSeconds / totalTimeInSeconds) * 100 * 10.0) / 10.0 : 0);
             typeData.put("label", getActivityTypeLabel(type));
             result.put(type, typeData);
         });
@@ -3591,33 +3599,71 @@ public class AnalyticsService {
      * دریافت داده‌های Heatmap فعالیت روزانه دانش‌آموز
      */
     public Map<String, Object> getStudentDailyHeatmap(Long studentId, Long courseId, String timeFilter) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
+        try {
+            User student = userRepository.findById(studentId)
+                    .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
+            Course course = courseRepository.findById(courseId)
+                    .orElseThrow(() -> new RuntimeException("Course not found"));
 
-        LocalDateTime startDate = getStartDateByFilterHeatmap(timeFilter);
-        LocalDateTime endDate = LocalDateTime.now();
+            LocalDateTime startDate = getStartDateByFilterHeatmap(timeFilter);
+            LocalDateTime endDate = LocalDateTime.now();
 
-        // دریافت فعالیت‌های مربوط به دوره
-        List<ActivityLog> activities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
-                .stream()
-                .filter(log -> isCourseRelatedActivity(log, courseId))
-                .collect(Collectors.toList());
+            // دریافت فعالیت‌های مربوط به دوره
+            List<ActivityLog> activities = activityLogRepository
+                    .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
+                    .stream()
+                    .filter(log -> isCourseRelatedActivity(log, courseId))
+                    .collect(Collectors.toList());
 
-        Map<String, Object> result = new HashMap<>();
+            System.out.println("Found " + activities.size() + " activities for student " + studentId + " in course " + courseId);
 
-        // ایجاد داده‌های Heatmap
-        List<Map<String, Object>> heatmapData = createHeatmapData(activities);
-        result.put("heatmapData", heatmapData);
+            Map<String, Object> result = new HashMap<>();
 
-        // آنالیز داده‌ها
-        Map<String, Object> analytics = analyzeHeatmapData(heatmapData);
-        result.put("analytics", analytics);
+            // ایجاد داده‌های Heatmap
+            List<Map<String, Object>> heatmapData = createHeatmapData(activities);
+            result.put("heatmapData", heatmapData);
 
-        return result;
+            // آنالیز داده‌ها
+            Map<String, Object> analytics = analyzeHeatmapData(heatmapData);
+            result.put("analytics", analytics);
+
+            // اضافه کردن metadata
+            result.put("timeRange", Map.of(
+                "startDate", startDate,
+                "endDate", endDate,
+                "filter", timeFilter
+            ));
+            
+            result.put("student", Map.of(
+                "id", student.getId(),
+                "name", student.getFirstName() + " " + student.getLastName()
+            ));
+            
+            result.put("course", Map.of(
+                "id", course.getId(),
+                "title", course.getTitle()
+            ));
+
+            return result;
+            
+        } catch (Exception e) {
+            System.err.println("Error generating heatmap data: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Return empty but valid response
+            Map<String, Object> emptyResult = new HashMap<>();
+            emptyResult.put("heatmapData", new ArrayList<>());
+            emptyResult.put("analytics", Map.of(
+                "mostActiveDay", "نامشخص",
+                "mostActiveHour", "نامشخص",
+                "totalActivities", 0,
+                "studyPattern", "نامنظم"
+            ));
+            emptyResult.put("error", "خطا در دریافت داده‌های نمودار حرارتی");
+            
+            return emptyResult;
+        }
     }
 
     /**
@@ -4051,43 +4097,43 @@ public class AnalyticsService {
         LocalDateTime endDate = LocalDateTime.now();
 
         // دریافت تمام فعالیت‌های دانش‌آموز
-        List<ActivityLog> activities = activityLogRepository
+        List<ActivityLog> allActivities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate);
 
         // فیلتر بر اساس دوره (اختیاری)
         if (courseId != null) {
-            activities = activities.stream()
+            allActivities = allActivities.stream()
                     .filter(log -> isCourseRelatedActivity(log, courseId))
                     .collect(Collectors.toList());
         }
 
-        // محدود کردن تعداد
-        activities = activities.stream()
+        // محدود کردن تعداد فقط برای timeline display
+        List<ActivityLog> limitedActivities = allActivities.stream()
                 .limit(limit)
                 .collect(Collectors.toList());
 
         Map<String, Object> result = new HashMap<>();
 
-        // ساخت timeline data
-        List<Map<String, Object>> timelineData = createTimelineData(activities);
+        // ساخت timeline data از فعالیت‌های محدود شده
+        List<Map<String, Object>> timelineData = createTimelineData(limitedActivities);
         result.put("activities", timelineData);
 
-        // آمار کلی
+        // آمار کلی از تمام فعالیت‌ها (نه محدود شده)
         Map<String, Object> statistics = new HashMap<>();
-        statistics.put("totalActivities", activities.size());
-        statistics.put("totalTime", activities.stream()
+        statistics.put("totalActivities", allActivities.size());
+        statistics.put("totalTime", allActivities.stream()
                 .mapToLong(a -> a.getTimeSpent() != null ? a.getTimeSpent() : 0L)
                 .sum());
 
-        // شمارش دوره‌های منحصر به فرد
-        Set<String> uniqueCourses = activities.stream()
+        // شمارش دوره‌های منحصر به فرد از تمام فعالیت‌ها
+        Set<String> uniqueCourses = allActivities.stream()
                 .map(this::extractCourseName)
                 .filter(courseName -> courseName != null && !courseName.trim().isEmpty())
                 .collect(Collectors.toSet());
         statistics.put("uniqueCourses", uniqueCourses.size());
 
-        // شمارش روزهای فعال
-        Set<String> activeDays = activities.stream()
+        // شمارش روزهای فعال از تمام فعالیت‌ها
+        Set<String> activeDays = allActivities.stream()
                 .map(a -> a.getTimestamp().toLocalDate().toString())
                 .collect(Collectors.toSet());
         statistics.put("activeDays", activeDays.size());
@@ -4211,5 +4257,71 @@ public class AnalyticsService {
                 .collect(Collectors.toList()));
 
         return result;
+    }
+
+    /**
+     * Calculate course completion progress based on granular activities 
+     * (content viewing/completion, exam submissions, assignment submissions)
+     * This method provides fine-grained progress tracking
+     */
+    private double calculateProgressFromActivities(User student, Course course) {
+        // Get all lessons in the course
+        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+        if (lessons.isEmpty()) return 0.0;
+
+        // Get student's progress record
+        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
+        
+        // Initialize counters for granular activities
+        int totalActivities = 0;
+        int completedActivities = 0;
+
+        for (Lesson lesson : lessons) {
+            // 1. COUNT AND CHECK CONTENT ACTIVITIES
+            List<Content> lessonContents = contentRepository.findByLessonOrderByOrderIndex(lesson);
+            totalActivities += lessonContents.size();
+            
+            if (progressOpt.isPresent()) {
+                Progress progress = progressOpt.get();
+                // Count completed content (either viewed or explicitly completed)
+                for (Content content : lessonContents) {
+                    if (progress.getCompletedContent().contains(content.getId()) || 
+                        progress.getViewedContent().contains(content.getId())) {
+                        completedActivities++;
+                    }
+                }
+            }
+
+            // 2. COUNT AND CHECK EXAM ACTIVITIES
+            if (examRepository.findByLessonId(lesson.getId()).isPresent()) {
+                totalActivities++;
+                
+                Exam exam = examRepository.findByLessonId(lesson.getId()).get();
+                Optional<Submission> submission = submissionRepository.findByStudentAndExam(student, exam);
+                if (submission.isPresent()) {
+                    // Count any exam submission (regardless of pass/fail for progress tracking)
+                    completedActivities++;
+                }
+            }
+
+            // 3. COUNT AND CHECK ASSIGNMENT ACTIVITIES
+            List<Assignment> lessonAssignments = assignmentRepository.findByLesson(lesson);
+            totalActivities += lessonAssignments.size();
+            
+            for (Assignment assignment : lessonAssignments) {
+                Optional<AssignmentSubmission> submission = 
+                    assignmentSubmissionRepository.findByStudentAndAssignment(student, assignment);
+                if (submission.isPresent()) {
+                    completedActivities++;
+                }
+            }
+        }
+
+        // Calculate granular progress percentage
+        if (totalActivities == 0) {
+            return 0.0; // No activities in course
+        }
+
+        return Math.min(100.0, (double) completedActivities / totalActivities * 100);
     }
 }

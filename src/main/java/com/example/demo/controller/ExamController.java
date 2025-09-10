@@ -242,7 +242,6 @@ public class ExamController {
             activityTrackingService.updateStudyTime(student, timeSpent);
         }
         lessonCompletionService.checkAndAutoCompleteLesson(student, exam.getLesson());
-        progressService.markContentComplete(student, exam.getLesson().getId());
         return ResponseEntity.ok(dtoMapperService.mapToSubmissionDTO(submission));
     }
 

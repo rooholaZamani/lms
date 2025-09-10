@@ -112,6 +112,8 @@ public class DTOMapperService {
             }
         } else {
             // Summary mapping (for list views)
+            dto.setTotalDuration(course.getTotalDuration()); // Include duration in summary view
+            
             if (course.getLessons() != null) {
                 List<LessonSummaryDTO> lessonSummaries = course.getLessons().stream()
                         .map(lesson -> {
@@ -345,8 +347,19 @@ public class DTOMapperService {
         dto.setCompletedLessons(progress.getCompletedLessons());
         dto.setViewedContent(progress.getViewedContent());
         dto.setLastAccessed(progress.getLastAccessed());
-        dto.setTotalLessons(progress.getTotalLessons());
-        dto.setCompletedLessonCount(progress.getCompletedLessonCount());
+        
+        // Ensure accurate totalLessons count - use repository if stored value seems incorrect
+        int storedTotalLessons = progress.getTotalLessons() != null ? progress.getTotalLessons() : 0;
+        if (progress.getCourse() != null) {
+            int actualTotalLessons = lessonRepository.findByCourseOrderByOrderIndex(progress.getCourse()).size();
+            dto.setTotalLessons(actualTotalLessons);
+        } else {
+            dto.setTotalLessons(storedTotalLessons);
+        }
+        
+        // Calculate actual completed lesson count based on granular activities
+        int actualCompletedLessonCount = calculateCompletedLessonCount(progress.getStudent(), progress.getCourse());
+        dto.setCompletedLessonCount(actualCompletedLessonCount);
         
         // Use real-time activity-based calculation instead of stored value
         double calculatedProgress = calculateProgressFromActivities(progress.getStudent(), progress.getCourse());
@@ -1096,5 +1109,21 @@ public class DTOMapperService {
         }
 
         return Math.min(100.0, (double) completedActivities / totalActivities * 100);
+    }
+
+    /**
+     * Calculate completed lesson count based on lesson completion logic
+     */
+    private int calculateCompletedLessonCount(User student, Course course) {
+        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+        int completedLessons = 0;
+
+        for (Lesson lesson : lessons) {
+            if (lessonCompletionService.isLessonCompleted(student, lesson)) {
+                completedLessons++;
+            }
+        }
+
+        return completedLessons;
     }
 }

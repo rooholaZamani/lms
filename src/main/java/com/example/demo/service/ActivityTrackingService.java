@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.model.ActivityLog;
+import com.example.demo.model.Course;
 import com.example.demo.model.Progress;
 import com.example.demo.model.User;
 import com.example.demo.repository.ActivityLogRepository;
@@ -44,9 +45,20 @@ public class ActivityTrackingService {
     }
 
     public void updateStudyTime(User user, Long additionalTime) {
-        // Update total study time in progress records
+        // Update total study time in progress records - FOR ALL COURSES (DEPRECATED)
+        // This method is kept for backward compatibility but should not be used
         List<Progress> progressList = progressRepository.findByStudent(user);
         for (Progress progress : progressList) {
+            Long currentTime = progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L;
+            progress.setTotalStudyTime(currentTime + additionalTime);
+            progressRepository.save(progress);
+        }
+    }
+    
+    public void updateStudyTime(User user, Course course, Long additionalTime) {
+        // Update total study time for specific course only
+        Progress progress = progressRepository.findByStudentAndCourse(user, course).orElse(null);
+        if (progress != null) {
             Long currentTime = progress.getTotalStudyTime() != null ? progress.getTotalStudyTime() : 0L;
             progress.setTotalStudyTime(currentTime + additionalTime);
             progressRepository.save(progress);

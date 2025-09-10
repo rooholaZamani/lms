@@ -45,10 +45,12 @@ public class Course {
     )
     private List<User> enrolledStudents = new ArrayList<>();
 
-    // Helper method to calculate total duration
+    // Helper method to calculate total duration in minutes
     public Integer getTotalDuration() {
-        return lessons.stream()
+        int totalSeconds = lessons.stream()
                 .mapToInt(lesson -> lesson.getDuration() != null ? lesson.getDuration() : 0)
                 .sum();
+        // Convert seconds to minutes and round up
+        return totalSeconds > 0 ? (int) Math.ceil(totalSeconds / 60.0) : 0;
     }
 }

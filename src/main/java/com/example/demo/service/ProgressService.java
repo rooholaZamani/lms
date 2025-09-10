@@ -50,7 +50,9 @@ public class ProgressService {
                     progress.setStudent(student);
                     progress.setCourse(course);
                     progress.setLastAccessed(LocalDateTime.now());
-                    progress.setTotalLessons(course.getLessons().size());
+                    // Use repository to get accurate lesson count instead of lazy-loaded collection
+                    int totalLessons = lessonRepository.findByCourseOrderByOrderIndex(course).size();
+                    progress.setTotalLessons(totalLessons);
                     progress.setCompletedLessonCount(0);
                     progress.setCompletionPercentage(0.0);
                     return progressRepository.save(progress);
@@ -69,7 +71,8 @@ public class ProgressService {
         progress.setLastAccessed(LocalDateTime.now());
 
         // Update completion metrics using activity-based calculation
-        int totalLessons = course.getLessons().size();
+        // Use repository to get accurate lesson count instead of lazy-loaded collection
+        int totalLessons = lessonRepository.findByCourseOrderByOrderIndex(course).size();
         int completedLessons = progress.getCompletedLessons().size();
 
         progress.setTotalLessons(totalLessons);
@@ -183,5 +186,26 @@ public class ProgressService {
         }
 
         return Math.min(100.0, (double) completedActivities / totalActivities * 100);
+    }
+
+    /**
+     * Fix existing Progress records that have incorrect totalLessons counts
+     * due to previous lazy-loading issues
+     */
+    @Transactional
+    public void fixIncorrectTotalLessons() {
+        List<Progress> allProgress = progressRepository.findAll();
+        
+        for (Progress progress : allProgress) {
+            if (progress.getCourse() != null) {
+                int actualTotalLessons = lessonRepository.findByCourseOrderByOrderIndex(progress.getCourse()).size();
+                
+                // Update if the stored value is incorrect
+                if (progress.getTotalLessons() == null || !progress.getTotalLessons().equals(actualTotalLessons)) {
+                    progress.setTotalLessons(actualTotalLessons);
+                    progressRepository.save(progress);
+                }
+            }
+        }
     }
 }
