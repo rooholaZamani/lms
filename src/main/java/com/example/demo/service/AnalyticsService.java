@@ -1953,6 +1953,7 @@ public class AnalyticsService {
 
     private List<Map<String, Object>> createDailyTimeline(List<ActivityLog> activities, LocalDateTime startDate, LocalDateTime endDate) {
         Map<String, Map<String, Object>> timelineMap = new HashMap<>();
+        Map<String, Set<Long>> uniqueStudentsPerDay = new HashMap<>();
 
         LocalDateTime current = startDate.toLocalDate().atStartOfDay();
         while (!current.isAfter(endDate)) {
@@ -1961,10 +1962,11 @@ public class AnalyticsService {
             timelineMap.get(dateStr).put("date", dateStr);
             timelineMap.get(dateStr).put("totalseconds", 0L);
             timelineMap.get(dateStr).put("activeStudents", 0);
+            uniqueStudentsPerDay.put(dateStr, new HashSet<>());
             current = current.plusDays(1);
         }
 
-        // Group activities by date
+        // Group activities by date and track unique students
         for (ActivityLog activity : activities) {
             String dateStr = activity.getTimestamp().toLocalDate().toString();
             if (timelineMap.containsKey(dateStr)) {
@@ -1972,10 +1974,15 @@ public class AnalyticsService {
                 Long currentseconds = (Long) dayData.get("totalseconds");
                 dayData.put("totalseconds", currentseconds + activity.getTimeSpent());
 
-                // Count unique students (simplified)
-                Integer currentStudents = (Integer) dayData.get("activeStudents");
-                dayData.put("activeStudents", currentStudents + 1);
+                // Track unique students per day
+                uniqueStudentsPerDay.get(dateStr).add(activity.getUser().getId());
             }
+        }
+
+        // Update active students count with actual unique student count
+        for (String dateStr : timelineMap.keySet()) {
+            Map<String, Object> dayData = timelineMap.get(dateStr);
+            dayData.put("activeStudents", uniqueStudentsPerDay.get(dateStr).size());
         }
 
         return new ArrayList<>(timelineMap.values());
