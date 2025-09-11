@@ -366,6 +366,12 @@ public class DTOMapperService {
         dto.setCompletionPercentage(calculatedProgress);
         
         dto.setCompletedContent(progress.getCompletedContent());
+        
+        // Calculate additional progress counts for detailed tracking
+        if (progress.getStudent() != null && progress.getCourse() != null) {
+            calculateAndSetDetailedProgressCounts(dto, progress.getStudent(), progress.getCourse());
+        }
+        
         return dto;
     }
 
@@ -1125,5 +1131,73 @@ public class DTOMapperService {
         }
 
         return completedLessons;
+    }
+
+    /**
+     * Calculate and set detailed progress counts for content, assignments, and exams
+     */
+    private void calculateAndSetDetailedProgressCounts(ProgressDTO dto, User student, Course course) {
+        // Get all lessons in the course
+        List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+        
+        // Get student's progress record
+        Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
+        
+        // Initialize counters
+        int totalContentCount = 0;
+        int viewedContentCount = 0;
+        int totalAssignmentCount = 0;
+        int submittedAssignmentCount = 0;
+        int totalExamCount = 0;
+        int attemptedExamCount = 0;
+
+        for (Lesson lesson : lessons) {
+            // 1. COUNT AND CHECK CONTENT ACTIVITIES
+            List<Content> lessonContents = contentRepository.findByLessonOrderByOrderIndex(lesson);
+            totalContentCount += lessonContents.size();
+            
+            if (progressOpt.isPresent()) {
+                Progress progress = progressOpt.get();
+                // Count viewed or completed content
+                for (Content content : lessonContents) {
+                    if (progress.getCompletedContent().contains(content.getId()) || 
+                        progress.getViewedContent().contains(content.getId())) {
+                        viewedContentCount++;
+                    }
+                }
+            }
+
+            // 2. COUNT AND CHECK EXAM ACTIVITIES
+            if (examRepository.findByLessonId(lesson.getId()).isPresent()) {
+                totalExamCount++;
+                
+                Exam exam = examRepository.findByLessonId(lesson.getId()).get();
+                Optional<Submission> submission = submissionRepository.findByStudentAndExam(student, exam);
+                if (submission.isPresent()) {
+                    // Count any exam submission (regardless of pass/fail for progress tracking)
+                    attemptedExamCount++;
+                }
+            }
+
+            // 3. COUNT AND CHECK ASSIGNMENT ACTIVITIES
+            List<Assignment> lessonAssignments = assignmentRepository.findByLesson(lesson);
+            totalAssignmentCount += lessonAssignments.size();
+            
+            for (Assignment assignment : lessonAssignments) {
+                Optional<AssignmentSubmission> submission = 
+                    assignmentSubmissionRepository.findByStudentAndAssignment(student, assignment);
+                if (submission.isPresent()) {
+                    submittedAssignmentCount++;
+                }
+            }
+        }
+
+        // Set the calculated counts in the DTO
+        dto.setTotalContentCount(totalContentCount);
+        dto.setViewedContentCount(viewedContentCount);
+        dto.setTotalAssignmentCount(totalAssignmentCount);
+        dto.setSubmittedAssignmentCount(submittedAssignmentCount);
+        dto.setTotalExamCount(totalExamCount);
+        dto.setAttemptedExamCount(attemptedExamCount);
     }
 }

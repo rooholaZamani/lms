@@ -20,4 +20,12 @@ public class ProgressDTO {
     private Integer completedLessonCount;
     private Double completionPercentage;
     private Set<Long> completedContent = new HashSet<>();
+    
+    // Additional fields for detailed progress tracking
+    private Integer totalContentCount;
+    private Integer viewedContentCount;
+    private Integer totalAssignmentCount;
+    private Integer submittedAssignmentCount;
+    private Integer totalExamCount;
+    private Integer attemptedExamCount;
 }
