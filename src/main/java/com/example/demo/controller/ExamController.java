@@ -221,6 +221,24 @@ public class ExamController {
         Long timeSpent = submissionData.get("timeSpent") != null ?
                 ((Number) submissionData.get("timeSpent")).longValue() : 0L;
 
+        // Validate time spent is reasonable
+        Exam exam = examService.findById(examId);
+        if (timeSpent > 0) {
+            // Time spent should not be more than 2x the exam time limit (allow for some buffer)
+            if (exam.getTimeLimit() != null) {
+                long maxAllowedTime = exam.getTimeLimit() * 60 * 2; // Convert minutes to seconds and double it
+                if (timeSpent > maxAllowedTime) {
+                    // Log but don't reject - could be network issues or browser issues
+                    System.out.println("Warning: Student spent " + timeSpent + " seconds on exam, which exceeds 2x time limit of " + exam.getTimeLimit() + " minutes");
+                }
+            }
+            
+            // Time spent should be at least 10 seconds (basic sanity check)
+            if (timeSpent < 10) {
+                System.out.println("Warning: Student spent only " + timeSpent + " seconds on exam, which seems too fast");
+            }
+        }
+
         // Submit exam with JSON answers
         Submission submission = examService.submitExam(examId, student, answersJson);
 
@@ -228,7 +246,6 @@ public class ExamController {
         submission = examService.updateSubmissionTimeSpent(submission, timeSpent);
 
         // Activity tracking
-        Exam exam = examService.findById(examId);
         Map<String, String> metadata = new HashMap<>();
         metadata.put("examTitle", exam.getTitle());
         metadata.put("lessonId", exam.getLesson().getId().toString());
