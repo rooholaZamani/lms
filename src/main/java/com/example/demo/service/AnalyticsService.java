@@ -8,6 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -51,6 +53,27 @@ public class AnalyticsService {
         this.activityLogRepository = activityLogRepository;
         this.contentRepository = contentRepository;
         this.assignmentRepository = assignmentRepository;
+    }
+
+    /**
+     * Utility method to get current Iran Standard Time
+     */
+    private LocalDateTime getNowInIranTime() {
+        return ZonedDateTime.now(ZoneId.of("Asia/Tehran")).toLocalDateTime();
+    }
+
+    /**
+     * Utility method to get Iran time for a specific days ago
+     */
+    private LocalDateTime getIranTimeMinusDays(int days) {
+        return ZonedDateTime.now(ZoneId.of("Asia/Tehran")).minusDays(days).toLocalDateTime();
+    }
+
+    /**
+     * Utility method to get Iran time for a specific months ago
+     */
+    private LocalDateTime getIranTimeMinusMonths(int months) {
+        return ZonedDateTime.now(ZoneId.of("Asia/Tehran")).minusMonths(months).toLocalDateTime();
     }
 
     /**
@@ -406,9 +429,9 @@ public class AnalyticsService {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(90);
+        LocalDateTime thirtyDaysAgo = getIranTimeMinusDays(90);
         List<ActivityLog> activities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, LocalDateTime.now());
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, getNowInIranTime());
 
         return activities.stream().map(activity -> {
             Map<String, Object> activityData = new HashMap<>();
@@ -474,7 +497,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
         List<ActivityLog> activities = activityLogRepository.findByUserAndTimestampBetweenOrderByTimestampDesc(
-                student, LocalDateTime.now().minusDays(90), LocalDateTime.now());
+                student, getIranTimeMinusDays(90), getNowInIranTime());
 
         Map<String, List<ActivityLog>> groupedActivities = activities.stream()
                 .collect(Collectors.groupingBy(ActivityLog::getActivityType));
@@ -3423,7 +3446,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Course not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime endDate = getNowInIranTime();
 
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
@@ -3595,15 +3618,15 @@ public class AnalyticsService {
     private LocalDateTime getStartDateByFilter(String timeFilter) {
         switch (timeFilter) {
             case "week":
-                return LocalDateTime.now().minusWeeks(1);
+                return getIranTimeMinusDays(7);
             case "month":
-                return LocalDateTime.now().minusMonths(1);
+                return getIranTimeMinusMonths(1);
             case "3months":
-                return LocalDateTime.now().minusMonths(3);
+                return getIranTimeMinusMonths(3);
             case "semester":
-                return LocalDateTime.now().minusMonths(6);
+                return getIranTimeMinusMonths(6);
             default:
-                return LocalDateTime.now().minusWeeks(2);
+                return getIranTimeMinusDays(14);
         }
     }
 
@@ -3620,7 +3643,7 @@ public class AnalyticsService {
                     .orElseThrow(() -> new RuntimeException("Course not found"));
 
             LocalDateTime startDate = getStartDateByFilterHeatmap(timeFilter);
-            LocalDateTime endDate = LocalDateTime.now();
+            LocalDateTime endDate = getNowInIranTime();
 
             // دریافت فعالیت‌های مربوط به دوره
             List<ActivityLog> activities = activityLogRepository
@@ -3690,7 +3713,7 @@ public class AnalyticsService {
 //                .orElseThrow(() -> new RuntimeException("Course not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime endDate = getNowInIranTime();
 
         // دریافت فعالیت‌های مربوط به دوره
         List<ActivityLog> activities = activityLogRepository
@@ -3939,7 +3962,7 @@ public class AnalyticsService {
      * دریافت تاریخ شروع بر اساس فیلتر زمانی
      */
     private LocalDateTime getStartDateByFilterHeatmap(String timeFilter) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = getNowInIranTime();
 
         switch (timeFilter) {
             case "7":
@@ -4107,7 +4130,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime endDate = getNowInIranTime();
 
         // دریافت تمام فعالیت‌های دانش‌آموز
         List<ActivityLog> allActivities = activityLogRepository
@@ -4196,7 +4219,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = LocalDateTime.now();
+        LocalDateTime endDate = getNowInIranTime();
 
         List<Submission> examSubmissions = submissionRepository.findByStudentAndTimestampBetween(
                 student, startDate, endDate);

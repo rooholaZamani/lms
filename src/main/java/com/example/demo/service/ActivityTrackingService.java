@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+solve heatmap problemimport java.time.ZonedDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +38,8 @@ public class ActivityTrackingService {
         log.setUser(user);
         log.setActivityType(activityType);
         log.setRelatedEntityId(entityId);
-        log.setTimestamp(LocalDateTime.now());
+        // Use Iran Standard Time for consistent timezone handling
+        log.setTimestamp(ZonedDateTime.now(ZoneId.of("Asia/Tehran")).toLocalDateTime());
         log.setTimeSpent(timeSpent);
         if (metadata != null) {
             log.setMetadata(metadata);
