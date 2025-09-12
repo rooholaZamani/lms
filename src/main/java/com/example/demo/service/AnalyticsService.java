@@ -3464,7 +3464,7 @@ public class AnalyticsService {
         distribution.forEach((type, count) -> {
             Map<String, Object> typeData = new HashMap<>();
             typeData.put("count", count);
-            typeData.put("percentage", total > 0 ? Math.round((double) count / total * 100 * 10.0) : 0);
+            typeData.put("percentage", total > 0 ? Math.round((double) count / total * 100.0) : 0);
             typeData.put("label", getActivityTypeLabel(type));
             result.put(type, typeData);
         });
@@ -3530,10 +3530,16 @@ public class AnalyticsService {
         // Add individual activity type data
         timeByTypeInSeconds.forEach((type, timeInSeconds) -> {
             double timeInMinutes = timeInSeconds / 60.0; // Convert to minutes for display
+            double timeInHours = timeInSeconds / 3600.0; // Convert to hours for display
             Map<String, Object> typeData = new HashMap<>();
+            // Keep backward compatibility
             typeData.put("totalMinutes", Math.round(timeInMinutes * 10.0) / 10.0); // Round to 1 decimal
-            typeData.put("totalHours", Math.round(timeInMinutes / 60.0 * 10.0) / 10.0); // Round to 1 decimal
-            typeData.put("percentage", totalTimeInSeconds > 0 ? Math.round((timeInSeconds / totalTimeInSeconds) * 100 * 10.0) / 10.0 : 0);
+            typeData.put("totalHours", Math.round(timeInHours * 10.0) / 10.0); // Round to 1 decimal
+            // Add fields that frontend expects
+            typeData.put("valueSeconds", Math.round(timeInSeconds));
+            typeData.put("valueMinutes", Math.round(timeInMinutes * 10.0) / 10.0);
+            typeData.put("valueHours", Math.round(timeInHours * 10.0) / 10.0);
+            typeData.put("percentage", totalTimeInSeconds > 0 ? Math.round((timeInSeconds / totalTimeInSeconds) * 100.0) : 0);
             typeData.put("label", getActivityTypeLabel(type));
             result.put(type, typeData);
         });
