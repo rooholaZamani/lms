@@ -543,10 +543,12 @@ public class AnalyticsService {
         // Get teacher's courses
         List<Course> teacherCourses = courseRepository.findByTeacher(teacher);
 
-        // Count total students across all teacher's courses
-        int totalStudents = teacherCourses.stream()
-                .mapToInt(course -> course.getEnrolledStudents().size())
-                .sum();
+        // Count unique students across all teacher's courses
+        Set<User> uniqueStudents = new HashSet<>();
+        for (Course course : teacherCourses) {
+            uniqueStudents.addAll(course.getEnrolledStudents());
+        }
+        int totalStudents = uniqueStudents.size();
 
         // Calculate average completion across all courses
         List<Progress> allProgress = new ArrayList<>();
@@ -557,10 +559,26 @@ public class AnalyticsService {
             allProgress.addAll(courseProgress);
         }
 
-        double averageCompletion = allProgress.stream()
-                .mapToDouble(Progress::getCompletionPercentage)
-                .average()
-                .orElse(0.0);
+        // Calculate modern activity-based average completion
+        double averageCompletion = 0.0;
+        if (!uniqueStudents.isEmpty()) {
+            double totalCompletion = 0.0;
+            int validProgressCount = 0;
+
+            for (User student : uniqueStudents) {
+                for (Course course : teacherCourses) {
+                    if (course.getEnrolledStudents().contains(student)) {
+                        double studentCourseProgress = calculateProgressFromActivities(student, course);
+                        totalCompletion += studentCourseProgress;
+                        validProgressCount++;
+                    }
+                }
+            }
+
+            if (validProgressCount > 0) {
+                averageCompletion = totalCompletion / validProgressCount;
+            }
+        }
 
         // Get all exam submissions for teacher's courses
         List<Submission> allSubmissions = new ArrayList<>();
@@ -585,17 +603,26 @@ public class AnalyticsService {
             allAssignmentSubmissions.addAll(courseAssignments);
         }
 
-        // Calculate total study hours
+        // Calculate proper average study time per student using activity-based calculation
+        double avgTimePerStudent = 0.0;
+        if (!uniqueStudents.isEmpty()) {
+            avgTimePerStudent = uniqueStudents.stream()
+                    .mapToLong(student -> calculateActualStudyTime(student, teacherCourses))
+                    .average()
+                    .orElse(0.0);
+        }
+
+        // Calculate total study hours for overview
         long totalHours = allProgress.stream()
                 .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
-                .sum() ; // Convert seconds to hours
+                .sum();
 
         overview.put("totalStudents", totalStudents);
         overview.put("totalCourses", teacherCourses.size());
         overview.put("averageCompletion", averageCompletion);
         overview.put("averageScore", averageScore);
         overview.put("totalHours", totalHours);
-        overview.put("avgTimePerStudent", totalStudents > 0 ? (double) totalHours / totalStudents : 0);
+        overview.put("avgTimePerStudent", avgTimePerStudent);
         overview.put("totalExams", allSubmissions.size());
         overview.put("totalAssignments", allAssignmentSubmissions.size());
 
@@ -1021,7 +1048,7 @@ public class AnalyticsService {
         long totalStudyTimeFromActivities = calculateActualStudyTime(student, studentCourses);
 
         performance.put("enrolledCourses", studentCourses.size());
-        performance.put("averageCompletion", Math.round(averageCompletion * 10.0));
+        performance.put("averageCompletion", Math.round(averageCompletion));
         performance.put("totalStudyTime", totalStudyTimeFromActivities); // Return time in seconds for frontend to display correctly
         performance.put("averageStudyTimePerCourse", studentCourses.isEmpty() ? 0 :
                 totalStudyTimeFromActivities / studentCourses.size()); // Return average time in seconds
@@ -1043,9 +1070,9 @@ public class AnalyticsService {
                 .count();
 
         performance.put("examsTaken", examSubmissions.size());
-        performance.put("averageExamScore", Math.round(averageExamScore * 10.0));
+        performance.put("averageExamScore", Math.round(averageExamScore));
         performance.put("examPassRate", examSubmissions.isEmpty() ? 0 :
-                Math.round((double) passedExams / examSubmissions.size() * 100 * 10.0));
+                Math.round((double) passedExams / examSubmissions.size() * 100));
 
         // Assignment performance
         List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
@@ -1132,10 +1159,26 @@ public class AnalyticsService {
                         p.getLastAccessed().isAfter(LocalDateTime.now().minusDays(7)))
                 .count();
 
-        double averageCompletion = allStudentProgress.stream()
-                .mapToDouble(Progress::getCompletionPercentage)
-                .average()
-                .orElse(0.0);
+        // Calculate modern activity-based average completion
+        double averageCompletion = 0.0;
+        if (!allStudents.isEmpty()) {
+            double totalCompletion = 0.0;
+            int validProgressCount = 0;
+
+            for (User student : allStudents) {
+                for (Course course : teacherCourses) {
+                    if (course.getEnrolledStudents().contains(student)) {
+                        double studentCourseProgress = calculateProgressFromActivities(student, course);
+                        totalCompletion += studentCourseProgress;
+                        validProgressCount++;
+                    }
+                }
+            }
+
+            if (validProgressCount > 0) {
+                averageCompletion = totalCompletion / validProgressCount;
+            }
+        }
 
         long completedStudents = allStudentProgress.stream()
                 .filter(p -> p.getCompletionPercentage() >= 100)
@@ -1172,13 +1215,13 @@ public class AnalyticsService {
         overview.put("totalStudents", totalStudents);
         overview.put("activeStudents", activeStudents);
         overview.put("inactiveStudents", totalStudents - activeStudents);
-        overview.put("averageCompletion", Math.round(averageCompletion * 10.0));
+        overview.put("averageCompletion", Math.round(averageCompletion));
         overview.put("completedStudents", completedStudents);
         overview.put("totalCourses", teacherCourses.size());
         overview.put("totalExamsTaken", allSubmissions.size());
-        overview.put("averageExamScore", Math.round(averageExamScore * 10.0));
+        overview.put("averageExamScore", Math.round(averageExamScore));
         overview.put("examPassRate", allSubmissions.isEmpty() ? 0 :
-                Math.round((double) passedExams / allSubmissions.size() * 100 * 10.0));
+                Math.round((double) passedExams / allSubmissions.size() * 100));
         overview.put("totalAssignmentSubmissions", allAssignmentSubmissions.size());
 
         // Activity levels
