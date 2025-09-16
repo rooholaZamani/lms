@@ -576,6 +576,51 @@ public class AnalyticsController {
                 student.getId(), courseId, timeFilter, limit);
         return ResponseEntity.ok(activities);
     }
+
+    @GetMapping("/student/daily-activity")
+    @Operation(summary = "Get student's daily activity data for charts")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentDailyActivity(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(defaultValue = "30") int days,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+
+        // Verify user is a student
+        boolean isStudent = student.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        if (!isStudent) {
+            throw new RuntimeException("Access denied: Only students can access this endpoint");
+        }
+
+        Map<String, Object> dailyActivity = analyticsService.getStudentDailyActivity(student.getId(), courseId, days);
+        return ResponseEntity.ok(dailyActivity);
+    }
+
+    @GetMapping("/student/activity-summary")
+    @Operation(summary = "Get student's activity summary statistics")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getStudentActivitySummary(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(defaultValue = "month") String timeFilter,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+
+        // Verify user is a student
+        boolean isStudent = student.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT"));
+
+        if (!isStudent) {
+            throw new RuntimeException("Access denied: Only students can access this endpoint");
+        }
+
+        Map<String, Object> summary = analyticsService.getStudentActivitySummary(student.getId(), courseId, timeFilter);
+        return ResponseEntity.ok(summary);
+    }
+
     @GetMapping("/student/grades-distribution")
     @Operation(summary = "Get student's grades distribution")
     @SecurityRequirement(name = "basicAuth")
@@ -589,5 +634,20 @@ public class AnalyticsController {
         Map<String, Object> gradesData = analyticsService.getStudentGradesDistribution(
                 student.getId(), courseId, timeFilter);
         return ResponseEntity.ok(gradesData);
+    }
+
+    @GetMapping("/student/enhanced-grades-distribution")
+    @Operation(summary = "Get student's enhanced grades distribution with percentage-based categories")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> getEnhancedStudentGradesDistribution(
+            @RequestParam(required = false) Long courseId,
+            @RequestParam(defaultValue = "month") String timeFilter,
+            Authentication authentication) {
+
+        User student = userService.findByUsername(authentication.getName());
+
+        Map<String, Object> enhancedGradesData = analyticsService.getEnhancedStudentGradesDistribution(
+                student.getId(), courseId, timeFilter);
+        return ResponseEntity.ok(enhancedGradesData);
     }
 }

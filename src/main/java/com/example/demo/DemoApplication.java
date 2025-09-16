@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
+import jakarta.annotation.PostConstruct;
+import java.util.TimeZone;
+
 
 @SpringBootApplication
 @EnableTransactionManagement
@@ -18,6 +21,12 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 		"com.example.demo.repository"
 })
 public class DemoApplication {
+
+	@PostConstruct
+	public void init() {
+		TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tehran"));
+	}
+
 	public static void main(String[] args) {
 		SpringApplication.run(DemoApplication.class, args);
 	}

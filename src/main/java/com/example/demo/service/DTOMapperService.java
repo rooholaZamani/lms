@@ -357,9 +357,8 @@ public class DTOMapperService {
             dto.setTotalLessons(storedTotalLessons);
         }
         
-        // Calculate actual completed lesson count based on granular activities
-        int actualCompletedLessonCount = calculateCompletedLessonCount(progress.getStudent(), progress.getCourse());
-        dto.setCompletedLessonCount(actualCompletedLessonCount);
+        // Use the cached count for completed lessons for performance
+        dto.setCompletedLessonCount(progress.getCompletedLessonCount() != null ? progress.getCompletedLessonCount() : 0);
         
         // Use real-time activity-based calculation instead of stored value
         double calculatedProgress = calculateProgressFromActivities(progress.getStudent(), progress.getCourse());

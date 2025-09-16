@@ -666,16 +666,112 @@ public class ExamService {
     }
     private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
         try {
-            String studentText = studentAnswer.toString().trim();
+            // Student answers come as an array for fill-in-the-blank questions
+            List<String> studentAnswers;
+            if (studentAnswer instanceof List) {
+                studentAnswers = ((List<?>) studentAnswer).stream()
+                        .map(Object::toString)
+                        .map(String::trim)
+                        .collect(Collectors.toList());
+            } else if (studentAnswer instanceof String[]) {
+                studentAnswers = Arrays.stream((String[]) studentAnswer)
+                        .map(String::trim)
+                        .collect(Collectors.toList());
+            } else {
+                // Fallback for single string (shouldn't happen in normal flow)
+                studentAnswers = Arrays.asList(studentAnswer.toString().trim());
+            }
 
-            // Check against all possible correct answers
-            return question.getAnswers().stream()
-                    .anyMatch(answer -> {
-                        String correctText = answer.getText().trim();
-                        // Case-insensitive comparison
-                        return correctText.equalsIgnoreCase(studentText);
-                    });
+            // Use BlankAnswer entities for validation
+            List<BlankAnswer> blankAnswers = question.getBlankAnswers();
+            if (blankAnswers.isEmpty()) {
+                return false; // No blanks defined
+            }
 
+            // Sort blank answers by index to ensure proper order
+            blankAnswers.sort(Comparator.comparing(BlankAnswer::getBlankIndex));
+
+            // Check each blank answer
+            for (int i = 0; i < blankAnswers.size(); i++) {
+                BlankAnswer blankAnswer = blankAnswers.get(i);
+
+                // Get student's answer for this blank
+                String studentBlankAnswer = (i < studentAnswers.size())
+                    ? studentAnswers.get(i)
+                    : "";
+
+                if (studentBlankAnswer.isEmpty()) {
+                    return false; // Empty answer for required blank
+                }
+
+                // Check if student answer matches this blank
+                if (!isBlankAnswerCorrect(blankAnswer, studentBlankAnswer)) {
+                    return false; // At least one blank is wrong
+                }
+            }
+
+            return true; // All blanks are correct
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isBlankAnswerCorrect(BlankAnswer blankAnswer, String studentAnswer) {
+        try {
+            // Check against correct answer
+            String correctAnswer = blankAnswer.getCorrectAnswer();
+            if (correctAnswer != null) {
+                if (blankAnswer.getCaseSensitive()) {
+                    if (correctAnswer.equals(studentAnswer)) {
+                        return true;
+                    }
+                } else {
+                    if (correctAnswer.equalsIgnoreCase(studentAnswer)) {
+                        return true;
+                    }
+                }
+            }
+
+            // Check against acceptable answers
+            String acceptableAnswersJson = blankAnswer.getAcceptableAnswers();
+            if (acceptableAnswersJson != null && !acceptableAnswersJson.trim().isEmpty()) {
+                try {
+                    // Parse JSON array of acceptable answers
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    List<String> acceptableAnswers = mapper.readValue(acceptableAnswersJson,
+                        mapper.getTypeFactory().constructCollectionType(List.class, String.class));
+
+                    for (String acceptable : acceptableAnswers) {
+                        if (blankAnswer.getCaseSensitive()) {
+                            if (acceptable.equals(studentAnswer)) {
+                                return true;
+                            }
+                        } else {
+                            if (acceptable.equalsIgnoreCase(studentAnswer)) {
+                                return true;
+                            }
+                        }
+                    }
+                } catch (Exception jsonException) {
+                    // If JSON parsing fails, treat as comma-separated string
+                    String[] acceptableAnswers = acceptableAnswersJson.split(",");
+                    for (String acceptable : acceptableAnswers) {
+                        acceptable = acceptable.trim();
+                        if (blankAnswer.getCaseSensitive()) {
+                            if (acceptable.equals(studentAnswer)) {
+                                return true;
+                            }
+                        } else {
+                            if (acceptable.equalsIgnoreCase(studentAnswer)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
         } catch (Exception e) {
             return false;
         }

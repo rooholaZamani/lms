@@ -3,9 +3,11 @@ package com.example.demo.controller;
 import com.example.demo.dto.AssignmentDTO;
 import com.example.demo.dto.AssignmentSubmissionDTO;
 import com.example.demo.model.*;
+import com.example.demo.service.ActivityTrackingService;
 import com.example.demo.service.AssignmentService;
 import com.example.demo.service.DTOMapperService;
 import com.example.demo.service.FileStorageService;
+import com.example.demo.service.LessonCompletionService;
 import com.example.demo.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,20 +30,26 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/assignments")
 public class AssignmentController {
 
+    private final ActivityTrackingService activityTrackingService;
     private final AssignmentService assignmentService;
     private final UserService userService;
     private final FileStorageService fileStorageService;
     private final DTOMapperService dtoMapperService;
+    private final LessonCompletionService lessonCompletionService;
 
     public AssignmentController(
+            ActivityTrackingService activityTrackingService,
             AssignmentService assignmentService,
             UserService userService,
             FileStorageService fileStorageService,
-            DTOMapperService dtoMapperService) {
+            DTOMapperService dtoMapperService,
+            LessonCompletionService lessonCompletionService) {
+        this.activityTrackingService = activityTrackingService;
         this.assignmentService = assignmentService;
         this.userService = userService;
         this.fileStorageService = fileStorageService;
         this.dtoMapperService = dtoMapperService;
+        this.lessonCompletionService = lessonCompletionService;
     }
 
     @PostMapping(value = "/lesson/{lessonId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -83,6 +91,34 @@ public class AssignmentController {
 
         User student = userService.findByUsername(authentication.getName());
         AssignmentSubmission submission = assignmentService.submitAssignment(assignmentId, student, file, comment);
+
+        // Activity tracking for assignment submission
+        Assignment assignment = submission.getAssignment();
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("assignmentTitle", assignment.getTitle());
+        metadata.put("lessonId", assignment.getLesson().getId().toString());
+        metadata.put("lessonTitle", assignment.getLesson().getTitle());
+        metadata.put("courseId", assignment.getLesson().getCourse().getId().toString());
+        metadata.put("courseTitle", assignment.getLesson().getCourse().getTitle());
+        if (submission.getComment() != null && !submission.getComment().trim().isEmpty()) {
+            metadata.put("hasComment", "true");
+        }
+        if (file != null && !file.isEmpty()) {
+            metadata.put("hasFile", "true");
+            metadata.put("fileName", file.getOriginalFilename());
+        }
+
+        // Estimate time spent (assignments typically take 30-60 minutes)
+        Long timeSpent = 1800L; // 30 minutes default
+
+        activityTrackingService.logActivity(student, "ASSIGNMENT_SUBMISSION", submission.getId(), timeSpent, metadata);
+        if (timeSpent > 0) {
+            activityTrackingService.updateStudyTime(student, timeSpent);
+        }
+
+        // Check for lesson auto-completion after assignment submission
+        lessonCompletionService.checkAndAutoCompleteLesson(student, submission.getAssignment().getLesson());
+
         return ResponseEntity.ok(dtoMapperService.mapToAssignmentSubmissionDTO(submission));
     }
 

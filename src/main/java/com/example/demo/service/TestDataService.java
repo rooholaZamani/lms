@@ -273,7 +273,7 @@ public class TestDataService {
                     question.setQuestionType(types[j % 3]);
                     question.setPoints(10 + (j * 5));
                     question.setDifficulty(0.3 + (j * 0.1));
-                    question.setRequired(true);
+                    // Note: setRequired method removed from Question model
                     questionRepository.save(question);
                 }
             }
@@ -284,7 +284,7 @@ public class TestDataService {
         List<Course> courses = courseRepository.findAll();
 
         for (Course course : courses) {
-            List<Lesson> lessons = lessonRepository.findByCourseId(course.getId());
+            List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
             if (!lessons.isEmpty()) {
                 // Create 1-2 assignments per course
                 int assignmentCount = 1 + (course.getId().intValue() % 2);

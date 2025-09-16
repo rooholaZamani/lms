@@ -12,6 +12,7 @@ import java.time.ZonedDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import com.example.demo.model.GradeCategory;
 import java.util.stream.Collectors;
 import java.util.Set;
 
@@ -1144,12 +1145,15 @@ public class AnalyticsService {
         Set<User> allStudents = new HashSet<>();
 
         for (Course course : teacherCourses) {
-            List<Progress> courseProgress = progressRepository.findAll().stream()
-                    .filter(p -> p.getCourse().getId().equals(course.getId()))
-                    .collect(Collectors.toList());
+            // Get enrolled students for this course
+            List<User> enrolledStudents = course.getEnrolledStudents();
+            allStudents.addAll(enrolledStudents);
 
-            allStudentProgress.addAll(courseProgress);
-            allStudents.addAll(course.getEnrolledStudents());
+            // Get progress records only for enrolled students
+            for (User student : enrolledStudents) {
+                Optional<Progress> progressOpt = progressRepository.findByStudentAndCourse(student, course);
+                progressOpt.ifPresent(allStudentProgress::add);
+            }
         }
 
         // Calculate statistics
@@ -1184,13 +1188,16 @@ public class AnalyticsService {
                 .filter(p -> p.getCompletionPercentage() >= 100)
                 .count();
 
-        // Get exam statistics
+        // Get exam statistics for enrolled students only
         List<Submission> allSubmissions = new ArrayList<>();
         for (Course course : teacherCourses) {
-            List<Submission> courseSubmissions = submissionRepository.findAll().stream()
-                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
-                    .collect(Collectors.toList());
-            allSubmissions.addAll(courseSubmissions);
+            List<User> enrolledStudents = course.getEnrolledStudents();
+            for (User student : enrolledStudents) {
+                List<Submission> studentSubmissions = submissionRepository.findByStudent(student).stream()
+                        .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
+                        .collect(Collectors.toList());
+                allSubmissions.addAll(studentSubmissions);
+            }
         }
 
         double averageExamScore = allSubmissions.stream()
@@ -1202,13 +1209,16 @@ public class AnalyticsService {
                 .filter(Submission::isPassed)
                 .count();
 
-        // Get assignment statistics
+        // Get assignment statistics for enrolled students only
         List<AssignmentSubmission> allAssignmentSubmissions = new ArrayList<>();
         for (Course course : teacherCourses) {
-            List<AssignmentSubmission> courseAssignments = assignmentSubmissionRepository.findAll().stream()
-                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
-                    .collect(Collectors.toList());
-            allAssignmentSubmissions.addAll(courseAssignments);
+            List<User> enrolledStudents = course.getEnrolledStudents();
+            for (User student : enrolledStudents) {
+                List<AssignmentSubmission> studentAssignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                        .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
+                        .collect(Collectors.toList());
+                allAssignmentSubmissions.addAll(studentAssignmentSubmissions);
+            }
         }
 
         // Build overview
@@ -1979,22 +1989,280 @@ public class AnalyticsService {
         }
     }
 
+    /**
+     * Calculate grade distribution using percentage-based categories.
+     * Uses default assignment max score of 20.
+     *
+     * @param scores List of raw scores
+     * @return Map with category names and counts
+     */
     private Map<String, Integer> calculateGradeDistribution(List<Integer> scores) {
+        return calculateGradeDistribution(scores, 20.0); // Default assignment max score
+    }
+
+    /**
+     * Calculate grade distribution using percentage-based categories with custom max score.
+     *
+     * @param scores List of raw scores
+     * @param maxScore Maximum possible score for the assessment
+     * @return Map with category names and counts including percentage ranges
+     */
+    private Map<String, Integer> calculateGradeDistribution(List<Integer> scores, double maxScore) {
         Map<String, Integer> distribution = new HashMap<>();
 
+        // Initialize all categories with 0 count to ensure they appear in results
+        for (GradeCategory category : GradeCategory.values()) {
+            distribution.put(category.name().toLowerCase(), 0);
+        }
+
         for (Integer score : scores) {
-            if (score >= 18) {
-                distribution.merge("excellent", 1, Integer::sum);
-            } else if (score >= 15) {
-                distribution.merge("good", 1, Integer::sum);
-            } else if (score >= 10) {
-                distribution.merge("average", 1, Integer::sum);
-            } else {
-                distribution.merge("poor", 1, Integer::sum);
+            if (score != null) {
+                GradeCategory category = GradeCategory.fromScore(score, maxScore);
+                distribution.merge(category.name().toLowerCase(), 1, Integer::sum);
             }
         }
 
         return distribution;
+    }
+
+    /**
+     * Calculate enhanced grade distribution with additional metadata.
+     *
+     * @param scores List of raw scores
+     * @param maxScore Maximum possible score
+     * @return Map with categories, counts, percentages, and display info
+     */
+    private Map<String, Object> calculateEnhancedGradeDistribution(List<Integer> scores, double maxScore) {
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Integer> distribution = calculateGradeDistribution(scores, maxScore);
+
+        int totalScores = scores.size();
+        List<Map<String, Object>> categories = new ArrayList<>();
+
+        for (GradeCategory category : GradeCategory.values()) {
+            String categoryName = category.name().toLowerCase();
+            int count = distribution.get(categoryName);
+            double percentage = totalScores > 0 ? (double) count / totalScores * 100 : 0;
+
+            Map<String, Object> categoryData = new HashMap<>();
+            categoryData.put("name", categoryName);
+            categoryData.put("label", category.getEnglishLabel());
+            categoryData.put("persianLabel", category.getPersianLabel());
+            categoryData.put("count", count);
+            categoryData.put("percentage", Math.round(percentage * 100.0) / 100.0);
+            categoryData.put("range", category.getRange());
+            categoryData.put("color", category.getColor());
+
+            categories.add(categoryData);
+        }
+
+        result.put("categories", categories);
+        result.put("totalCount", totalScores);
+        result.put("distribution", distribution); // Keep backward compatibility
+
+        return result;
+    }
+
+    /**
+     * Calculate grade distribution for exam submissions using each exam's totalPossibleScore.
+     *
+     * @param examSubmissions List of exam submissions
+     * @return Grade distribution map
+     */
+    private Map<String, Integer> calculateExamGradeDistribution(List<Submission> examSubmissions) {
+        Map<String, Integer> distribution = new HashMap<>();
+
+        // Initialize all categories with 0 count
+        for (GradeCategory category : GradeCategory.values()) {
+            distribution.put(category.name().toLowerCase(), 0);
+        }
+
+        for (Submission submission : examSubmissions) {
+            if (submission.getScore() != null && submission.getExam() != null) {
+                Integer totalPossibleScore = submission.getExam().getTotalPossibleScore();
+                if (totalPossibleScore != null && totalPossibleScore > 0) {
+                    GradeCategory category = GradeCategory.fromScore(submission.getScore(), totalPossibleScore);
+                    distribution.merge(category.name().toLowerCase(), 1, Integer::sum);
+                } else {
+                    // Fallback to default scoring if totalPossibleScore is not set
+                    GradeCategory category = GradeCategory.fromScore(submission.getScore(), 20.0);
+                    distribution.merge(category.name().toLowerCase(), 1, Integer::sum);
+                }
+            }
+        }
+
+        return distribution;
+    }
+
+    /**
+     * Calculate grade distribution for assignment submissions using default max score of 20.
+     *
+     * @param assignmentSubmissions List of assignment submissions
+     * @return Grade distribution map
+     */
+    private Map<String, Integer> calculateAssignmentGradeDistribution(List<AssignmentSubmission> assignmentSubmissions) {
+        Map<String, Integer> distribution = new HashMap<>();
+
+        // Initialize all categories with 0 count
+        for (GradeCategory category : GradeCategory.values()) {
+            distribution.put(category.name().toLowerCase(), 0);
+        }
+
+        for (AssignmentSubmission submission : assignmentSubmissions) {
+            if (submission.getScore() != null) {
+                // Use default assignment max score of 20
+                GradeCategory category = GradeCategory.fromScore(submission.getScore(), 20.0);
+                distribution.merge(category.name().toLowerCase(), 1, Integer::sum);
+            }
+        }
+
+        return distribution;
+    }
+
+    /**
+     * Get enhanced analytics with submission details for assignments.
+     * This addresses the issue where only aggregated distribution is shown,
+     * missing individual assignment submission details.
+     *
+     * @param studentId Student ID
+     * @param courseId Course ID (optional)
+     * @param timeFilter Time filter
+     * @return Enhanced analytics with individual submission tracking
+     */
+    public Map<String, Object> getEnhancedStudentGradesDistribution(Long studentId, Long courseId, String timeFilter) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        LocalDateTime startDate = getStartDateByFilter(timeFilter);
+        LocalDateTime endDate = getNowInIranTime();
+
+        List<Submission> examSubmissions = submissionRepository.findByStudentAndTimestampBetween(
+                student, startDate, endDate);
+
+        if (courseId != null) {
+            examSubmissions = examSubmissions.stream()
+                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+        }
+
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository
+                .findByStudentAndSubmittedAtBetween(student, startDate, endDate);
+
+        if (courseId != null) {
+            assignmentSubmissions = assignmentSubmissions.stream()
+                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
+                    .collect(Collectors.toList());
+        }
+
+        Map<String, Object> result = new HashMap<>();
+
+        // Enhanced exam distribution
+        Map<String, Object> examAnalytics = calculateEnhancedExamGradeDistribution(examSubmissions);
+
+        // Enhanced assignment distribution
+        Map<String, Object> assignmentAnalytics = calculateEnhancedAssignmentGradeDistribution(assignmentSubmissions);
+
+        result.put("examAnalytics", examAnalytics);
+        result.put("assignmentAnalytics", assignmentAnalytics);
+
+        // Individual submission details for debugging the "only 1 assignment showing" issue
+        result.put("submissionSummary", Map.of(
+                "totalAssignmentsSubmitted", assignmentSubmissions.size(),
+                "assignmentsGraded", assignmentSubmissions.stream()
+                        .mapToInt(as -> as.getScore() != null ? 1 : 0)
+                        .sum(),
+                "assignmentsPending", assignmentSubmissions.stream()
+                        .mapToInt(as -> as.getScore() == null ? 1 : 0)
+                        .sum(),
+                "totalExamsSubmitted", examSubmissions.size()
+        ));
+
+        return result;
+    }
+
+    private Map<String, Object> calculateEnhancedExamGradeDistribution(List<Submission> examSubmissions) {
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Integer> distribution = calculateExamGradeDistribution(examSubmissions);
+
+        List<Map<String, Object>> examDetails = examSubmissions.stream()
+                .filter(s -> s.getScore() != null)
+                .map(s -> {
+                    Integer totalScore = s.getExam().getTotalPossibleScore();
+                    double percentage = totalScore != null && totalScore > 0
+                            ? GradeCategory.calculatePercentage(s.getScore(), totalScore)
+                            : GradeCategory.calculatePercentage(s.getScore(), 20.0);
+
+                    GradeCategory category = totalScore != null && totalScore > 0
+                            ? GradeCategory.fromScore(s.getScore(), totalScore)
+                            : GradeCategory.fromScore(s.getScore(), 20.0);
+
+                    Map<String, Object> examDetail = new HashMap<>();
+                    examDetail.put("examTitle", s.getExam().getTitle());
+                    examDetail.put("score", s.getScore());
+                    examDetail.put("totalPossible", totalScore != null ? totalScore : 20);
+                    examDetail.put("percentage", Math.round(percentage * 100.0) / 100.0);
+                    examDetail.put("category", category.name().toLowerCase());
+                    examDetail.put("categoryLabel", category.getPersianLabel());
+                    examDetail.put("date", s.getSubmissionTime());
+                    return examDetail;
+                })
+                .collect(Collectors.toList());
+
+        result.put("distribution", distribution);
+        result.put("examDetails", examDetails);
+        result.put("totalCount", examSubmissions.size());
+
+        return result;
+    }
+
+    private Map<String, Object> calculateEnhancedAssignmentGradeDistribution(List<AssignmentSubmission> assignmentSubmissions) {
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Integer> distribution = calculateAssignmentGradeDistribution(assignmentSubmissions);
+
+        // Detailed assignment breakdown - this will help debug the "only 1 showing" issue
+        List<Map<String, Object>> allAssignmentDetails = assignmentSubmissions.stream()
+                .map(as -> {
+                    Map<String, Object> detail = new HashMap<>();
+                    detail.put("assignmentTitle", as.getAssignment().getTitle());
+                    detail.put("submittedAt", as.getSubmittedAt());
+                    detail.put("isGraded", as.getScore() != null);
+
+                    if (as.getScore() != null) {
+                        double percentage = GradeCategory.calculatePercentage(as.getScore(), 20.0);
+                        GradeCategory category = GradeCategory.fromScore(as.getScore(), 20.0);
+
+                        detail.put("score", as.getScore());
+                        detail.put("totalPossible", 20);
+                        detail.put("percentage", Math.round(percentage * 100.0) / 100.0);
+                        detail.put("category", category.name().toLowerCase());
+                        detail.put("categoryLabel", category.getPersianLabel());
+                        detail.put("gradedAt", as.getGradedAt());
+                    } else {
+                        detail.put("status", "pending_grading");
+                    }
+
+                    return detail;
+                })
+                .collect(Collectors.toList());
+
+        // Separate graded vs ungraded for better visibility
+        List<Map<String, Object>> gradedAssignments = allAssignmentDetails.stream()
+                .filter(detail -> (Boolean) detail.get("isGraded"))
+                .collect(Collectors.toList());
+
+        List<Map<String, Object>> pendingAssignments = allAssignmentDetails.stream()
+                .filter(detail -> !(Boolean) detail.get("isGraded"))
+                .collect(Collectors.toList());
+
+        result.put("distribution", distribution);
+        result.put("allAssignments", allAssignmentDetails);
+        result.put("gradedAssignments", gradedAssignments);
+        result.put("pendingAssignments", pendingAssignments);
+        result.put("totalSubmitted", assignmentSubmissions.size());
+        result.put("totalGraded", gradedAssignments.size());
+        result.put("totalPending", pendingAssignments.size());
+
+        return result;
     }
 
     private Map<String, Object> createTimeRange(String label, Long minTime, Long maxTime, List<Long> times) {
@@ -2795,18 +3063,30 @@ public class AnalyticsService {
     /**
      * Helper method to check if assignment is related to course
      */
-    private boolean isAssignmentRelatedToCourse(Long assignmentId, Long courseId) {
+    private boolean isAssignmentRelatedToCourse(Long relatedEntityId, Long courseId) {
         try {
-            Optional<Assignment> assignmentOpt = assignmentRepository.findById(assignmentId);
+            // First, check if the ID belongs to an AssignmentSubmission
+            Optional<AssignmentSubmission> submissionOpt = assignmentSubmissionRepository.findById(relatedEntityId);
+            if (submissionOpt.isPresent()) {
+                Assignment assignment = submissionOpt.get().getAssignment();
+                if (assignment != null && assignment.getLesson() != null && assignment.getLesson().getCourse() != null) {
+                    return assignment.getLesson().getCourse().getId().equals(courseId);
+                }
+            }
 
+            // If not a submission, check if it's an Assignment ID directly
+            Optional<Assignment> assignmentOpt = assignmentRepository.findById(relatedEntityId);
             if (assignmentOpt.isPresent()) {
                 Assignment assignment = assignmentOpt.get();
-                return assignment.getLesson() != null &&
-                        assignment.getLesson().getCourse() != null &&
-                        assignment.getLesson().getCourse().getId().equals(courseId);
+                if (assignment.getLesson() != null && assignment.getLesson().getCourse() != null) {
+                    return assignment.getLesson().getCourse().getId().equals(courseId);
+                }
             }
+
             return false;
         } catch (Exception e) {
+            // Log the exception for debugging purposes
+            // logger.error("Error checking if assignment is related to course", e);
             return false;
         }
     }
@@ -4223,6 +4503,153 @@ public class AnalyticsService {
     }
 
     /**
+     * Get daily activity data for student charts
+     */
+    public Map<String, Object> getStudentDailyActivity(Long studentId, Long courseId, int days) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        LocalDateTime endDate = getNowInIranTime();
+        LocalDateTime startDate = endDate.minusDays(days);
+
+        // Get activities in the specified time range
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate);
+
+        // Filter by course if specified
+        if (courseId != null) {
+            activities = activities.stream()
+                    .filter(log -> isCourseRelatedActivity(log, courseId))
+                    .collect(Collectors.toList());
+        }
+
+        // Group activities by date
+        Map<String, List<ActivityLog>> activitiesByDate = activities.stream()
+                .collect(Collectors.groupingBy(
+                        activity -> activity.getTimestamp().toLocalDate().toString(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        // Create daily aggregated data for charts
+        List<Map<String, Object>> dailyData = new ArrayList<>();
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate date = endDate.minusDays(i).toLocalDate();
+            String dateStr = date.toString();
+
+            List<ActivityLog> dayActivities = activitiesByDate.getOrDefault(dateStr, new ArrayList<>());
+
+            Map<String, Object> dayData = new HashMap<>();
+            dayData.put("date", dateStr);
+            dayData.put("dayName", date.getDayOfWeek().toString());
+            dayData.put("totalActivities", dayActivities.size());
+
+            // Count activities by type
+            Map<String, Long> activityCounts = dayActivities.stream()
+                    .collect(Collectors.groupingBy(
+                            ActivityLog::getActivityType,
+                            Collectors.counting()
+                    ));
+
+            dayData.put("views", activityCounts.getOrDefault("CONTENT_VIEW", 0L));
+            dayData.put("submissions", activityCounts.getOrDefault("EXAM_SUBMISSION", 0L) +
+                                      activityCounts.getOrDefault("ASSIGNMENT_SUBMISSION", 0L));
+            dayData.put("completions", activityCounts.getOrDefault("LESSON_COMPLETION", 0L));
+            dayData.put("logins", activityCounts.getOrDefault("LOGIN", 0L));
+
+            // Total time spent
+            long totalTime = dayActivities.stream()
+                    .mapToLong(a -> a.getTimeSpent() != null ? a.getTimeSpent() : 0L)
+                    .sum();
+            dayData.put("timeSpent", totalTime);
+
+            dailyData.add(dayData);
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("dailyData", dailyData);
+        result.put("totalDays", days);
+        result.put("periodStart", startDate.toLocalDate().toString());
+        result.put("periodEnd", endDate.toLocalDate().toString());
+
+        // Overall statistics
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalActivities", activities.size());
+        summary.put("totalTimeSpent", activities.stream()
+                .mapToLong(a -> a.getTimeSpent() != null ? a.getTimeSpent() : 0L)
+                .sum());
+        summary.put("activeDays", activitiesByDate.size());
+        summary.put("averageActivitiesPerDay", activities.size() / (double) days);
+
+        result.put("summary", summary);
+        return result;
+    }
+
+    /**
+     * Get activity summary statistics for student
+     */
+    public Map<String, Object> getStudentActivitySummary(Long studentId, Long courseId, String timeFilter) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        LocalDateTime startDate = getStartDateByFilter(timeFilter);
+        LocalDateTime endDate = getNowInIranTime();
+
+        // Get activities in the specified time range
+        List<ActivityLog> activities = activityLogRepository
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate);
+
+        // Filter by course if specified
+        if (courseId != null) {
+            activities = activities.stream()
+                    .filter(log -> isCourseRelatedActivity(log, courseId))
+                    .collect(Collectors.toList());
+        }
+
+        Map<String, Object> summary = new HashMap<>();
+
+        // Activity type breakdown
+        Map<String, Long> activityBreakdown = activities.stream()
+                .collect(Collectors.groupingBy(
+                        ActivityLog::getActivityType,
+                        Collectors.counting()
+                ));
+        summary.put("activityBreakdown", activityBreakdown);
+
+        // Time statistics
+        long totalTime = activities.stream()
+                .mapToLong(a -> a.getTimeSpent() != null ? a.getTimeSpent() : 0L)
+                .sum();
+        summary.put("totalTimeSpent", totalTime);
+        summary.put("averageTimePerActivity", activities.isEmpty() ? 0 : totalTime / activities.size());
+
+        // Activity frequency
+        Set<String> activeDays = activities.stream()
+                .map(a -> a.getTimestamp().toLocalDate().toString())
+                .collect(Collectors.toSet());
+        summary.put("activeDays", activeDays.size());
+        summary.put("totalActivities", activities.size());
+
+        // Most active day of week
+        Map<String, Long> dayOfWeekCounts = activities.stream()
+                .collect(Collectors.groupingBy(
+                        a -> a.getTimestamp().getDayOfWeek().toString(),
+                        Collectors.counting()
+                ));
+        summary.put("dayOfWeekBreakdown", dayOfWeekCounts);
+
+        // Most active time periods
+        Map<String, Long> hourCounts = activities.stream()
+                .collect(Collectors.groupingBy(
+                        a -> String.valueOf(a.getTimestamp().getHour()),
+                        Collectors.counting()
+                ));
+        summary.put("hourlyBreakdown", hourCounts);
+
+        return summary;
+    }
+
+    /**
      * ساخت توضیحات فعالیت
      */
     private String createActivityDescription(ActivityLog activity) {
@@ -4290,19 +4717,9 @@ public class AnalyticsService {
                     .collect(Collectors.toList());
         }
 
-// Calculate separate distributions
-        Map<String, Integer> examDistribution = calculateGradeDistribution(
-                examSubmissions.stream()
-                        .map(Submission::getScore)
-                        .collect(Collectors.toList())
-        );
-
-        Map<String, Integer> assignmentDistribution = calculateGradeDistribution(
-                assignmentSubmissions.stream()
-                        .filter(as -> as.getScore() != null)
-                        .map(AssignmentSubmission::getScore)
-                        .collect(Collectors.toList())
-        );
+// Calculate separate distributions with proper max scores
+        Map<String, Integer> examDistribution = calculateExamGradeDistribution(examSubmissions);
+        Map<String, Integer> assignmentDistribution = calculateAssignmentGradeDistribution(assignmentSubmissions);
 
 // Combined distribution (optional)
         List<Integer> allScores = new ArrayList<>();

@@ -102,7 +102,7 @@ public class LessonCompletionService {
     }
 
     /**
-     * Check if a lesson is truly completed
+     * Check if a lesson is truly completed by validating its requirements.
      */
     public boolean isLessonCompleted(User student, Lesson lesson) {
         Course course = lesson.getCourse();
@@ -112,15 +112,8 @@ public class LessonCompletionService {
             return false;
         }
 
-        Progress progress = progressOpt.get();
-
-        // Check if lesson is marked as completed in progress
-        if (!progress.getCompletedLessons().contains(lesson.getId())) {
-            return false;
-        }
-
         // Validate that completion requirements are actually met
-        return validateLessonCompletion(student, lesson, progress);
+        return validateLessonCompletion(student, lesson, progressOpt.get());
     }
 
     private boolean validateLessonCompletion(User student, Lesson lesson, Progress progress) {
@@ -263,10 +256,8 @@ public class LessonCompletionService {
                 Progress progress = progressOpt.get();
                 // Count completed content (either viewed or explicitly completed)
                 for (Content content : lessonContents) {
-                    if (progress.getCompletedContent().contains(content.getId())
-//                            ||
-//                        progress.getViewedContent().contains(content.getId())
-                    ) {
+                    if (progress.getCompletedContent().contains(content.getId()) ||
+                        progress.getViewedContent().contains(content.getId())) {
                         completedActivities++;
                     }
                 }
