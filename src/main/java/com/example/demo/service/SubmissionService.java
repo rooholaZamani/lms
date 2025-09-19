@@ -265,22 +265,13 @@ public class SubmissionService {
     }
 
     private Map<String, String> parseComplexAnswer(String answerJson) {
-        Map<String, String> result = new HashMap<>();
-        
-        if (answerJson.startsWith("{") && answerJson.endsWith("}")) {
-            String content = answerJson.substring(1, answerJson.length() - 1);
-            String[] pairs = content.split(",");
-            
-            for (String pair : pairs) {
-                String[] keyValue = pair.split(":", 2);
-                if (keyValue.length == 2) {
-                    String key = keyValue[0].trim().replaceAll("\"", "");
-                    String value = keyValue[1].trim().replaceAll("\"", "");
-                    result.put(key, value);
-                }
-            }
+        try {
+            return objectMapper.readValue(answerJson, new TypeReference<Map<String, String>>() {});
+        } catch (Exception e) {
+            // Fallback to empty map if parsing fails
+            System.err.println("Failed to parse complex answer: " + answerJson);
+            e.printStackTrace();
+            return new HashMap<>();
         }
-        
-        return result;
     }
 }
