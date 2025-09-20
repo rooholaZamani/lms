@@ -687,8 +687,29 @@ public class ExamController {
         int earnedPoints = 0;
 
         try {
-            isCorrect = examService.evaluateAnswer(question, studentAnswer);
-            earnedPoints = isCorrect ? question.getPoints() : 0;
+            // Use partial scoring method for all question types
+            Object evaluationResult = examService.evaluateAnswerWithPartialScoring(question, studentAnswer);
+
+            if (evaluationResult instanceof Boolean) {
+                // Binary scoring (TRUE/FALSE, MULTIPLE_CHOICE, FILL_IN_THE_BLANKS, SHORT_ANSWER, etc.)
+                isCorrect = (Boolean) evaluationResult;
+                earnedPoints = isCorrect ? question.getPoints() : 0;
+                System.out.println("Binary scoring - Correct: " + isCorrect + ", Points: " + earnedPoints);
+            } else if (evaluationResult instanceof Double) {
+                // Partial scoring (MATCHING, CATEGORIZATION)
+                double percentage = (Double) evaluationResult;
+                ScoringPolicy policy = question.getScoringPolicy();
+                earnedPoints = examService.applyScoring(percentage, question.getPoints(), policy);
+                isCorrect = percentage >= 1.0; // Only consider "correct" if 100% accurate
+                System.out.println("Partial scoring - Percentage: " + String.format("%.2f", percentage * 100) +
+                                 "%, Points: " + earnedPoints + "/" + question.getPoints());
+            } else {
+                // Fallback case
+                System.out.println("WARNING: Unexpected evaluation result type: " +
+                                 (evaluationResult != null ? evaluationResult.getClass().getSimpleName() : "null"));
+                isCorrect = false;
+                earnedPoints = 0;
+            }
         } catch (Exception e) {
             System.err.println("Error evaluating answer: " + e.getMessage());
             e.printStackTrace();

@@ -78,6 +78,11 @@ public class Question {
     @Column(length = 2000)
     private String correctAnswer;
 
+    // نحوه محاسبه امتیاز جزئی برای سوالات MATCHING و CATEGORIZATION
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scoring_policy")
+    private ScoringPolicy scoringPolicy = ScoringPolicy.ROUND_STANDARD;
+
     // Helper method to safely get question type
     public QuestionType getQuestionType() {
         return questionType != null ? questionType : QuestionType.MULTIPLE_CHOICE;
@@ -98,6 +103,9 @@ public class Question {
         }
         if (this.isRequired == null) {
             this.isRequired = true;
+        }
+        if (this.scoringPolicy == null) {
+            this.scoringPolicy = ScoringPolicy.ROUND_STANDARD;
         }
     }
     public String getQuestionText() {

@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 @Service
 public class ExamService {
 
@@ -282,12 +284,20 @@ public class ExamService {
             switch (question.getQuestionType()) {
                 case MULTIPLE_CHOICE:
                 case TRUE_FALSE:
-                case CATEGORIZATION:
-                    // These use the answers field
+                    // These use the answers field with correct flag
                     if (!question.getAnswers().isEmpty()) {
                         // Check if at least one answer is marked as correct
                         hasValidAnswers = question.getAnswers().stream()
                                 .anyMatch(Answer::getCorrect);
+                    }
+                    break;
+
+                case CATEGORIZATION:
+                    // These use the answers field with category information
+                    if (!question.getAnswers().isEmpty()) {
+                        // Check if all answers have valid categories
+                        hasValidAnswers = question.getAnswers().stream()
+                                .allMatch(answer -> answer.getCategory() != null && !answer.getCategory().trim().isEmpty());
                     }
                     break;
 
@@ -356,16 +366,45 @@ public class ExamService {
         
         for (Question question : questions) {
             totalScore += question.getPoints();
-            
-            if (question.getAnswers().isEmpty()) {
-                allQuestionsValid = false;
-                break;
+
+            boolean hasValidAnswers = false;
+
+            switch (question.getQuestionType()) {
+                case MULTIPLE_CHOICE:
+                case TRUE_FALSE:
+                    // These use the answers field with correct flag
+                    if (!question.getAnswers().isEmpty()) {
+                        hasValidAnswers = question.getAnswers().stream()
+                                .anyMatch(Answer::getCorrect);
+                    }
+                    break;
+
+                case CATEGORIZATION:
+                    // These use the answers field with category information
+                    if (!question.getAnswers().isEmpty()) {
+                        hasValidAnswers = question.getAnswers().stream()
+                                .allMatch(answer -> answer.getCategory() != null && !answer.getCategory().trim().isEmpty());
+                    }
+                    break;
+
+                case FILL_IN_THE_BLANKS:
+                    // These use blankAnswers field
+                    hasValidAnswers = !question.getBlankAnswers().isEmpty();
+                    break;
+
+                case MATCHING:
+                    // These use matchingPairs field
+                    hasValidAnswers = !question.getMatchingPairs().isEmpty();
+                    break;
+
+                case ESSAY:
+                case SHORT_ANSWER:
+                    // These don't require predefined answers
+                    hasValidAnswers = true;
+                    break;
             }
-            
-            boolean hasCorrectAnswer = question.getAnswers().stream()
-                    .anyMatch(Answer::getCorrect);
-            
-            if (!hasCorrectAnswer) {
+
+            if (!hasValidAnswers) {
                 allQuestionsValid = false;
                 break;
             }
@@ -642,14 +681,58 @@ public class ExamService {
         System.out.println("Evaluation result: " + result);
         return result;
     }
+
+    public Object evaluateAnswerWithPartialScoring(Question question, Object studentAnswer) {
+        if (studentAnswer == null) {
+            System.out.println("Student answer is null for question " + question.getId());
+            return false;
+        }
+
+        System.out.println("Evaluating " + question.getQuestionType() + " question with partial scoring support");
+        System.out.println("Student answer type: " + studentAnswer.getClass().getSimpleName());
+        System.out.println("Student answer value: " + studentAnswer);
+
+        Object result;
+        switch (question.getQuestionType()) {
+            case MULTIPLE_CHOICE:
+            case TRUE_FALSE:
+                result = evaluateSimpleAnswer(question, studentAnswer);
+                break;
+            case CATEGORIZATION:
+                result = evaluateCategorizationAnswerPartial(question, studentAnswer);
+                break;
+            case MATCHING:
+                result = evaluateMatchingAnswerPartial(question, studentAnswer);
+                break;
+            case FILL_IN_THE_BLANKS:
+                result = evaluateFillBlankAnswer(question, studentAnswer);
+                break;
+            case SHORT_ANSWER:
+                result = evaluateShortAnswer(question, studentAnswer);
+                break;
+            default:
+                System.out.println("WARNING: Unsupported question type: " + question.getQuestionType());
+                result = false;
+        }
+
+        System.out.println("Evaluation result: " + result);
+        return result;
+    }
     private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
         try {
             System.out.println("Evaluating simple answer...");
+            System.out.println("Question type: " + question.getQuestionType());
             System.out.println("Available answers:");
             for (Answer answer : question.getAnswers()) {
                 System.out.println("  Answer ID: " + answer.getId() + ", Text: '" + answer.getText() + "', Correct: " + answer.getCorrect());
             }
 
+            // Handle TRUE_FALSE questions differently - they send string values instead of IDs
+            if (question.getQuestionType() == QuestionType.TRUE_FALSE) {
+                return evaluateTrueFalseAnswer(question, studentAnswer);
+            }
+
+            // For MULTIPLE_CHOICE questions, use the existing ID-based logic
             Long answerId;
             if (studentAnswer instanceof Number) {
                 answerId = ((Number) studentAnswer).longValue();
@@ -676,6 +759,33 @@ public class ExamService {
             }
         } catch (NumberFormatException e) {
             System.out.println("ERROR: Failed to parse answer ID from: " + studentAnswer + " - " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean evaluateTrueFalseAnswer(Question question, Object studentAnswer) {
+        try {
+            System.out.println("Evaluating TRUE_FALSE answer...");
+
+            String studentValue = studentAnswer.toString().toLowerCase().trim();
+            System.out.println("Student answer value (normalized): '" + studentValue + "'");
+
+            // Check each answer option to find the one that matches the student's input
+            for (Answer answer : question.getAnswers()) {
+                String answerText = answer.getText().toLowerCase().trim();
+                System.out.println("Checking answer: '" + answerText + "', Correct: " + answer.getCorrect());
+
+                // Match the student's string input against the answer text
+                if (answerText.equals(studentValue)) {
+                    System.out.println("Found matching answer: '" + answer.getText() + "', Correct: " + answer.getCorrect());
+                    return answer.getCorrect();
+                }
+            }
+
+            System.out.println("ERROR: No matching answer found for student input: '" + studentValue + "'");
+            return false;
+        } catch (Exception e) {
+            System.out.println("ERROR: Exception in TRUE_FALSE evaluation: " + e.getMessage());
             return false;
         }
     }
@@ -742,6 +852,115 @@ public class ExamService {
         }
     }
 
+    private double evaluateCategorizationAnswerPartial(Question question, Object studentAnswer) {
+        try {
+            System.out.println("Evaluating CATEGORIZATION answer with partial scoring...");
+
+            // Validate input parameters
+            if (question == null) {
+                System.out.println("ERROR: Question is null");
+                return 0.0;
+            }
+
+            if (studentAnswer == null) {
+                System.out.println("WARNING: Student provided no answer for CATEGORIZATION question");
+                return 0.0;
+            }
+
+            Map<String, String> studentAnswers;
+
+            // Handle different input types with enhanced validation
+            if (studentAnswer instanceof Map) {
+                studentAnswers = convertMapToStringMap((Map<?, ?>) studentAnswer);
+            } else if (studentAnswer instanceof String) {
+                try {
+                    studentAnswers = parseComplexAnswerFromString((String) studentAnswer);
+                } catch (Exception parseException) {
+                    System.out.println("ERROR: Failed to parse student answer JSON: " + parseException.getMessage());
+                    return 0.0;
+                }
+            } else {
+                System.out.println("ERROR: Unsupported student answer type for CATEGORIZATION: " + studentAnswer.getClass().getSimpleName());
+                return 0.0;
+            }
+
+            // Validate that we have answers from the question
+            if (question.getAnswers() == null || question.getAnswers().isEmpty()) {
+                System.out.println("ERROR: Question has no answers defined");
+                return 0.0;
+            }
+
+            // Build correct categories map with validation
+            Map<String, String> correctCategories = new HashMap<>();
+            for (Answer answer : question.getAnswers()) {
+                if (answer.getText() != null && !answer.getText().trim().isEmpty() &&
+                    answer.getCategory() != null && !answer.getCategory().trim().isEmpty()) {
+                    correctCategories.put(answer.getText().trim(), answer.getCategory().trim());
+                } else {
+                    System.out.println("WARNING: Skipping invalid answer - text: '" + answer.getText() + "', category: '" + answer.getCategory() + "'");
+                }
+            }
+
+            if (correctCategories.isEmpty()) {
+                System.out.println("ERROR: No valid categorization items found in question");
+                return 0.0;
+            }
+
+            System.out.println("Correct categories: " + correctCategories);
+            System.out.println("Student answers: " + studentAnswers);
+
+            // Enhanced scoring logic
+            int correctCount = 0;
+            int totalItems = correctCategories.size();
+            int attemptedItems = 0;
+
+            for (Map.Entry<String, String> correctEntry : correctCategories.entrySet()) {
+                String item = correctEntry.getKey();
+                String correctCategory = correctEntry.getValue();
+                String studentCategory = studentAnswers.get(item);
+
+                if (studentCategory != null && !studentCategory.trim().isEmpty()) {
+                    attemptedItems++;
+                    studentCategory = studentCategory.trim();
+
+                    if (Objects.equals(studentCategory, correctCategory)) {
+                        correctCount++;
+                        System.out.println("✓ Correct categorization: '" + item + "' → '" + studentCategory + "'");
+                    } else {
+                        System.out.println("✗ Incorrect categorization: '" + item + "' → '" + studentCategory + "' (should be '" + correctCategory + "')");
+                    }
+                } else {
+                    System.out.println("○ Not attempted: '" + item + "' (correct category: '" + correctCategory + "')");
+                }
+            }
+
+            // Check for extra answers (items that don't exist in the question)
+            for (String studentItem : studentAnswers.keySet()) {
+                if (!correctCategories.containsKey(studentItem)) {
+                    System.out.println("WARNING: Student answered for unknown item: '" + studentItem + "'");
+                }
+            }
+
+            // Calculate percentage - only based on total items, not attempted items
+            double percentage = totalItems > 0 ? (double) correctCount / totalItems : 0.0;
+
+            // Ensure percentage is between 0.0 and 1.0
+            percentage = Math.max(0.0, Math.min(1.0, percentage));
+
+            System.out.println("CATEGORIZATION scoring summary:");
+            System.out.println("  Total items: " + totalItems);
+            System.out.println("  Attempted items: " + attemptedItems);
+            System.out.println("  Correct items: " + correctCount);
+            System.out.println("  Partial score: " + correctCount + "/" + totalItems + " = " + String.format("%.4f", percentage) + " (" + String.format("%.1f", percentage * 100) + "%)");
+
+            return percentage;
+        } catch (Exception e) {
+            System.out.println("ERROR: Exception in CATEGORIZATION partial evaluation: " + e.getMessage());
+            e.printStackTrace();
+            return 0.0;
+        }
+    }
+
     private boolean evaluateMatchingAnswer(Question question, Object studentAnswer) {
         try {
             Map<String, String> studentAnswers;
@@ -779,6 +998,116 @@ public class ExamService {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private double evaluateMatchingAnswerPartial(Question question, Object studentAnswer) {
+        try {
+            System.out.println("Evaluating MATCHING answer with partial scoring...");
+
+            // Validate input parameters
+            if (question == null) {
+                System.out.println("ERROR: Question is null");
+                return 0.0;
+            }
+
+            if (studentAnswer == null) {
+                System.out.println("WARNING: Student provided no answer for MATCHING question");
+                return 0.0;
+            }
+
+            Map<String, String> studentAnswers;
+
+            // Handle different input types with enhanced validation
+            if (studentAnswer instanceof Map) {
+                studentAnswers = convertMapToStringMap((Map<?, ?>) studentAnswer);
+            } else if (studentAnswer instanceof String) {
+                try {
+                    studentAnswers = parseComplexAnswerFromString((String) studentAnswer);
+                } catch (Exception parseException) {
+                    System.out.println("ERROR: Failed to parse student answer JSON: " + parseException.getMessage());
+                    return 0.0;
+                }
+            } else {
+                System.out.println("ERROR: Unsupported student answer type for MATCHING: " + studentAnswer.getClass().getSimpleName());
+                return 0.0;
+            }
+
+            // Validate that we have matching pairs from the question
+            if (question.getMatchingPairs() == null || question.getMatchingPairs().isEmpty()) {
+                System.out.println("ERROR: Question has no matching pairs defined");
+                return 0.0;
+            }
+
+            // Build correct matches map with validation
+            Map<String, String> correctMatches = new HashMap<>();
+            for (MatchingPair pair : question.getMatchingPairs()) {
+                if (pair.getLeftItem() != null && !pair.getLeftItem().trim().isEmpty() &&
+                    pair.getRightItem() != null && !pair.getRightItem().trim().isEmpty()) {
+                    correctMatches.put(pair.getLeftItem().trim(), pair.getRightItem().trim());
+                } else {
+                    System.out.println("WARNING: Skipping invalid matching pair - left: '" + pair.getLeftItem() + "', right: '" + pair.getRightItem() + "'");
+                }
+            }
+
+            if (correctMatches.isEmpty()) {
+                System.out.println("ERROR: No valid matching pairs found in question");
+                return 0.0;
+            }
+
+            System.out.println("Correct matches: " + correctMatches);
+            System.out.println("Student answers: " + studentAnswers);
+
+            // Enhanced scoring logic
+            int correctCount = 0;
+            int totalPairs = correctMatches.size();
+            int attemptedPairs = 0;
+
+            // Check each required left item
+            for (Map.Entry<String, String> correctEntry : correctMatches.entrySet()) {
+                String leftItem = correctEntry.getKey();
+                String correctRightItem = correctEntry.getValue();
+                String studentRightItem = studentAnswers.get(leftItem);
+
+                if (studentRightItem != null && !studentRightItem.trim().isEmpty()) {
+                    attemptedPairs++;
+                    studentRightItem = studentRightItem.trim();
+
+                    if (Objects.equals(studentRightItem, correctRightItem)) {
+                        correctCount++;
+                        System.out.println("✓ Correct match: '" + leftItem + "' → '" + studentRightItem + "'");
+                    } else {
+                        System.out.println("✗ Incorrect match: '" + leftItem + "' → '" + studentRightItem + "' (should be '" + correctRightItem + "')");
+                    }
+                } else {
+                    System.out.println("○ Not attempted: '" + leftItem + "' (should match '" + correctRightItem + "')");
+                }
+            }
+
+            // Check for extra answers (left items that don't exist in the question)
+            for (String studentLeftItem : studentAnswers.keySet()) {
+                if (!correctMatches.containsKey(studentLeftItem)) {
+                    System.out.println("WARNING: Student provided match for unknown left item: '" + studentLeftItem + "'");
+                }
+            }
+
+            // Calculate percentage - based on total pairs, not attempted pairs
+            double percentage = totalPairs > 0 ? (double) correctCount / totalPairs : 0.0;
+
+            // Ensure percentage is between 0.0 and 1.0
+            percentage = Math.max(0.0, Math.min(1.0, percentage));
+
+            System.out.println("MATCHING scoring summary:");
+            System.out.println("  Total pairs: " + totalPairs);
+            System.out.println("  Attempted pairs: " + attemptedPairs);
+            System.out.println("  Correct pairs: " + correctCount);
+            System.out.println("  Partial score: " + correctCount + "/" + totalPairs + " = " + String.format("%.4f", percentage) + " (" + String.format("%.1f", percentage * 100) + "%)");
+
+            return percentage;
+        } catch (Exception e) {
+            System.out.println("ERROR: Exception in MATCHING partial evaluation: " + e.getMessage());
+            e.printStackTrace();
+            return 0.0;
         }
     }
     private boolean evaluateFillBlankAnswer(Question question, Object studentAnswer) {
@@ -964,12 +1293,32 @@ public class ExamService {
             System.out.println("Student Answer: " + studentAnswer);
 
             if (studentAnswer != null) {
-                boolean isCorrect = evaluateAnswer(question, studentAnswer);
-                System.out.println("Answer Evaluation: " + (isCorrect ? "CORRECT" : "INCORRECT"));
-                if (isCorrect) {
-                    earnedPoints += questionPoints;
-                    System.out.println("Points Awarded: " + questionPoints);
+                Object evaluationResult = evaluateAnswerWithPartialScoring(question, studentAnswer);
+
+                if (evaluationResult instanceof Boolean) {
+                    // Binary scoring (TRUE/FALSE, MULTIPLE_CHOICE, FILL_IN_THE_BLANKS, SHORT_ANSWER, etc.)
+                    boolean isCorrect = (Boolean) evaluationResult;
+                    System.out.println("Answer Evaluation: " + (isCorrect ? "CORRECT" : "INCORRECT"));
+                    if (isCorrect) {
+                        earnedPoints += questionPoints;
+                        System.out.println("Points Awarded: " + questionPoints);
+                    } else {
+                        System.out.println("Points Awarded: 0");
+                    }
+                } else if (evaluationResult instanceof Double) {
+                    // Partial scoring (MATCHING, CATEGORIZATION)
+                    double percentage = (Double) evaluationResult;
+
+                    // Apply scoring policy from the question
+                    ScoringPolicy policy = question.getScoringPolicy();
+                    int partialPoints = applyScoring(percentage, questionPoints, policy);
+
+                    earnedPoints += partialPoints;
+                    System.out.println("Answer Evaluation: PARTIAL (" + String.format("%.2f", percentage * 100) + "%)");
+                    System.out.println("Question scoring policy: " + (policy != null ? policy : "DEFAULT"));
+                    System.out.println("Points Awarded: " + partialPoints + " out of " + questionPoints);
                 } else {
+                    System.out.println("ERROR: Unexpected evaluation result type: " + evaluationResult.getClass().getSimpleName());
                     System.out.println("Points Awarded: 0");
                 }
             } else {
@@ -991,8 +1340,26 @@ public class ExamService {
     public Map<String, Object> evaluateStudentAnswer(Question question, Object studentAnswer) {
         Map<String, Object> result = new HashMap<>();
 
-        boolean isCorrect = evaluateAnswer(question, studentAnswer);
-        int earnedPoints = isCorrect ? question.getPoints() : 0;
+        Object evaluationResult = evaluateAnswerWithPartialScoring(question, studentAnswer);
+
+        int earnedPoints;
+        boolean isCorrect;
+
+        if (evaluationResult instanceof Boolean) {
+            // Binary scoring (TRUE/FALSE, MULTIPLE_CHOICE, FILL_IN_THE_BLANKS, SHORT_ANSWER, etc.)
+            isCorrect = (Boolean) evaluationResult;
+            earnedPoints = isCorrect ? question.getPoints() : 0;
+        } else if (evaluationResult instanceof Double) {
+            // Partial scoring (MATCHING, CATEGORIZATION)
+            double percentage = (Double) evaluationResult;
+            ScoringPolicy policy = question.getScoringPolicy();
+            earnedPoints = applyScoring(percentage, question.getPoints(), policy);
+            isCorrect = percentage >= 1.0; // Only consider "correct" if 100% accurate
+        } else {
+            // Fallback case
+            isCorrect = false;
+            earnedPoints = 0;
+        }
 
         result.put("isCorrect", isCorrect);
         result.put("earnedPoints", earnedPoints);
@@ -1116,6 +1483,48 @@ public class ExamService {
     private User getCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return userService.findByUsername(authentication.getName());
+    }
+
+    /**
+     * Apply scoring policy to calculate final points from percentage and total points
+     */
+    public int applyScoring(double percentage, int questionPoints, ScoringPolicy policy) {
+        if (policy == null) {
+            policy = ScoringPolicy.ROUND_STANDARD;
+        }
+
+        // Use BigDecimal for precise calculation
+        BigDecimal percentageBD = BigDecimal.valueOf(percentage);
+        BigDecimal questionPointsBD = BigDecimal.valueOf(questionPoints);
+        BigDecimal exactPoints = percentageBD.multiply(questionPointsBD);
+
+        int finalPoints;
+        switch (policy) {
+            case ROUND_UP:
+                finalPoints = exactPoints.setScale(0, RoundingMode.CEILING).intValue();
+                break;
+            case ROUND_DOWN:
+                finalPoints = exactPoints.setScale(0, RoundingMode.FLOOR).intValue();
+                break;
+            case EXACT_DECIMAL:
+                // For now, we'll still return integer since the system expects it
+                // In future, this could be enhanced to support decimal scoring
+                finalPoints = exactPoints.setScale(0, RoundingMode.HALF_UP).intValue();
+                break;
+            case ROUND_STANDARD:
+            default:
+                finalPoints = exactPoints.setScale(0, RoundingMode.HALF_UP).intValue();
+                break;
+        }
+
+        // Ensure we don't exceed the question's total points
+        finalPoints = Math.max(0, Math.min(finalPoints, questionPoints));
+
+        System.out.println("Scoring policy applied: " + policy +
+                          " | Exact: " + exactPoints.setScale(3, RoundingMode.HALF_UP) +
+                          " → Final: " + finalPoints);
+
+        return finalPoints;
     }
 
 }
