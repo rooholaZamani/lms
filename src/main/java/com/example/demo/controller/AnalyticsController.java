@@ -650,4 +650,116 @@ public class AnalyticsController {
                 student.getId(), courseId, timeFilter);
         return ResponseEntity.ok(enhancedGradesData);
     }
+
+    @GetMapping("/debug/activity-logs")
+    @Operation(summary = "Debug endpoint to check ActivityLog data", description = "Debug endpoint to check current ActivityLog data")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> debugActivityLogs(Authentication authentication) {
+        User user = userService.findByUsername(authentication.getName());
+
+        // Get recent activity logs (last 30 days)
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        List<ActivityLog> recentLogs = activityLogRepository.findByUserAndTimestampBetweenOrderByTimestampDesc(
+                user, thirtyDaysAgo, LocalDateTime.now());
+
+        Map<String, Object> debugInfo = new HashMap<>();
+        debugInfo.put("totalActivityLogs", recentLogs.size());
+        debugInfo.put("username", user.getUsername());
+
+        // Group by activity type
+        Map<String, Long> activityTypeCounts = recentLogs.stream()
+                .collect(Collectors.groupingBy(ActivityLog::getActivityType, Collectors.counting()));
+        debugInfo.put("activityTypeCounts", activityTypeCounts);
+
+        // Sum time spent by activity type
+        Map<String, Long> timeSpentByType = recentLogs.stream()
+                .collect(Collectors.groupingBy(
+                    ActivityLog::getActivityType,
+                    Collectors.summingLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                ));
+        debugInfo.put("timeSpentByType", timeSpentByType);
+
+        // Total time spent
+        long totalTimeSpent = recentLogs.stream()
+                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
+                .sum();
+        debugInfo.put("totalTimeSpent", totalTimeSpent);
+        debugInfo.put("totalTimeSpentHours", Math.round(totalTimeSpent / 3600.0 * 100.0) / 100.0);
+
+        // Sample recent activities (last 10)
+        List<Map<String, Object>> sampleActivities = recentLogs.stream()
+                .limit(10)
+                .map(log -> {
+                    Map<String, Object> activity = new HashMap<>();
+                    activity.put("activityType", log.getActivityType());
+                    activity.put("timeSpent", log.getTimeSpent());
+                    activity.put("timestamp", log.getTimestamp());
+                    activity.put("relatedEntityId", log.getRelatedEntityId());
+                    return activity;
+                })
+                .collect(Collectors.toList());
+        debugInfo.put("sampleActivities", sampleActivities);
+
+        return ResponseEntity.ok(debugInfo);
+    }
+
+    @PostMapping("/debug/create-sample-activities")
+    @Operation(summary = "Create sample activity logs for testing", description = "Create sample activity logs for testing time tracking")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> createSampleActivities(Authentication authentication) {
+        User user = userService.findByUsername(authentication.getName());
+
+        // Create sample activities for the current user
+        LocalDateTime now = LocalDateTime.now();
+
+        // Create some sample activities with realistic time
+        ActivityLog activity1 = new ActivityLog();
+        activity1.setUser(user);
+        activity1.setActivityType("CONTENT_VIEW");
+        activity1.setRelatedEntityId(1L);
+        activity1.setTimestamp(now.minusHours(2));
+        activity1.setTimeSpent(1800L); // 30 minutes
+        Map<String, String> metadata1 = new HashMap<>();
+        metadata1.put("contentType", "VIDEO");
+        metadata1.put("contentTitle", "Test Video Content");
+        metadata1.put("courseId", "1");
+        activity1.setMetadata(metadata1);
+        activityLogRepository.save(activity1);
+
+        ActivityLog activity2 = new ActivityLog();
+        activity2.setUser(user);
+        activity2.setActivityType("CONTENT_COMPLETION");
+        activity2.setRelatedEntityId(2L);
+        activity2.setTimestamp(now.minusHours(1));
+        activity2.setTimeSpent(2700L); // 45 minutes
+        Map<String, String> metadata2 = new HashMap<>();
+        metadata2.put("contentType", "PDF");
+        metadata2.put("contentTitle", "Test PDF Content");
+        metadata2.put("courseId", "1");
+        activity2.setMetadata(metadata2);
+        activityLogRepository.save(activity2);
+
+        ActivityLog activity3 = new ActivityLog();
+        activity3.setUser(user);
+        activity3.setActivityType("EXAM_SUBMISSION");
+        activity3.setRelatedEntityId(1L);
+        activity3.setTimestamp(now.minusMinutes(30));
+        activity3.setTimeSpent(3600L); // 1 hour
+        Map<String, String> metadata3 = new HashMap<>();
+        metadata3.put("examType", "QUIZ");
+        metadata3.put("examTitle", "Test Quiz");
+        metadata3.put("courseId", "1");
+        activity3.setMetadata(metadata3);
+        activityLogRepository.save(activity3);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("message", "Created 3 sample activity logs");
+        result.put("activities", List.of(
+            Map.of("type", "CONTENT_VIEW", "timeSpent", 1800L, "timestamp", activity1.getTimestamp()),
+            Map.of("type", "CONTENT_COMPLETION", "timeSpent", 2700L, "timestamp", activity2.getTimestamp()),
+            Map.of("type", "EXAM_SUBMISSION", "timeSpent", 3600L, "timestamp", activity3.getTimestamp())
+        ));
+
+        return ResponseEntity.ok(result);
+    }
 }

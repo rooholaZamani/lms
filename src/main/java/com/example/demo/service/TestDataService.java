@@ -76,7 +76,10 @@ public class TestDataService {
             // Step 9: Create progress data
             createProgressData();
 
-            return "SUCCESS: Created comprehensive test data - 100 students (st1-st100), 15 courses, 35+ exams, 28+ assignments";
+            // Step 10: Create realistic activity logs with time tracking
+            createRealisticActivityLogs();
+
+            return "SUCCESS: Created comprehensive test data - 100 students (st1-st100), 15 courses, 35+ exams, 28+ assignments, realistic activity logs";
 
         } catch (Exception e) {
             return "ERROR: " + e.getMessage();
@@ -382,6 +385,232 @@ public class TestDataService {
         }
     }
 
+    private void createRealisticActivityLogs() {
+        System.out.println("Creating realistic activity logs with time tracking...");
+        Random random = new Random();
+
+        // Get all students and courses for creating realistic activities
+        List<User> students = userRepository.findAll().stream()
+            .filter(user -> user.getRoles().stream()
+                .anyMatch(role -> role.getName().equals("ROLE_STUDENT")))
+            .toList();
+
+        List<Course> courses = courseRepository.findAll();
+
+        // Generate activities over the last 30 days
+        LocalDateTime startDate = LocalDateTime.now().minusDays(30);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        for (User student : students) {
+            // Each student will have 15-50 activities over 30 days
+            int activityCount = 15 + random.nextInt(36); // 15 to 50 activities
+
+            for (int i = 0; i < activityCount; i++) {
+                // Random timestamp within last 30 days
+                long daysBetween = random.nextInt(30);
+                long hoursBetween = random.nextInt(24);
+                long minutesBetween = random.nextInt(60);
+
+                LocalDateTime activityTime = startDate.plusDays(daysBetween)
+                    .plusHours(hoursBetween).plusMinutes(minutesBetween);
+
+                // Choose activity type with realistic distribution
+                String[] activityTypes = {
+                    "CONTENT_VIEW", "CONTENT_VIEW", "CONTENT_VIEW", "CONTENT_VIEW", // 40% content viewing
+                    "CONTENT_COMPLETION", "CONTENT_COMPLETION", // 20% content completion
+                    "LESSON_ACCESS", "LESSON_ACCESS", // 20% lesson access
+                    "EXAM_SUBMISSION", // 10% exam submissions
+                    "ASSIGNMENT_SUBMISSION" // 10% assignment submissions
+                };
+
+                String activityType = activityTypes[random.nextInt(activityTypes.length)];
+
+                // Generate realistic time spent based on activity type
+                Long timeSpent = generateRealisticTimeSpent(activityType, random);
+
+                // Choose random course and related entity
+                Course randomCourse = courses.get(random.nextInt(courses.size()));
+                Long relatedEntityId = getRelatedEntityId(activityType, randomCourse, random);
+
+                // Create metadata
+                Map<String, String> metadata = createActivityMetadata(activityType, randomCourse);
+
+                // Create activity log
+                ActivityLog activityLog = new ActivityLog();
+                activityLog.setUser(student);
+                activityLog.setActivityType(activityType);
+                activityLog.setRelatedEntityId(relatedEntityId);
+                activityLog.setTimestamp(activityTime);
+                activityLog.setTimeSpent(timeSpent);
+                activityLog.setMetadata(metadata);
+
+                activityLogRepository.save(activityLog);
+            }
+        }
+
+        System.out.println("Created realistic activity logs for " + students.size() + " students");
+    }
+
+    private Long generateRealisticTimeSpent(String activityType, Random random) {
+        // Generate realistic time based on activity type (in seconds)
+        switch (activityType) {
+            case "CONTENT_VIEW":
+                return (long) (60 + random.nextInt(1800)); // 1-30 minutes
+            case "CONTENT_COMPLETION":
+                return (long) (300 + random.nextInt(2700)); // 5-45 minutes
+            case "LESSON_ACCESS":
+                return (long) (30 + random.nextInt(300)); // 30 seconds - 5 minutes
+            case "EXAM_SUBMISSION":
+                return (long) (600 + random.nextInt(2400)); // 10-50 minutes
+            case "ASSIGNMENT_SUBMISSION":
+                return (long) (1800 + random.nextInt(7200)); // 30 minutes - 2.5 hours
+            default:
+                return (long) random.nextInt(600); // Default 0-10 minutes
+        }
+    }
+
+    private Long getRelatedEntityId(String activityType, Course course, Random random) {
+        switch (activityType) {
+            case "CONTENT_VIEW":
+            case "CONTENT_COMPLETION":
+                // Get random content from the course
+                List<Content> courseContents = contentRepository.findAll().stream()
+                    .filter(content -> content.getLesson().getCourse().getId().equals(course.getId()))
+                    .toList();
+                return courseContents.isEmpty() ? 1L :
+                    courseContents.get(random.nextInt(courseContents.size())).getId();
+
+            case "LESSON_ACCESS":
+                // Get random lesson from the course
+                List<Lesson> courseLessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+                return courseLessons.isEmpty() ? 1L :
+                    courseLessons.get(random.nextInt(courseLessons.size())).getId();
+
+            case "EXAM_SUBMISSION":
+                // Get random exam from the course
+                List<Exam> courseExams = examRepository.findAll().stream()
+                    .filter(exam -> exam.getLesson().getCourse().getId().equals(course.getId()))
+                    .toList();
+                return courseExams.isEmpty() ? 1L :
+                    courseExams.get(random.nextInt(courseExams.size())).getId();
+
+            case "ASSIGNMENT_SUBMISSION":
+                // Get random assignment from the course
+                List<Assignment> courseAssignments = assignmentRepository.findAll().stream()
+                    .filter(assignment -> assignment.getLesson().getCourse().getId().equals(course.getId()))
+                    .toList();
+                return courseAssignments.isEmpty() ? 1L :
+                    courseAssignments.get(random.nextInt(courseAssignments.size())).getId();
+
+            default:
+                return course.getId(); // Default to course ID
+        }
+    }
+
+    private Map<String, String> createActivityMetadata(String activityType, Course course) {
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("courseId", course.getId().toString());
+        metadata.put("courseTitle", course.getTitle());
+        metadata.put("activitySource", "test_data_generation");
+
+        switch (activityType) {
+            case "CONTENT_VIEW":
+            case "CONTENT_COMPLETION":
+                metadata.put("contentType", "VIDEO"); // Simplified for test data
+                break;
+            case "EXAM_SUBMISSION":
+                metadata.put("examType", "QUIZ");
+                break;
+            case "ASSIGNMENT_SUBMISSION":
+                metadata.put("assignmentType", "HOMEWORK");
+                break;
+        }
+
+        return metadata;
+    }
+
+    @Transactional
+    public String generateActivityLogsForExistingUsers() {
+        try {
+            System.out.println("Generating activity logs for existing users...");
+
+            // Clear existing activity logs first
+            activityLogRepository.deleteAll();
+
+            // Get existing students and courses
+            List<User> students = userRepository.findAll().stream()
+                .filter(user -> user.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_STUDENT")))
+                .toList();
+
+            List<Course> courses = courseRepository.findAll();
+
+            if (students.isEmpty() || courses.isEmpty()) {
+                return "ERROR: No students or courses found. Please generate base test data first.";
+            }
+
+            Random random = new Random();
+
+            // Generate activities over the last 7 days (smaller timeframe for faster generation)
+            LocalDateTime startDate = LocalDateTime.now().minusDays(7);
+
+            int totalActivities = 0;
+            for (User student : students) {
+                // Each student will have 5-15 activities over 7 days
+                int activityCount = 5 + random.nextInt(11); // 5 to 15 activities
+
+                for (int i = 0; i < activityCount; i++) {
+                    // Random timestamp within last 7 days
+                    long daysBetween = random.nextInt(7);
+                    long hoursBetween = random.nextInt(24);
+                    long minutesBetween = random.nextInt(60);
+
+                    LocalDateTime activityTime = startDate.plusDays(daysBetween)
+                        .plusHours(hoursBetween).plusMinutes(minutesBetween);
+
+                    // Realistic activity distribution
+                    String[] activityTypes = {
+                        "CONTENT_VIEW", "CONTENT_VIEW", "CONTENT_VIEW", // 30% content viewing
+                        "CONTENT_COMPLETION", "CONTENT_COMPLETION", // 20% content completion
+                        "LESSON_ACCESS", "LESSON_ACCESS", // 20% lesson access
+                        "EXAM_SUBMISSION", // 10% exam submissions
+                        "ASSIGNMENT_SUBMISSION", // 10% assignment submissions
+                        "FILE_ACCESS" // 10% file access
+                    };
+
+                    String activityType = activityTypes[random.nextInt(activityTypes.length)];
+
+                    // Generate realistic time spent
+                    Long timeSpent = generateRealisticTimeSpent(activityType, random);
+
+                    // Choose random course
+                    Course randomCourse = courses.get(random.nextInt(courses.size()));
+                    Long relatedEntityId = getRelatedEntityId(activityType, randomCourse, random);
+
+                    // Create metadata
+                    Map<String, String> metadata = createActivityMetadata(activityType, randomCourse);
+
+                    // Create activity log
+                    ActivityLog activityLog = new ActivityLog();
+                    activityLog.setUser(student);
+                    activityLog.setActivityType(activityType);
+                    activityLog.setRelatedEntityId(relatedEntityId);
+                    activityLog.setTimestamp(activityTime);
+                    activityLog.setTimeSpent(timeSpent);
+                    activityLog.setMetadata(metadata);
+
+                    activityLogRepository.save(activityLog);
+                    totalActivities++;
+                }
+            }
+
+            return "SUCCESS: Generated " + totalActivities + " activity log entries for " + students.size() + " students over 7 days";
+
+        } catch (Exception e) {
+            return "ERROR: " + e.getMessage();
+        }
+    }
+
     public Map<String, Object> getTestDataSummary() {
         Map<String, Object> summary = new HashMap<>();
         summary.put("Total Users", userRepository.count());
@@ -400,6 +629,7 @@ public class TestDataService {
         summary.put("Total Questions", questionRepository.count());
         summary.put("Total Assignments", assignmentRepository.count());
         summary.put("Total Progress Records", progressRepository.count());
+        summary.put("Total Activity Logs", activityLogRepository.count());
 
         return summary;
     }

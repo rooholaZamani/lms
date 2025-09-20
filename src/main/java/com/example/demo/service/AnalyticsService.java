@@ -15,9 +15,13 @@ import java.util.*;
 import com.example.demo.model.GradeCategory;
 import java.util.stream.Collectors;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class AnalyticsService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AnalyticsService.class);
 
     private final CourseRepository courseRepository;
     private final ProgressRepository progressRepository;
@@ -1676,23 +1680,106 @@ public class AnalyticsService {
         LocalDateTime endDate = LocalDateTime.now();
         LocalDateTime startDate = calculateStartDate(endDate, period);
 
-        // دریافت activity logs مربوط به این course
-        List<ActivityLog> activities = activityLogRepository.findAll().stream()
-                .filter(log -> log.getTimestamp().isAfter(startDate) && log.getTimestamp().isBefore(endDate))
+        logger.info("=== DEBUG: getCourseTimeDistribution for courseId: {}, period: {} ===", courseId, period);
+        logger.info("Date range: {} to {}", startDate, endDate);
+
+        // دریافت activity logs مربوط به این course (using inclusive date boundaries)
+        List<ActivityLog> allActivities = activityLogRepository.findAll().stream()
+                .filter(log -> !log.getTimestamp().isBefore(startDate) && !log.getTimestamp().isAfter(endDate))
                 .filter(log -> isCourseRelatedActivity(log, courseId))
                 .collect(Collectors.toList());
 
-        // Group by student
-        Map<Long, List<ActivityLog>> activitiesByStudent = activities.stream()
+        logger.info("Total activities found after time and course filtering: {}", allActivities.size());
+
+        // DEBUG: Log activity details to investigate timeSpent values
+        logger.info("=== DEBUG: Activity details ===");
+        allActivities.forEach(activity -> {
+            logger.info("Activity ID: {}, Type: {}, User: {}, TimeSpent: {}, Timestamp: {}",
+                activity.getId(), activity.getActivityType(), activity.getUser().getId(),
+                activity.getTimeSpent(), activity.getTimestamp());
+        });
+
+        // Get enrolled students for validation
+        Set<Long> enrolledStudentIds = course.getEnrolledStudents().stream()
+                .filter(user -> user.getRoles().stream()
+                        .anyMatch(role -> "STUDENT".equals(role.getName()))) // Only include STUDENT role
+                .map(User::getId)
+                .collect(Collectors.toSet());
+
+        logger.info("Enrolled students with STUDENT role: {}", enrolledStudentIds.size());
+        logger.info("Enrolled student IDs: {}", enrolledStudentIds);
+
+        // Filter activities to only include enrolled students with STUDENT role
+        List<ActivityLog> studentActivities = allActivities.stream()
+                .filter(log -> {
+                    User user = log.getUser();
+                    boolean isStudent = user.getRoles().stream()
+                            .anyMatch(role -> "STUDENT".equals(role.getName()));
+                    boolean isEnrolled = enrolledStudentIds.contains(user.getId());
+
+                    if (!isStudent) {
+                        String roleNames = user.getRoles().stream()
+                                .map(Role::getName)
+                                .collect(Collectors.joining(", "));
+                        logger.debug("Excluding activity from user {} with roles: {}", user.getId(), roleNames);
+                    }
+                    if (!isEnrolled && isStudent) {
+                        logger.debug("Excluding activity from non-enrolled student: {}", user.getId());
+                    }
+
+                    return isStudent && isEnrolled;
+                })
+                .collect(Collectors.toList());
+
+        logger.info("Activities after student filtering: {}", studentActivities.size());
+
+        // Log activity breakdown by user
+        Map<Long, List<ActivityLog>> activitiesByUser = studentActivities.stream()
                 .collect(Collectors.groupingBy(log -> log.getUser().getId()));
 
-        // محاسبه total time per student
+        logger.info("Activity breakdown by user:");
+        activitiesByUser.forEach((userId, userActivities) -> {
+            logger.info("  User {}: {} activities", userId, userActivities.size());
+        });
+
+        // Group by student
+        Map<Long, List<ActivityLog>> activitiesByStudent = studentActivities.stream()
+                .collect(Collectors.groupingBy(log -> log.getUser().getId()));
+
+        // DEBUG: Log Progress table data for comparison
+        logger.info("=== DEBUG: Progress table data ===");
+        List<Progress> allProgress = progressRepository.findAll().stream()
+                .filter(p -> p.getCourse().getId().equals(courseId))
+                .collect(Collectors.toList());
+        allProgress.forEach(progress -> {
+            logger.info("Progress: Student {}, Course {}, TotalStudyTime: {} seconds",
+                progress.getStudent().getId(), progress.getCourse().getId(), progress.getTotalStudyTime());
+        });
+
+        // محاسبه total time per student from ActivityLog
         Map<Long, Long> timePerStudent = new HashMap<>();
         for (Map.Entry<Long, List<ActivityLog>> entry : activitiesByStudent.entrySet()) {
             Long totalTime = entry.getValue().stream()
-                    .mapToLong(ActivityLog::getTimeSpent)
+                    .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
                     .sum();
             timePerStudent.put(entry.getKey(), totalTime);
+        }
+
+        logger.info("Time per student from ActivityLog: {}", timePerStudent);
+
+        // FALLBACK: If ActivityLog data is missing or zero, use Progress.totalStudyTime
+        Map<Long, Progress> progressByStudentId = allProgress.stream()
+                .collect(Collectors.toMap(p -> p.getStudent().getId(), p -> p));
+
+        for (Long studentId : enrolledStudentIds) {
+            Long activityLogTime = timePerStudent.getOrDefault(studentId, 0L);
+            Progress progress = progressByStudentId.get(studentId);
+
+            if (activityLogTime == 0L && progress != null && progress.getTotalStudyTime() != null && progress.getTotalStudyTime() > 0L) {
+                logger.info("FALLBACK: Using Progress.totalStudyTime ({} seconds) for student {} instead of ActivityLog time ({})",
+                    progress.getTotalStudyTime(), studentId, activityLogTime);
+                timePerStudent.put(studentId, progress.getTotalStudyTime());
+            }
         }
 
         List<Long> times = new ArrayList<>(timePerStudent.values());
@@ -1705,12 +1792,12 @@ public class AnalyticsService {
                 createTimeRange("فعالیت بسیار زیاد (> 5 ساعت)", 18000L, null, times)
         );
 
-        // Timeline data
+        // Timeline data - pass filtered student activities and fallback time data
         List<Map<String, Object>> timeline = new ArrayList<>();
         if ("daily".equals(granularity)) {
-            timeline = createDailyTimeline(activities, startDate, endDate);
+            timeline = createDailyTimelineWithStudentFilter(studentActivities, startDate, endDate, enrolledStudentIds, progressByStudentId);
         } else if ("weekly".equals(granularity)) {
-            timeline = createWeeklyTimeline(activities, startDate, endDate);
+            timeline = createWeeklyTimeline(studentActivities, startDate, endDate);
         }
 
         // Calculate averages
@@ -1719,6 +1806,9 @@ public class AnalyticsService {
                 .mapToLong(Long::longValue)
                 .average()
                 .orElse(0.0);
+
+        logger.info("Final results: totalStudents={}, activeStudentsInActivities={}",
+                   totalStudents, activitiesByStudent.size());
 
         result.put("courseId", courseId);
         result.put("courseName", course.getTitle());
@@ -2320,6 +2410,112 @@ public class AnalyticsService {
         }
 
         return new ArrayList<>(timelineMap.values());
+    }
+
+    /**
+     * Enhanced daily timeline creation with proper student filtering and debugging
+     */
+    private List<Map<String, Object>> createDailyTimelineWithStudentFilter(
+            List<ActivityLog> activities, LocalDateTime startDate, LocalDateTime endDate, Set<Long> enrolledStudentIds, Map<Long, Progress> progressByStudentId) {
+
+        logger.info("=== Creating daily timeline with student filter ===");
+        logger.info("Input activities: {}", activities.size());
+        logger.info("Valid student IDs: {}", enrolledStudentIds);
+
+        Map<String, Map<String, Object>> timelineMap = new HashMap<>();
+        Map<String, Set<Long>> uniqueStudentsPerDay = new HashMap<>();
+
+        LocalDateTime current = startDate.toLocalDate().atStartOfDay();
+        while (!current.isAfter(endDate)) {
+            String dateStr = current.toLocalDate().toString();
+            timelineMap.put(dateStr, new HashMap<>());
+            timelineMap.get(dateStr).put("date", dateStr);
+            timelineMap.get(dateStr).put("totalseconds", 0L);
+            timelineMap.get(dateStr).put("activeStudents", 0);
+            uniqueStudentsPerDay.put(dateStr, new HashSet<>());
+            current = current.plusDays(1);
+        }
+
+        // Group activities by date and track unique students with additional validation
+        for (ActivityLog activity : activities) {
+            String dateStr = activity.getTimestamp().toLocalDate().toString();
+            Long userId = activity.getUser().getId();
+
+            if (timelineMap.containsKey(dateStr)) {
+                // Double-check that this user is an enrolled student (should already be filtered)
+                if (!enrolledStudentIds.contains(userId)) {
+                    logger.warn("Activity from non-enrolled user {} found in filtered activities, skipping", userId);
+                    continue;
+                }
+
+                // Double-check user role
+                boolean hasStudentRole = activity.getUser().getRoles().stream()
+                        .anyMatch(role -> "STUDENT".equals(role.getName()));
+                if (!hasStudentRole) {
+                    String roleNames = activity.getUser().getRoles().stream()
+                            .map(Role::getName)
+                            .collect(Collectors.joining(", "));
+                    logger.warn("Activity from non-student user {} (roles: {}) found in filtered activities, skipping",
+                               userId, roleNames);
+                    continue;
+                }
+
+                Map<String, Object> dayData = timelineMap.get(dateStr);
+                Long currentseconds = (Long) dayData.get("totalseconds");
+                Long activityTimeSpent = activity.getTimeSpent() != null ? activity.getTimeSpent() : 0L;
+                dayData.put("totalseconds", currentseconds + activityTimeSpent);
+
+                // Track unique students per day
+                uniqueStudentsPerDay.get(dateStr).add(userId);
+
+                logger.info("DEBUG Timeline: Added activity for student {} on {}, activity timeSpent: {}, new total: {} seconds",
+                           userId, dateStr, activityTimeSpent, currentseconds + activityTimeSpent);
+            }
+        }
+
+        // FALLBACK: For students with no ActivityLog but have Progress.totalStudyTime, add to most recent day
+        Set<Long> studentsWithActivityLog = activities.stream()
+                .map(log -> log.getUser().getId())
+                .collect(Collectors.toSet());
+
+        String mostRecentDate = endDate.toLocalDate().toString();
+        logger.info("=== FALLBACK: Checking students with Progress but no ActivityLog ===");
+
+        for (Long studentId : enrolledStudentIds) {
+            if (!studentsWithActivityLog.contains(studentId)) {
+                Progress progress = progressByStudentId.get(studentId);
+                if (progress != null && progress.getTotalStudyTime() != null && progress.getTotalStudyTime() > 0L) {
+                    logger.info("FALLBACK: Adding Progress.totalStudyTime ({} seconds) for student {} to date {}",
+                        progress.getTotalStudyTime(), studentId, mostRecentDate);
+
+                    if (timelineMap.containsKey(mostRecentDate)) {
+                        Map<String, Object> dayData = timelineMap.get(mostRecentDate);
+                        Long currentSeconds = (Long) dayData.get("totalseconds");
+                        dayData.put("totalseconds", currentSeconds + progress.getTotalStudyTime());
+                        uniqueStudentsPerDay.get(mostRecentDate).add(studentId);
+                    }
+                }
+            }
+        }
+
+        // Update active students count with actual unique student count and log details
+        for (String dateStr : timelineMap.keySet()) {
+            Map<String, Object> dayData = timelineMap.get(dateStr);
+            Set<Long> studentsOnDay = uniqueStudentsPerDay.get(dateStr);
+            int activeStudentsCount = studentsOnDay.size();
+
+            dayData.put("activeStudents", activeStudentsCount);
+
+            if (activeStudentsCount > 0) {
+                logger.info("Date {}: {} active students: {}, total seconds: {}",
+                    dateStr, activeStudentsCount, studentsOnDay, dayData.get("totalseconds"));
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>(timelineMap.values());
+        logger.info("=== Timeline creation complete, returning {} days of data ===", result.size());
+
+        return result;
     }
 
     private List<Map<String, Object>> createWeeklyTimeline(List<ActivityLog> activities, LocalDateTime startDate, LocalDateTime endDate) {
@@ -2943,6 +3139,11 @@ public class AnalyticsService {
                     return isLessonRelatedToCourse(log.getRelatedEntityId(), courseId);
 
                 case "EXAM_SUBMISSION":
+                    return submissionRepository.findById(log.getRelatedEntityId())
+                            .map(Submission::getExam)
+                            .map(exam -> exam.getLesson() != null && exam.getLesson().getCourse() != null && exam.getLesson().getCourse().getId().equals(courseId))
+                            .orElse(false);
+
                 case "EXAM_START":
                     return isExamRelatedToCourse(log.getRelatedEntityId(), courseId);
 
@@ -4820,7 +5021,6 @@ public class AnalyticsService {
                     completedActivities++;
                 }
             }
-
             // 3. COUNT AND CHECK ASSIGNMENT ACTIVITIES
             List<Assignment> lessonAssignments = assignmentRepository.findByLesson(lesson);
             totalActivities += lessonAssignments.size();

@@ -53,6 +53,30 @@ public class TestDataController {
         }
     }
 
+    @PostMapping("/generate-activity-logs")
+    public ResponseEntity<Map<String, String>> generateActivityLogs() {
+        try {
+            String result = testDataService.generateActivityLogsForExistingUsers();
+
+            if (result.startsWith("SUCCESS")) {
+                return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "message", result
+                ));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", result
+                ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                "status", "error",
+                "message", "Failed to generate activity logs: " + e.getMessage()
+            ));
+        }
+    }
+
     @GetMapping("/status")
     public ResponseEntity<Map<String, String>> getStatus() {
         return ResponseEntity.ok(Map.of(
