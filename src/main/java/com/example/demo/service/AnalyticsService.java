@@ -618,8 +618,8 @@ public class AnalyticsService {
         }
 
         // Calculate total study hours for overview
-        long totalHours = allProgress.stream()
-                .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
+        long totalHours = uniqueStudents.stream()
+                .mapToLong(student -> calculateActualStudyTime(student, teacherCourses))
                 .sum();
 
         overview.put("totalStudents", totalStudents);
@@ -1709,13 +1709,14 @@ public class AnalyticsService {
         logger.info("Enrolled students with STUDENT role: {}", enrolledStudentIds.size());
         logger.info("Enrolled student IDs: {}", enrolledStudentIds);
 
-        // Filter activities to only include enrolled students with STUDENT role
+        // Filter activities to only include enrolled students with STUDENT role AND study activities
         List<ActivityLog> studentActivities = allActivities.stream()
                 .filter(log -> {
                     User user = log.getUser();
                     boolean isStudent = user.getRoles().stream()
                             .anyMatch(role -> "STUDENT".equals(role.getName()));
                     boolean isEnrolled = enrolledStudentIds.contains(user.getId());
+                    boolean isStudyActivity = isStudyActivity(log.getActivityType());
 
                     if (!isStudent) {
                         String roleNames = user.getRoles().stream()
@@ -1726,8 +1727,11 @@ public class AnalyticsService {
                     if (!isEnrolled && isStudent) {
                         logger.debug("Excluding activity from non-enrolled student: {}", user.getId());
                     }
+                    if (!isStudyActivity && isStudent && isEnrolled) {
+                        logger.debug("Excluding non-study activity: {} from student: {}", log.getActivityType(), user.getId());
+                    }
 
-                    return isStudent && isEnrolled;
+                    return isStudent && isEnrolled && isStudyActivity;
                 })
                 .collect(Collectors.toList());
 
@@ -1765,22 +1769,6 @@ public class AnalyticsService {
             timePerStudent.put(entry.getKey(), totalTime);
         }
 
-        logger.info("Time per student from ActivityLog: {}", timePerStudent);
-
-        // FALLBACK: If ActivityLog data is missing or zero, use Progress.totalStudyTime
-        Map<Long, Progress> progressByStudentId = allProgress.stream()
-                .collect(Collectors.toMap(p -> p.getStudent().getId(), p -> p));
-
-        for (Long studentId : enrolledStudentIds) {
-            Long activityLogTime = timePerStudent.getOrDefault(studentId, 0L);
-            Progress progress = progressByStudentId.get(studentId);
-
-            if (activityLogTime == 0L && progress != null && progress.getTotalStudyTime() != null && progress.getTotalStudyTime() > 0L) {
-                logger.info("FALLBACK: Using Progress.totalStudyTime ({} seconds) for student {} instead of ActivityLog time ({})",
-                    progress.getTotalStudyTime(), studentId, activityLogTime);
-                timePerStudent.put(studentId, progress.getTotalStudyTime());
-            }
-        }
 
         List<Long> times = new ArrayList<>(timePerStudent.values());
 
@@ -1795,7 +1783,7 @@ public class AnalyticsService {
         // Timeline data - pass filtered student activities and fallback time data
         List<Map<String, Object>> timeline = new ArrayList<>();
         if ("daily".equals(granularity)) {
-            timeline = createDailyTimelineWithStudentFilter(studentActivities, startDate, endDate, enrolledStudentIds, progressByStudentId);
+            timeline = createDailyTimelineWithStudentFilter(studentActivities, startDate, endDate, enrolledStudentIds);
         } else if ("weekly".equals(granularity)) {
             timeline = createWeeklyTimeline(studentActivities, startDate, endDate);
         }
@@ -2415,8 +2403,7 @@ public class AnalyticsService {
     /**
      * Enhanced daily timeline creation with proper student filtering and debugging
      */
-    private List<Map<String, Object>> createDailyTimelineWithStudentFilter(
-            List<ActivityLog> activities, LocalDateTime startDate, LocalDateTime endDate, Set<Long> enrolledStudentIds, Map<Long, Progress> progressByStudentId) {
+    private List<Map<String, Object>> createDailyTimelineWithStudentFilter(List<ActivityLog> activities, LocalDateTime startDate, LocalDateTime endDate, Set<Long> enrolledStudentIds) {
 
         logger.info("=== Creating daily timeline with student filter ===");
         logger.info("Input activities: {}", activities.size());
@@ -2479,24 +2466,6 @@ public class AnalyticsService {
                 .collect(Collectors.toSet());
 
         String mostRecentDate = endDate.toLocalDate().toString();
-        logger.info("=== FALLBACK: Checking students with Progress but no ActivityLog ===");
-
-        for (Long studentId : enrolledStudentIds) {
-            if (!studentsWithActivityLog.contains(studentId)) {
-                Progress progress = progressByStudentId.get(studentId);
-                if (progress != null && progress.getTotalStudyTime() != null && progress.getTotalStudyTime() > 0L) {
-                    logger.info("FALLBACK: Adding Progress.totalStudyTime ({} seconds) for student {} to date {}",
-                        progress.getTotalStudyTime(), studentId, mostRecentDate);
-
-                    if (timelineMap.containsKey(mostRecentDate)) {
-                        Map<String, Object> dayData = timelineMap.get(mostRecentDate);
-                        Long currentSeconds = (Long) dayData.get("totalseconds");
-                        dayData.put("totalseconds", currentSeconds + progress.getTotalStudyTime());
-                        uniqueStudentsPerDay.get(mostRecentDate).add(studentId);
-                    }
-                }
-            }
-        }
 
         // Update active students count with actual unique student count and log details
         for (String dateStr : timelineMap.keySet()) {
