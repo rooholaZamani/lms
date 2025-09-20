@@ -710,6 +710,12 @@ public class ExamService {
             case SHORT_ANSWER:
                 result = evaluateShortAnswer(question, studentAnswer);
                 break;
+            case ESSAY:
+                // Essay questions require manual grading, so we return true to give full points initially
+                // The actual score will be adjusted during manual grading
+                result = true;
+                System.out.println("ESSAY question marked for manual grading - giving full points initially");
+                break;
             default:
                 System.out.println("WARNING: Unsupported question type: " + question.getQuestionType());
                 result = false;
@@ -1525,6 +1531,77 @@ public class ExamService {
                           " → Final: " + finalPoints);
 
         return finalPoints;
+    }
+
+    /**
+     * Recalculate submission score including both automatic and manual grades
+     */
+    public int recalculateSubmissionScore(Submission submission, Map<String, Object> manualGrades) {
+        Exam exam = submission.getExam();
+        List<Question> questions = questionRepository.findByExamOrderById(exam);
+
+        // Parse student answers from JSON
+        Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
+
+        int totalScore = 0;
+
+        System.out.println("=== RECALCULATING SUBMISSION SCORE ===");
+        System.out.println("Submission ID: " + submission.getId());
+        System.out.println("Exam: " + exam.getTitle());
+        System.out.println("Questions Count: " + questions.size());
+
+        for (Question question : questions) {
+            String questionId = String.valueOf(question.getId());
+            int questionPoints = question.getPoints();
+            int earnedPoints = 0;
+
+            System.out.println("--- Question " + questionId + " (" + question.getQuestionType() + ") ---");
+            System.out.println("Question Points: " + questionPoints);
+
+            if (question.getQuestionType() == QuestionType.ESSAY ||
+                question.getQuestionType() == QuestionType.SHORT_ANSWER) {
+                // Use manual grade for essay and short answer questions
+                if (manualGrades != null && manualGrades.containsKey(questionId)) {
+                    earnedPoints = ((Number) manualGrades.get(questionId)).intValue();
+                    // Ensure manual grade doesn't exceed question points
+                    earnedPoints = Math.max(0, Math.min(earnedPoints, questionPoints));
+                    System.out.println("Manual Grade: " + earnedPoints + "/" + questionPoints);
+                } else {
+                    // No manual grade assigned yet, use 0
+                    earnedPoints = 0;
+                    System.out.println("No manual grade assigned - Points: 0/" + questionPoints);
+                }
+            } else {
+                // Use automatic grading for other question types
+                Object studentAnswer = studentAnswers.get(questionId);
+                if (studentAnswer != null) {
+                    Object evaluationResult = evaluateAnswerWithPartialScoring(question, studentAnswer);
+
+                    if (evaluationResult instanceof Boolean) {
+                        // Binary scoring
+                        boolean isCorrect = (Boolean) evaluationResult;
+                        earnedPoints = isCorrect ? questionPoints : 0;
+                        System.out.println("Auto Grade (Binary): " + earnedPoints + "/" + questionPoints + " (Correct: " + isCorrect + ")");
+                    } else if (evaluationResult instanceof Double) {
+                        // Partial scoring
+                        double percentage = (Double) evaluationResult;
+                        ScoringPolicy policy = question.getScoringPolicy();
+                        earnedPoints = applyScoring(percentage, questionPoints, policy);
+                        System.out.println("Auto Grade (Partial): " + earnedPoints + "/" + questionPoints + " (" + String.format("%.1f", percentage * 100) + "%)");
+                    }
+                } else {
+                    System.out.println("No student answer - Points: 0/" + questionPoints);
+                }
+            }
+
+            totalScore += earnedPoints;
+        }
+
+        System.out.println("=== RECALCULATION COMPLETE ===");
+        System.out.println("Total Score: " + totalScore);
+        System.out.println("===========================");
+
+        return totalScore;
     }
 
 }

@@ -867,27 +867,8 @@ public class ExamController {
             Map<String, Object> manualGrades = (Map<String, Object>) gradingData.get("manualGrades");
             String feedback = (String) gradingData.get("feedback");
 
-            // Parse کردن answers فعلی
-            Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
-
-            // اعمال نمرات دستی
-            List<Question> questions = submission.getExam().getQuestions();
-            int totalScore = 0;
-
-            for (Question question : questions) {
-                String questionId = String.valueOf(question.getId());
-
-                if (manualGrades.containsKey(questionId)) {
-                    // نمره دستی برای این سوال
-                    int manualScore = ((Number) manualGrades.get(questionId)).intValue();
-                    totalScore += manualScore;
-                } else {
-                    // نمره خودکار برای سوالات غیرتشریحی
-                    Object studentAnswer = studentAnswers.get(questionId);
-                    boolean isCorrect = examService.evaluateAnswer(question, studentAnswer);
-                    totalScore += isCorrect ? question.getPoints() : 0;
-                }
-            }
+            // Use the new recalculation method to get accurate total score
+            int totalScore = examService.recalculateSubmissionScore(submission, manualGrades);
 
             // به‌روزرسانی submission
             submission.setScore(totalScore);
