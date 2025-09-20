@@ -256,7 +256,7 @@ public class ExamController {
 
         activityTrackingService.logActivity(student, "EXAM_SUBMISSION", examId, timeSpent, metadata);
         if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(student, timeSpent);
+            activityTrackingService.updateStudyTime(student,exam.getLesson().getCourse(), timeSpent);
         }
         lessonCompletionService.checkAndAutoCompleteLesson(student, exam.getLesson());
         return ResponseEntity.ok(dtoMapperService.mapToSubmissionDTO(submission));

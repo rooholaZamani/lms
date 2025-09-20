@@ -72,7 +72,7 @@ public class ChatController {
 
             metadata.put("courseTitle", course.getTitle());
             activityTrackingService.logActivity(user, "CHAT_VIEW", courseId, timeSpent,metadata);
-            activityTrackingService.updateStudyTime(user, timeSpent);
+            activityTrackingService.updateStudyTime(user, course,timeSpent);
         }
 
         List<ChatMessage> messages = chatService.getCourseMessages(courseId, page, size);

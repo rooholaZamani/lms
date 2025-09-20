@@ -113,7 +113,7 @@ public class AssignmentController {
 
         activityTrackingService.logActivity(student, "ASSIGNMENT_SUBMISSION", submission.getId(), timeSpent, metadata);
         if (timeSpent > 0) {
-            activityTrackingService.updateStudyTime(student, timeSpent);
+            activityTrackingService.updateStudyTime(student, assignment.getLesson().getCourse(),timeSpent);
         }
 
         // Check for lesson auto-completion after assignment submission

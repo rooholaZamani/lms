@@ -75,6 +75,7 @@ public class ContentController {
 
         try {
             Content content = contentService.getContentById(contentId);
+            Course course = content.getLesson().getCourse();
             User currentUser = userService.findByUsername(authentication.getName());
 
             if (!hasAccessToContent(currentUser, content)) {
@@ -94,7 +95,7 @@ public class ContentController {
 
             activityTrackingService.logActivity(currentUser, "CONTENT_VIEW", contentId, timeSpent,metadata);
             if (timeSpent > 0) {
-                activityTrackingService.updateStudyTime(currentUser, timeSpent);
+                activityTrackingService.updateStudyTime(currentUser, course, timeSpent);
             }
 
 //            ContentDetailsDTO contentDetails = dtoMapperService.mapToContentDetailsDTO(content);
