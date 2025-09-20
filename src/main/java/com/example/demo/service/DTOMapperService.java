@@ -674,6 +674,13 @@ public class DTOMapperService {
                     dto.setMatchingPairs(matchingDTOs);
                 }
                 break;
+
+            case SHORT_ANSWER:
+                // برای سوالات پاسخ کوتاه پاسخ صحیح را برمی‌گردانیم
+                if (question.getCorrectAnswer() != null) {
+                    dto.setCorrectOption(question.getCorrectAnswer());
+                }
+                break;
         }
 
         return dto;

@@ -97,8 +97,14 @@ public class QuestionController {
                 break;
                 
             case ESSAY:
-            case SHORT_ANSWER:
                 // برای سوالات تشریحی نیازی به تنظیم خاصی نیست
+                break;
+
+            case SHORT_ANSWER:
+                // برای سوالات پاسخ کوتاه پاسخ صحیح را ذخیره می‌کنیم
+                if (dto.getCorrectOption() != null && !dto.getCorrectOption().trim().isEmpty()) {
+                    question.setCorrectAnswer(dto.getCorrectOption().trim());
+                }
                 break;
         }
 

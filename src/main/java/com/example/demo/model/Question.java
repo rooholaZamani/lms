@@ -74,6 +74,10 @@ public class Question {
 
     private Double difficulty; // سطح دشواری (1.0 - 5.0)
 
+    // برای سوالات پاسخ کوتاه - پاسخ صحیح
+    @Column(length = 2000)
+    private String correctAnswer;
+
     // Helper method to safely get question type
     public QuestionType getQuestionType() {
         return questionType != null ? questionType : QuestionType.MULTIPLE_CHOICE;

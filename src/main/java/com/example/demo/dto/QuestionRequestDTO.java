@@ -29,4 +29,7 @@ public class QuestionRequestDTO {
     // برای سوالات دسته‌بندی
     private List<String> categories;
     private List<CategorizationItemDTO> categorizationItems;
+
+    // برای سوالات پاسخ کوتاه - پاسخ صحیح
+    private String correctOption;
 }

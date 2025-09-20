@@ -1124,7 +1124,7 @@ public class AnalyticsService {
 
             // Calculate study time for each course from ActivityLog
             long courseStudyTime = calculateCourseStudyTime(student, course);
-            courseData.put("studyTimeSeconds", Math.round(courseStudyTime * 10.0));
+            courseData.put("studyTimeMinutes", Math.round(courseStudyTime / 60.0)); // Convert seconds to minutes for display
 
             courseDetails.add(courseData);
         }
@@ -1399,7 +1399,7 @@ public class AnalyticsService {
             activityData.put("type", activity.getActivityType());
             activityData.put("timestamp", activity.getTimestamp());
             activityData.put("timeSpent", activity.getTimeSpent() != null ?
-                    Math.round(activity.getTimeSpent() * 10.0) : 0.0);
+                    Math.round(activity.getTimeSpent() / 60.0) : 0.0); // Convert seconds to minutes
             activityData.put("description", generateActivityDescription(activity));
 
             if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
@@ -1446,7 +1446,7 @@ public class AnalyticsService {
                 .filter(log -> log.getRelatedEntityId() != null)
                 .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
                 .sum();
-        stats.put("totalStudyHours", Math.round(totalStudyseconds  * 10.0));
+        stats.put("totalStudyHours", Math.round(totalStudyseconds / 3600.0)); // Convert seconds to hours
 
         // امتیاز پایداری (بر اساس فعالیت روزانه)
         double consistencyScore = calculateConsistencyScore(student, 30);
@@ -3270,7 +3270,7 @@ public class AnalyticsService {
                     User student = progress.getStudent();
                     studentData.put("studentId", student.getId());
                     studentData.put("studentName", student.getFirstName() + " " + student.getLastName());
-                    studentData.put("value", Math.round(progress.getTotalStudyTime() * 10.0)); // Convert to hours
+                    studentData.put("value", Math.round(progress.getTotalStudyTime() / 60.0)); // Convert seconds to minutes for display
                     studentData.put("totalseconds", progress.getTotalStudyTime());
                     return studentData;
                 })
@@ -4155,7 +4155,7 @@ public class AnalyticsService {
                     timelineItem.put("description", generateActivityDescription(activity));
                     timelineItem.put("timestamp", activity.getTimestamp());
                     timelineItem.put("timeSpent", activity.getTimeSpent() != null ?
-                            Math.round(activity.getTimeSpent() * 10.0) : 0.0);
+                            Math.round(activity.getTimeSpent() / 60.0) : 0.0); // Convert seconds to minutes
 
                     // اضافه کردن metadata
                     if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
@@ -4199,7 +4199,7 @@ public class AnalyticsService {
                 .mapToDouble(ActivityLog::getTimeSpent)
                 .average()
                 .orElse(0.0);
-        stats.put("averageTimeSpent", Math.round(avgTimeSpent * 10.0));
+        stats.put("averageTimeSpent", Math.round(avgTimeSpent / 60.0)); // Convert seconds to minutes
 
         // آخرین فعالیت
         if (!activities.isEmpty()) {

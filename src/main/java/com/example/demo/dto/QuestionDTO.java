@@ -30,4 +30,7 @@ public class QuestionDTO {
     
     // For categorization questions - list of available categories
     private List<String> categories = new ArrayList<>();
+
+    // For short answer questions - correct answer
+    private String correctOption;
 }

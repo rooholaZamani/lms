@@ -89,8 +89,40 @@ public class ExamService {
         int earnedPoints = scoreResult[0];
         int totalPoints = scoreResult[1];
 
+        // Validate score calculation
+        if (earnedPoints < 0) {
+            System.err.println("ERROR: Negative earned points detected: " + earnedPoints);
+            earnedPoints = 0;
+        }
+
+        if (earnedPoints > totalPoints) {
+            System.err.println("ERROR: Earned points (" + earnedPoints + ") exceed total possible points (" + totalPoints + ")");
+            earnedPoints = totalPoints;
+        }
+
+        if (totalPoints <= 0) {
+            System.err.println("ERROR: Invalid total points: " + totalPoints);
+            // Don't save submission if exam has no valid questions
+            throw new RuntimeException("Invalid exam: Total possible score is " + totalPoints);
+        }
+
+        // Validate against exam's total possible score
+        if (exam.getTotalPossibleScore() != null && exam.getTotalPossibleScore() != totalPoints) {
+            System.err.println("WARNING: Calculated total points (" + totalPoints + ") doesn't match exam's stored total (" + exam.getTotalPossibleScore() + ")");
+            // Update exam's total score if it's wrong
+            exam.setTotalPossibleScore(totalPoints);
+            examRepository.save(exam);
+        }
+
+        // Validate passing score
+        if (exam.getPassingScore() > totalPoints) {
+            System.err.println("ERROR: Passing score (" + exam.getPassingScore() + ") exceeds total possible points (" + totalPoints + ")");
+        }
+
         submission.setScore(earnedPoints);
         submission.setPassed(earnedPoints >= exam.getPassingScore());
+
+        System.out.println("Final submission score: " + earnedPoints + "/" + totalPoints + " (Passed: " + submission.isPassed() + ")");
 
         return submissionRepository.save(submission);
     }
@@ -98,15 +130,65 @@ public class ExamService {
 
     private Map<String, Object> parseAnswersJson(String answersJson) {
         if (answersJson == null || answersJson.trim().isEmpty()) {
+            System.out.println("WARNING: Empty or null answers JSON provided");
             return new HashMap<>();
         }
 
         try {
-            return objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> parsedAnswers = objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
+            System.out.println("Successfully parsed answers JSON. Keys: " + parsedAnswers.keySet());
+            return parsedAnswers;
         } catch (Exception e) {
+            System.err.println("ERROR: Failed to parse answers JSON: " + answersJson);
+            System.err.println("Error details: " + e.getMessage());
             e.printStackTrace();
-            return new HashMap<>();
+
+            // Try to parse as simple key-value pairs manually as fallback
+            try {
+                Map<String, Object> fallbackAnswers = parseAnswersJsonManually(answersJson);
+                System.out.println("Fallback parsing successful. Keys: " + fallbackAnswers.keySet());
+                return fallbackAnswers;
+            } catch (Exception fallbackException) {
+                System.err.println("ERROR: Fallback parsing also failed: " + fallbackException.getMessage());
+                return new HashMap<>();
+            }
         }
+    }
+
+    private Map<String, Object> parseAnswersJsonManually(String answersJson) {
+        Map<String, Object> answers = new HashMap<>();
+
+        // Remove outer braces and split by comma
+        String content = answersJson.trim();
+        if (content.startsWith("{") && content.endsWith("}")) {
+            content = content.substring(1, content.length() - 1);
+        }
+
+        if (content.trim().isEmpty()) {
+            return answers;
+        }
+
+        String[] pairs = content.split(",");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split(":", 2);
+            if (keyValue.length == 2) {
+                String key = keyValue[0].trim().replaceAll("[\"\']", "");
+                String value = keyValue[1].trim().replaceAll("[\"\']", "");
+
+                // Try to parse value as number if possible
+                try {
+                    if (value.contains(".")) {
+                        answers.put(key, Double.parseDouble(value));
+                    } else {
+                        answers.put(key, Long.parseLong(value));
+                    }
+                } catch (NumberFormatException e) {
+                    answers.put(key, value);
+                }
+            }
+        }
+
+        return answers;
     }
 
 
@@ -525,40 +607,75 @@ public class ExamService {
 
 
     public boolean evaluateAnswer(Question question, Object studentAnswer) {
-        if (studentAnswer == null) return false;
+        if (studentAnswer == null) {
+            System.out.println("Student answer is null for question " + question.getId());
+            return false;
+        }
 
+        System.out.println("Evaluating " + question.getQuestionType() + " question");
+        System.out.println("Student answer type: " + studentAnswer.getClass().getSimpleName());
+        System.out.println("Student answer value: " + studentAnswer);
+
+        boolean result;
         switch (question.getQuestionType()) {
             case MULTIPLE_CHOICE:
             case TRUE_FALSE:
-                return evaluateSimpleAnswer(question, studentAnswer);
+                result = evaluateSimpleAnswer(question, studentAnswer);
+                break;
             case CATEGORIZATION:
-                return evaluateCategorizationAnswer(question, studentAnswer);
+                result = evaluateCategorizationAnswer(question, studentAnswer);
+                break;
             case MATCHING:
-                return evaluateMatchingAnswer(question, studentAnswer);
-
+                result = evaluateMatchingAnswer(question, studentAnswer);
+                break;
             case FILL_IN_THE_BLANKS:
-                return evaluateFillBlankAnswer(question, studentAnswer);
+                result = evaluateFillBlankAnswer(question, studentAnswer);
+                break;
+            case SHORT_ANSWER:
+                result = evaluateShortAnswer(question, studentAnswer);
+                break;
             default:
-                return false;
+                System.out.println("WARNING: Unsupported question type: " + question.getQuestionType());
+                result = false;
         }
+
+        System.out.println("Evaluation result: " + result);
+        return result;
     }
     private boolean evaluateSimpleAnswer(Question question, Object studentAnswer) {
         try {
+            System.out.println("Evaluating simple answer...");
+            System.out.println("Available answers:");
+            for (Answer answer : question.getAnswers()) {
+                System.out.println("  Answer ID: " + answer.getId() + ", Text: '" + answer.getText() + "', Correct: " + answer.getCorrect());
+            }
+
             Long answerId;
             if (studentAnswer instanceof Number) {
                 answerId = ((Number) studentAnswer).longValue();
+                System.out.println("Parsed student answer as Number: " + answerId);
             } else if (studentAnswer instanceof String) {
                 answerId = Long.parseLong((String) studentAnswer);
+                System.out.println("Parsed student answer as String to Long: " + answerId);
             } else {
+                System.out.println("ERROR: Cannot parse student answer - unsupported type: " + studentAnswer.getClass().getSimpleName());
                 return false;
             }
 
-            return question.getAnswers().stream()
+            Answer selectedAnswer = question.getAnswers().stream()
                     .filter(answer -> answer.getId().equals(answerId))
                     .findFirst()
-                    .map(Answer::getCorrect)
-                    .orElse(false);
+                    .orElse(null);
+
+            if (selectedAnswer != null) {
+                System.out.println("Found matching answer: '" + selectedAnswer.getText() + "', Correct: " + selectedAnswer.getCorrect());
+                return selectedAnswer.getCorrect();
+            } else {
+                System.out.println("ERROR: No answer found with ID: " + answerId);
+                return false;
+            }
         } catch (NumberFormatException e) {
+            System.out.println("ERROR: Failed to parse answer ID from: " + studentAnswer + " - " + e.getMessage());
             return false;
         }
     }
@@ -777,6 +894,34 @@ public class ExamService {
         }
     }
 
+    private boolean evaluateShortAnswer(Question question, Object studentAnswer) {
+        try {
+            // Get the correct answer from the question
+            String correctAnswer = question.getCorrectAnswer();
+            if (correctAnswer == null || correctAnswer.trim().isEmpty()) {
+                return false; // No correct answer defined
+            }
+
+            // Get the student's answer as string
+            String studentAnswerStr;
+            if (studentAnswer instanceof String) {
+                studentAnswerStr = (String) studentAnswer;
+            } else {
+                studentAnswerStr = studentAnswer.toString();
+            }
+
+            if (studentAnswerStr == null || studentAnswerStr.trim().isEmpty()) {
+                return false; // Empty student answer
+            }
+
+            // Compare answers (case-insensitive, trimmed)
+            return correctAnswer.trim().equalsIgnoreCase(studentAnswerStr.trim());
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Map<String, String> convertMapToStringMap(Map<?, ?> inputMap) {
         Map<String, String> result = new HashMap<>();
         for (Map.Entry<?, ?> entry : inputMap.entrySet()) {
@@ -794,22 +939,51 @@ public class ExamService {
         int totalPoints = 0;
         int earnedPoints = 0;
 
+        System.out.println("=== EXAM SCORING DEBUG ===");
+        System.out.println("Exam ID: " + exam.getId());
+        System.out.println("Exam Title: " + exam.getTitle());
+        System.out.println("Questions Count: " + questions.size());
+        System.out.println("Raw Answers JSON: " + answersJson);
+
         // Parse JSON answers
         Map<String, Object> answers = parseAnswersJson(answersJson);
+        System.out.println("Parsed Answers Map: " + answers);
+        System.out.println("Parsed Answers Size: " + answers.size());
 
         for (Question question : questions) {
-            totalPoints += question.getPoints();
+            int questionPoints = question.getPoints();
+            totalPoints += questionPoints;
 
             String questionId = question.getId().toString();
             Object studentAnswer = answers.get(questionId);
 
+            System.out.println("--- Question " + questionId + " ---");
+            System.out.println("Question Text: " + question.getText());
+            System.out.println("Question Type: " + question.getQuestionType());
+            System.out.println("Question Points: " + questionPoints);
+            System.out.println("Student Answer: " + studentAnswer);
+
             if (studentAnswer != null) {
                 boolean isCorrect = evaluateAnswer(question, studentAnswer);
+                System.out.println("Answer Evaluation: " + (isCorrect ? "CORRECT" : "INCORRECT"));
                 if (isCorrect) {
-                    earnedPoints += question.getPoints();
+                    earnedPoints += questionPoints;
+                    System.out.println("Points Awarded: " + questionPoints);
+                } else {
+                    System.out.println("Points Awarded: 0");
                 }
+            } else {
+                System.out.println("No answer provided - Points Awarded: 0");
             }
         }
+
+        System.out.println("=== FINAL SCORE CALCULATION ===");
+        System.out.println("Total Possible Points: " + totalPoints);
+        System.out.println("Earned Points: " + earnedPoints);
+        System.out.println("Percentage: " + (totalPoints > 0 ? (earnedPoints * 100.0 / totalPoints) : 0) + "%");
+        System.out.println("Passing Score: " + exam.getPassingScore());
+        System.out.println("Will Pass: " + (earnedPoints >= exam.getPassingScore()));
+        System.out.println("=== END SCORING DEBUG ===");
 
         return new int[]{earnedPoints, totalPoints};
     }
