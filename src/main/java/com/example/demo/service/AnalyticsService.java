@@ -2820,22 +2820,43 @@ public class AnalyticsService {
                 .filter(AssignmentSubmission::isGraded)
                 .count();
 
-        // Build performance data
+        // Calculate average study time for all students in the course
+        double averageTimeSpent = allProgress.stream()
+                .mapToLong(p -> p.getTotalStudyTime() != null ? p.getTotalStudyTime() : 0L)
+                .average()
+                .orElse(0.0);
+
+        // Convert seconds to minutes for frontend display
+        averageTimeSpent = averageTimeSpent / 60.0;
+
+        // Calculate completion rate (percentage of students who completed the course)
+        double completionRate = course.getEnrolledStudents().isEmpty() ? 0 :
+                (double) completedStudents / course.getEnrolledStudents().size() * 100;
+
+        // Build performance data with frontend-expected structure
         performance.put("totalStudents", course.getEnrolledStudents().size());
+        performance.put("studentCount", course.getEnrolledStudents().size()); // Alternative key for compatibility
         performance.put("activeStudents", allProgress.size());
         performance.put("completedStudents", completedStudents);
-        performance.put("averageCompletion", averageCompletion);
+        performance.put("averageProgress", Math.round(averageCompletion * 100.0) / 100.0); // Frontend expects this key
+        performance.put("averageCompletion", averageCompletion); // Keep for backward compatibility
+        performance.put("averageTimeSpent", Math.round(averageTimeSpent * 100.0) / 100.0); // In minutes
+        performance.put("completionRate", Math.round(completionRate * 100.0) / 100.0);
+
+        // Exam metrics
         performance.put("examsTaken", allSubmissions.size());
         performance.put("passedExams", passedExams);
-        performance.put("averageExamScore", averageExamScore);
+        performance.put("averageExamScore", Math.round(averageExamScore * 100.0) / 100.0);
+        performance.put("passingRate", allSubmissions.isEmpty() ? 0 :
+                Math.round((double) passedExams / allSubmissions.size() * 100 * 100.0) / 100.0); // Frontend expects this key
         performance.put("passRate", allSubmissions.isEmpty() ? 0 : (double) passedExams / allSubmissions.size() * 100);
 
         // Assignment metrics (instead of exercise metrics)
         performance.put("assignmentSubmissions", allAssignmentSubmissions.size());
-        performance.put("averageAssignmentScore", averageAssignmentScore);
+        performance.put("averageAssignmentScore", Math.round(averageAssignmentScore * 100.0) / 100.0);
         performance.put("gradedAssignments", gradedAssignments);
         performance.put("assignmentGradingRate", allAssignmentSubmissions.isEmpty() ? 0 :
-                (double) gradedAssignments / allAssignmentSubmissions.size() * 100);
+                Math.round((double) gradedAssignments / allAssignmentSubmissions.size() * 100 * 100.0) / 100.0);
 
         return performance;
     }
