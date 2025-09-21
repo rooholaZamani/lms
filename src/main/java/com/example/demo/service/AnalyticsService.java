@@ -3050,8 +3050,11 @@ public class AnalyticsService {
                 return "شروع آزمون";
             case "ASSIGNMENT_VIEW": // New activity type for viewing assignments
                 return "مشاهده تکلیف";
+
+            case "CONTENT_COMPLETION": // New activity type for viewing assignments
+                return "تکمیل محتوا";
             default:
-                return "فعالیت";
+                return activity.getActivityType();
         }
     }
     private String getContentTypeLabel(String activityType) {
@@ -4351,8 +4354,7 @@ public class AnalyticsService {
                     timelineItem.put("type", activity.getActivityType());
                     timelineItem.put("description", generateActivityDescription(activity));
                     timelineItem.put("timestamp", activity.getTimestamp());
-                    timelineItem.put("timeSpent", activity.getTimeSpent() != null ?
-                            Math.round(activity.getTimeSpent() / 60.0) : 0.0); // Convert seconds to minutes
+                    timelineItem.put("timeSpent", activity.getTimeSpent() != null ? activity.getTimeSpent() : 0);// Convert seconds to minutes
 
                     // اضافه کردن metadata
                     if (activity.getMetadata() != null && !activity.getMetadata().isEmpty()) {
