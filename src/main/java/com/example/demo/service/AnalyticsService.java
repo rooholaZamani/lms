@@ -4267,7 +4267,7 @@ public class AnalyticsService {
                 .collect(Collectors.groupingBy(
                         activity -> {
                             LocalDateTime timestamp = activity.getTimestamp();
-                            int dayOfWeek = timestamp.getDayOfWeek().getValue() % 7; // شنبه = 0
+                            int dayOfWeek = (timestamp.getDayOfWeek().getValue() +1)% 7; // شنبه = 0
                             int hour = timestamp.getHour();
                             return dayOfWeek + "-" + hour;
                         },
