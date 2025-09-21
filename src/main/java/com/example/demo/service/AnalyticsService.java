@@ -1680,14 +1680,11 @@ public class AnalyticsService {
         LocalDateTime endDate = LocalDateTime.now();
         LocalDateTime startDate = calculateStartDate(endDate, period);
 
-        logger.info("=== DEBUG: getCourseTimeDistribution for courseId: {}, period: {} ===", courseId, period);
-        logger.info("Date range: {} to {}", startDate, endDate);
-
         // دریافت activity logs مربوط به این course (using inclusive date boundaries)
         List<ActivityLog> allActivities = activityLogRepository.findAll().stream()
                 .filter(log -> !log.getTimestamp().isBefore(startDate) && !log.getTimestamp().isAfter(endDate))
                 .filter(log -> isCourseRelatedActivity(log, courseId))
-                .collect(Collectors.toList());
+                .toList();
 
         logger.info("Total activities found after time and course filtering: {}", allActivities.size());
 
@@ -1702,7 +1699,7 @@ public class AnalyticsService {
         // Get enrolled students for validation
         Set<Long> enrolledStudentIds = course.getEnrolledStudents().stream()
                 .filter(user -> user.getRoles().stream()
-                        .anyMatch(role -> "STUDENT".equals(role.getName()))) // Only include STUDENT role
+                        .anyMatch(role -> "ROLE_STUDENT".equals(role.getName()))) // Only include STUDENT role
                 .map(User::getId)
                 .collect(Collectors.toSet());
 
@@ -1714,7 +1711,7 @@ public class AnalyticsService {
                 .filter(log -> {
                     User user = log.getUser();
                     boolean isStudent = user.getRoles().stream()
-                            .anyMatch(role -> "STUDENT".equals(role.getName()));
+                            .anyMatch(role -> "ROLE_STUDENT".equals(role.getName()));
                     boolean isEnrolled = enrolledStudentIds.contains(user.getId());
                     boolean isStudyActivity = isStudyActivity(log.getActivityType());
 
@@ -2437,7 +2434,7 @@ public class AnalyticsService {
 
                 // Double-check user role
                 boolean hasStudentRole = activity.getUser().getRoles().stream()
-                        .anyMatch(role -> "STUDENT".equals(role.getName()));
+                        .anyMatch(role -> "ROLE_STUDENT".equals(role.getName()));
                 if (!hasStudentRole) {
                     String roleNames = activity.getUser().getRoles().stream()
                             .map(Role::getName)
@@ -2991,8 +2988,8 @@ public class AnalyticsService {
                 .average()
                 .orElse(0.0);
 
-        // Convert seconds to minutes for frontend display
-        averageTimeSpent = averageTimeSpent / 60.0;
+        // seconds for frontend display
+        averageTimeSpent = averageTimeSpent ;
 
         // Calculate completion rate (percentage of students who completed the course)
         double completionRate = course.getEnrolledStudents().isEmpty() ? 0 :
