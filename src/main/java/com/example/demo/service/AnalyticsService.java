@@ -3057,7 +3057,7 @@ public class AnalyticsService {
     private String getContentTypeLabel(String activityType) {
         switch (activityType) {
             case "CONTENT_VIEW":
-                return "ویدیوهای آموزشی";
+                return "مشاهده محتوا";
             case "ASSIGNMENT_SUBMISSION": // Changed from EXERCISE_SUBMISSION
                 return "تکالیف";
             case "EXAM_SUBMISSION":
@@ -3990,12 +3990,17 @@ public class AnalyticsService {
      */
     private Map<String, Object> getActivityTypeDistribution(List<ActivityLog> activities) {
         Map<String, Long> distribution = activities.stream()
+                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
+                .filter(activityLog -> !"EXAM_START".equals(activityLog.getActivityType()))
                 .collect(Collectors.groupingBy(
                         ActivityLog::getActivityType,
                         Collectors.counting()
                 ));
 
-        long total = activities.size();
+        long total = activities.stream()
+                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
+                .filter(activityLog -> !"EXAM_START".equals(activityLog.getActivityType()))
+                .count();
         Map<String, Object> result = new HashMap<>();
 
         distribution.forEach((type, count) -> {
@@ -4050,6 +4055,7 @@ public class AnalyticsService {
         // Sum time spent in seconds first, then convert to minutes for display
         Map<String, Double> timeByTypeInSeconds = activities.stream()
                 .filter(activity -> activity.getTimeSpent() != null && activity.getTimeSpent() > 0)
+                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
                 .collect(Collectors.groupingBy(
                         ActivityLog::getActivityType,
                         Collectors.summingDouble(activity -> activity.getTimeSpent().doubleValue()) // Keep as seconds
@@ -4229,7 +4235,7 @@ public class AnalyticsService {
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
         LocalDateTime endDate = getNowInIranTime();
 
-        // دریافت فعالیت‌های مربوط به دوره
+        // دریافت فعالیت‌های مربوط به دوره - با محدودیت بالا
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
                 .stream()
@@ -4655,9 +4661,14 @@ public class AnalyticsService {
             allActivities = allActivities.stream()
                     .filter(log -> isCourseRelatedActivity(log, courseId))
                     .collect(Collectors.toList());
+        } else {
+            // Filter to only study-related activities for consistency when showing all courses
+            allActivities = allActivities.stream()
+                    .filter(log -> isStudyActivity(log.getActivityType()))
+                    .collect(Collectors.toList());
         }
 
-        // محدود کردن تعداد فقط برای timeline display
+        // محدود کردن تعداد فقط برای timeline display - حالا محدودیت بالایی داریم
         List<ActivityLog> limitedActivities = allActivities.stream()
                 .limit(limit)
                 .collect(Collectors.toList());

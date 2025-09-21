@@ -536,7 +536,7 @@ public class AnalyticsController {
             @PathVariable Long studentId,
             @PathVariable Long courseId,
             @RequestParam(defaultValue = "30") String timeFilter,
-            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(defaultValue = "10000") int limit,
             Authentication authentication) {
 
         User teacher = userService.findByUsername(authentication.getName());
@@ -558,7 +558,7 @@ public class AnalyticsController {
     public ResponseEntity<Map<String, Object>> getMyActivities(
             @RequestParam(required = false) Long courseId,
             @RequestParam(defaultValue = "month") String timeFilter,
-            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "10000") int limit,
             Authentication authentication) {
 
         User student = userService.findByUsername(authentication.getName());
