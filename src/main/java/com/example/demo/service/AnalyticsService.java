@@ -2,6 +2,8 @@ package com.example.demo.service;
 
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +36,7 @@ public class AnalyticsService {
     private final ActivityLogRepository activityLogRepository;
     private final ContentRepository contentRepository;
     private final AssignmentRepository assignmentRepository;
+    private final ExamService examService;
 
     public AnalyticsService(
             CourseRepository courseRepository,
@@ -46,7 +49,7 @@ public class AnalyticsService {
             UserRepository userRepository,
             ActivityLogRepository activityLogRepository,
             ContentRepository contentRepository,
-            AssignmentRepository assignmentRepository) {
+            AssignmentRepository assignmentRepository, ExamService examService) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
@@ -58,6 +61,7 @@ public class AnalyticsService {
         this.activityLogRepository = activityLogRepository;
         this.contentRepository = contentRepository;
         this.assignmentRepository = assignmentRepository;
+        this.examService = examService;
     }
 
     /**
@@ -3512,16 +3516,34 @@ public class AnalyticsService {
             long totalAnswers = submissions.size();
             long incorrectAnswers = submissions.stream()
                     .mapToLong(sub -> {
-                        // Check if student answered this question correctly
-                        Map<Long, Long> submissionAnswers = getSubmissionAnswers(sub);
-                        Long answerId = submissionAnswers.get(question.getId());
-                        if (answerId == null) return 1; // No answer = incorrect
+                        try {
+                            // استفاده از ExamService برای ارزیابی پاسخ
+                            Map<String, Object> studentAnswers = parseSubmissionAnswers(sub.getAnswersJson());
+                            Object studentAnswer = studentAnswers.get(question.getId().toString());
 
-                        return question.getAnswers().stream()
-                                .filter(a -> a.getId().equals(answerId))
-                                .findFirst()
-                                .map(Answer::getCorrect)
-                                .orElse(false) ? 0 : 1; // Correct = 0, Incorrect = 1
+                            if (studentAnswer == null) {
+                                return 1; // No answer = incorrect
+                            }
+
+                            // استفاده از ExamService برای ارزیابی صحیح پاسخ
+                            Object evaluation = examService.evaluateAnswerWithPartialScoring(question, studentAnswer);
+
+                            if (evaluation instanceof Boolean) {
+                                return ((Boolean) evaluation) ? 0 : 1;
+                            } else if (evaluation instanceof Number) {
+                                // اگر نمره جزئی است، بیش از 50% را درست در نظر بگیر
+                                double score = ((Number) evaluation).doubleValue();
+                                double maxScore = question.getPoints() != null ? question.getPoints() : 1.0;
+                                return (score / maxScore) >= 0.5 ? 0 : 1;
+                            }
+
+                            return 1; // در صورت عدم قطعیت، اشتباه در نظر بگیر
+
+                        } catch (Exception e) {
+                            System.err.println("Error evaluating answer for question " + question.getId() +
+                                    " in submission " + sub.getId() + ": " + e.getMessage());
+                            return 1; // در صورت خطا، اشتباه در نظر بگیر
+                        }
                     })
                     .sum();
 
@@ -5019,5 +5041,18 @@ public class AnalyticsService {
         }
 
         return Math.min(100.0, (double) completedActivities / totalActivities * 100);
+    }
+    private Map<String, Object> parseSubmissionAnswers(String answersJson) {
+        if (answersJson == null || answersJson.trim().isEmpty()) {
+            return new HashMap<>();
+        }
+
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(answersJson, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            System.err.println("Error parsing answers JSON: " + e.getMessage());
+            return new HashMap<>();
+        }
     }
 }
