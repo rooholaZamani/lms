@@ -123,11 +123,11 @@ public class ProgressService {
     }
 
     /**
-     * Calculate course completion progress based on granular activities 
+     * Calculate course completion progress based on granular activities
      * (content viewing/completion, exam submissions, assignment submissions)
      * This method provides fine-grained progress tracking
      */
-    private double calculateProgressFromActivities(User student, Course course) {
+    public double calculateProgressFromActivities(User student, Course course) {
         // Get all lessons in the course
         List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
         if (lessons.isEmpty()) return 0.0;

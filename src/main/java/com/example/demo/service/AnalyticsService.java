@@ -37,6 +37,7 @@ public class AnalyticsService {
     private final ContentRepository contentRepository;
     private final AssignmentRepository assignmentRepository;
     private final ExamService examService;
+    private final ProgressService progressService;
 
     public AnalyticsService(
             CourseRepository courseRepository,
@@ -49,7 +50,9 @@ public class AnalyticsService {
             UserRepository userRepository,
             ActivityLogRepository activityLogRepository,
             ContentRepository contentRepository,
-            AssignmentRepository assignmentRepository, ExamService examService) {
+            AssignmentRepository assignmentRepository,
+            ExamService examService,
+            ProgressService progressService) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
@@ -62,6 +65,7 @@ public class AnalyticsService {
         this.contentRepository = contentRepository;
         this.assignmentRepository = assignmentRepository;
         this.examService = examService;
+        this.progressService = progressService;
     }
 
     /**
@@ -3607,7 +3611,7 @@ public class AnalyticsService {
     }
 
     /**
-     * Get at-risk students for a specific course
+     * Get at-risk students for a specific course using weighted scoring system
      */
     public Map<String, Object> getAtRiskStudents(Long courseId, String period) {
         Map<String, Object> result = new HashMap<>();
@@ -3622,137 +3626,255 @@ public class AnalyticsService {
 
         // Get all students enrolled in this course
         List<Progress> courseProgress = progressRepository.findByCourse(course);
-
         List<Map<String, Object>> atRiskStudents = new ArrayList<>();
+        List<Map<String, Object>> allStudents = new ArrayList<>();
 
-        // Risk factor counters
-        int lowAttendanceCount = 0;
-        int poorPerformanceCount = 0;
-        int inactivityCount = 0;
-        int behavioralIssuesCount = 0;
+        // Calculate course-wide averages first
+        Map<String, Double> courseAverages = calculateCourseAverages(course, startDate, endDate);
 
+        // Process each student
         for (Progress progress : courseProgress) {
             User student = progress.getStudent();
 
-            // Calculate risk factors
-            Map<String, Object> factors = new HashMap<>();
-            Map<String, Boolean> riskFlags = new HashMap<>();
-            int riskLevel = 0;
+            // Calculate individual student metrics
+            Map<String, Double> studentMetrics = calculateStudentMetrics(student, course, progress, startDate, endDate);
 
-            // 1. Check attendance rate
-            List<ActivityLog> attendanceActivities = activityLogRepository
-                    .findByUserAndActivityTypeAndTimestampBetween(
-                            student, "LOGIN", startDate, endDate);
+            // Calculate weighted risk score
+            Map<String, Object> riskAssessment = calculateWeightedRiskScore(studentMetrics, courseAverages);
 
-            double attendanceRate = Math.min(100, (attendanceActivities.size() * 100.0) / ChronoUnit.DAYS.between(startDate.toLocalDate(), endDate.toLocalDate()));
-            factors.put("attendanceRate", Math.round(attendanceRate));
+            // Create student data object
+            Map<String, Object> studentData = new HashMap<>();
+            studentData.put("id", student.getId());
+            studentData.put("firstName", student.getFirstName());
+            studentData.put("lastName", student.getLastName());
+            studentData.put("username", student.getUsername());
+            studentData.put("email", student.getEmail());
+            studentData.put("riskScore", riskAssessment.get("riskScore"));
+            studentData.put("riskLevel", riskAssessment.get("riskLevel"));
+            studentData.put("factors", riskAssessment.get("factors"));
+            studentData.put("studentMetrics", studentMetrics);
+            studentData.put("courseAverages", courseAverages);
 
-            if (attendanceRate < 60) {
-                riskFlags.put("lowAttendance", true);
-                riskLevel++;
-                lowAttendanceCount++;
-            } else {
-                riskFlags.put("lowAttendance", false);
-            }
+            allStudents.add(studentData);
 
-            // 2. Check academic performance
-            List<Submission> submissions = submissionRepository.findByStudentAndSubmissionTimeBetween(student, startDate, endDate);
-            double averageScore = submissions.stream()
-                    .mapToDouble(Submission::getScore)
-                    .average()
-                    .orElse(0.0);
-
-            factors.put("averageScore", Math.round(averageScore));
-
-            if (averageScore < 50) {
-                riskFlags.put("poorPerformance", true);
-                riskLevel++;
-                poorPerformanceCount++;
-            } else {
-                riskFlags.put("poorPerformance", false);
-            }
-
-            // 3. Check activity level
-            List<ActivityLog> recentActivities = activityLogRepository
-                    .findByUserAndTimestampBetween(student, endDate.minusDays(7), endDate);
-
-            long daysSinceLastActivity = recentActivities.isEmpty() ? 7 :
-                    ChronoUnit.DAYS.between(
-                            recentActivities.get(0).getTimestamp().toLocalDate(),
-                            endDate.toLocalDate());
-
-            factors.put("daysSinceLastActivity", daysSinceLastActivity);
-
-            if (daysSinceLastActivity > 3) {
-                riskFlags.put("inactivity", true);
-                riskLevel++;
-                inactivityCount++;
-            } else {
-                riskFlags.put("inactivity", false);
-            }
-
-            // 4. Check for behavioral issues (based on late submissions)
-            List<AssignmentSubmission> lateSubmissions = assignmentSubmissionRepository
-                    .findByStudentAndSubmittedAtBetween(student, startDate, endDate)
-                    .stream()
-                    .filter(sub -> sub.getSubmittedAt().isAfter(sub.getAssignment().getDueDate()))
-                    .collect(Collectors.toList());
-
-            if (lateSubmissions.size() > 2) {
-                riskFlags.put("behavioralIssues", true);
-                riskLevel++;
-                behavioralIssuesCount++;
-            } else {
-                riskFlags.put("behavioralIssues", false);
-            }
-
-            // Only include students with at least one risk factor
-            if (riskLevel > 0) {
-                Map<String, Object> studentData = new HashMap<>();
-                studentData.put("id", student.getId());
-                studentData.put("firstName", student.getFirstName());
-                studentData.put("lastName", student.getLastName());
-                studentData.put("username", student.getUsername());
-                studentData.put("email", student.getEmail());
-
-                // Determine risk level
-                String riskLevelText;
-                if (riskLevel >= 3) {
-                    riskLevelText = "high";
-                } else if (riskLevel == 2) {
-                    riskLevelText = "medium";
-                } else {
-                    riskLevelText = "low";
-                }
-                studentData.put("riskLevel", riskLevelText);
-                studentData.put("factors", riskFlags);
-
-                // Add detailed factor data
-                factors.forEach(studentData::put);
-
+            // Include in at-risk list if score >= 50
+            double riskScore = (Double) riskAssessment.get("riskScore");
+            if (riskScore >= 50.0) {
                 atRiskStudents.add(studentData);
             }
         }
 
-        // Sort by risk level (high to low)
-        atRiskStudents.sort((a, b) -> {
-            String levelA = (String) a.get("riskLevel");
-            String levelB = (String) b.get("riskLevel");
-            Map<String, Integer> priority = Map.of("high", 3, "medium", 2, "low", 1);
-            return priority.get(levelB).compareTo(priority.get(levelA));
-        });
+        // Sort at-risk students by risk score (highest first)
+        atRiskStudents.sort((a, b) -> Double.compare((Double) b.get("riskScore"), (Double) a.get("riskScore")));
 
-        // Prepare risk factors summary
-        Map<String, Integer> riskFactors = new HashMap<>();
-        riskFactors.put("lowAttendance", lowAttendanceCount);
-        riskFactors.put("poorPerformance", poorPerformanceCount);
-        riskFactors.put("inactivity", inactivityCount);
-        riskFactors.put("behavioralIssues", behavioralIssuesCount);
+        // Calculate course statistics
+        Map<String, Object> courseStats = new HashMap<>();
+        courseStats.put("totalStudents", allStudents.size());
+        courseStats.put("atRiskCount", atRiskStudents.size());
+
+        double averageRiskScore = allStudents.stream()
+            .mapToDouble(s -> (Double) s.get("riskScore"))
+            .average()
+            .orElse(0.0);
+        courseStats.put("averageRiskScore", Math.round(averageRiskScore * 10.0) / 10.0);
+
+        // Count risk levels
+        Map<String, Long> riskLevelCounts = atRiskStudents.stream()
+            .collect(Collectors.groupingBy(
+                s -> (String) s.get("riskLevel"),
+                Collectors.counting()
+            ));
 
         result.put("students", atRiskStudents);
-        result.put("riskFactors", riskFactors);
+        result.put("courseStats", courseStats);
+        result.put("riskLevelCounts", riskLevelCounts);
+        result.put("courseAverages", courseAverages);
 
         return result;
+    }
+
+    /**
+     * Calculate course-wide averages for progress, grades, and attendance
+     */
+    private Map<String, Double> calculateCourseAverages(Course course, LocalDateTime startDate, LocalDateTime endDate) {
+        List<Progress> courseProgress = progressRepository.findByCourse(course);
+        Map<String, Double> averages = new HashMap<>();
+
+        double totalProgress = 0.0;
+        double totalGrade = 0.0;
+        double totalAttendance = 0.0;
+        int validProgressCount = 0;
+        int validGradeCount = 0;
+        int validAttendanceCount = 0;
+
+        for (Progress progress : courseProgress) {
+            User student = progress.getStudent();
+
+            // Calculate progress percentage using granular activity-based calculation
+            double progressPercentage = progressService.calculateProgressFromActivities(student, course);
+            if (progressPercentage >= 0) {
+                totalProgress += progressPercentage;
+                validProgressCount++;
+            }
+
+            // Calculate average grade from all exams and assignments
+            List<Submission> examSubmissions = submissionRepository.findByStudent(student).stream()
+                .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
+                .collect(Collectors.toList());
+
+            List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+                .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
+                .filter(as -> as.isGraded() && as.getScore() != null)
+                .collect(Collectors.toList());
+
+            if (!examSubmissions.isEmpty() || !assignmentSubmissions.isEmpty()) {
+                double examAvg = examSubmissions.stream()
+                    .mapToDouble(Submission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+                double assignmentAvg = assignmentSubmissions.stream()
+                    .mapToDouble(AssignmentSubmission::getScore)
+                    .average()
+                    .orElse(0.0);
+
+                double combinedAvg = (!examSubmissions.isEmpty() && !assignmentSubmissions.isEmpty())
+                    ? (examAvg + assignmentAvg) / 2.0
+                    : (!examSubmissions.isEmpty() ? examAvg : assignmentAvg);
+
+                if (combinedAvg > 0) {
+                    totalGrade += combinedAvg;
+                    validGradeCount++;
+                }
+            }
+
+            // Calculate attendance days (unique activity days)
+            Set<LocalDate> activeDays = activityLogRepository
+                .findByUserAndTimestampBetween(student, startDate, endDate)
+                .stream()
+                .map(log -> log.getTimestamp().toLocalDate())
+                .collect(Collectors.toSet());
+
+            int attendanceDays = activeDays.size();
+            totalAttendance += attendanceDays;
+            validAttendanceCount++;
+        }
+
+        averages.put("avgProgress", validProgressCount > 0 ? totalProgress / validProgressCount : 0.0);
+        averages.put("avgGrade", validGradeCount > 0 ? totalGrade / validGradeCount : 0.0);
+        averages.put("avgAttendance", validAttendanceCount > 0 ? totalAttendance / validAttendanceCount : 0.0);
+
+        return averages;
+    }
+
+    /**
+     * Calculate individual student metrics
+     */
+    private Map<String, Double> calculateStudentMetrics(User student, Course course, Progress progress, LocalDateTime startDate, LocalDateTime endDate) {
+        Map<String, Double> metrics = new HashMap<>();
+
+        // 1. Progress percentage using granular activity-based calculation
+        double progressPercentage = progressService.calculateProgressFromActivities(student, course);
+        metrics.put("progress", Math.max(0.0, progressPercentage));
+
+        // 2. Average grade from exams and assignments
+        List<Submission> examSubmissions = submissionRepository.findByStudent(student).stream()
+            .filter(s -> s.getExam().getLesson().getCourse().getId().equals(course.getId()))
+            .collect(Collectors.toList());
+
+        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository.findByStudent(student).stream()
+            .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(course.getId()))
+            .filter(as -> as.isGraded() && as.getScore() != null)
+            .collect(Collectors.toList());
+
+        double examAvg = examSubmissions.stream()
+            .mapToDouble(Submission::getScore)
+            .average()
+            .orElse(0.0);
+
+        double assignmentAvg = assignmentSubmissions.stream()
+            .mapToDouble(AssignmentSubmission::getScore)
+            .average()
+            .orElse(0.0);
+
+        double combinedAvg = (!examSubmissions.isEmpty() && !assignmentSubmissions.isEmpty())
+            ? (examAvg + assignmentAvg) / 2.0
+            : (!examSubmissions.isEmpty() ? examAvg : assignmentAvg);
+
+        metrics.put("averageGrade", Math.max(0.0, combinedAvg));
+
+        // 3. Attendance days (unique activity days)
+        Set<LocalDate> activeDays = activityLogRepository
+            .findByUserAndTimestampBetween(student, startDate, endDate)
+            .stream()
+            .map(log -> log.getTimestamp().toLocalDate())
+            .collect(Collectors.toSet());
+
+        metrics.put("attendanceDays", (double) activeDays.size());
+
+        return metrics;
+    }
+
+    /**
+     * Calculate weighted risk score based on user's criteria:
+     * - Progress rate vs course average: 50% weight
+     * - Grade average vs course average: 35% weight
+     * - Attendance days vs course average: 15% weight
+     * Risk threshold: >= 50 points
+     */
+    private Map<String, Object> calculateWeightedRiskScore(Map<String, Double> studentMetrics, Map<String, Double> courseAverages) {
+        Map<String, Object> assessment = new HashMap<>();
+        Map<String, Double> factors = new HashMap<>();
+
+        double progressFactor = 0.0;
+        double gradeFactor = 0.0;
+        double attendanceFactor = 0.0;
+
+        // 1. Progress factor (50% weight)
+        double studentProgress = studentMetrics.get("progress");
+        double avgProgress = courseAverages.get("avgProgress");
+        if (avgProgress > 0 && studentProgress < avgProgress) {
+            progressFactor = Math.min(50.0, ((avgProgress - studentProgress) / avgProgress) * 50.0);
+        }
+
+        // 2. Grade factor (35% weight)
+        double studentGrade = studentMetrics.get("averageGrade");
+        double avgGrade = courseAverages.get("avgGrade");
+        if (avgGrade > 0 && studentGrade < avgGrade) {
+            gradeFactor = Math.min(35.0, ((avgGrade - studentGrade) / avgGrade) * 35.0);
+        }
+
+        // 3. Attendance factor (15% weight)
+        double studentAttendance = studentMetrics.get("attendanceDays");
+        double avgAttendance = courseAverages.get("avgAttendance");
+        if (avgAttendance > 0 && studentAttendance < avgAttendance) {
+            attendanceFactor = Math.min(15.0, ((avgAttendance - studentAttendance) / avgAttendance) * 15.0);
+        }
+
+        // Calculate total risk score
+        double totalRiskScore = progressFactor + gradeFactor + attendanceFactor;
+
+        // Determine risk level
+        String riskLevel;
+        if (totalRiskScore >= 75.0) {
+            riskLevel = "HIGH";
+        } else if (totalRiskScore >= 50.0) {
+            riskLevel = "MEDIUM";
+        } else if (totalRiskScore >= 25.0) {
+            riskLevel = "LOW";
+        } else {
+            riskLevel = "NONE";
+        }
+
+        factors.put("progressFactor", Math.round(progressFactor * 10.0) / 10.0);
+        factors.put("gradeFactor", Math.round(gradeFactor * 10.0) / 10.0);
+        factors.put("attendanceFactor", Math.round(attendanceFactor * 10.0) / 10.0);
+
+        assessment.put("riskScore", Math.round(totalRiskScore * 10.0) / 10.0);
+        assessment.put("riskLevel", riskLevel);
+        assessment.put("factors", factors);
+
+        return assessment;
     }
 
     /**
