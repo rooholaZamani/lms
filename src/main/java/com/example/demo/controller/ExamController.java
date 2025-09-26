@@ -25,6 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.ByteArrayOutputStream;
@@ -574,6 +575,9 @@ public class ExamController {
             Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
             System.out.println("Parsed student answers: " + studentAnswers);
 
+            // Students don't see manual grades, but we need empty map for compatibility
+            Map<String, Integer> manualGrades = new HashMap<>();
+
             Map<String, Object> response = new HashMap<>();
             Map<String, Object> answersDetails = new HashMap<>();
 
@@ -616,8 +620,22 @@ public class ExamController {
 
                 System.out.println("Processing question " + questionId + " with answer: " + studentAnswer);
 
-                // ارزیابی پاسخ
-                Map<String, Object> evaluation = evaluateStudentAnswer(question, studentAnswer);
+                // Check if there's a manual grade for this question
+                Integer manualGrade = manualGrades.get(questionId);
+                Map<String, Object> evaluation;
+
+                if (manualGrade != null) {
+                    // Use manual grade
+                    System.out.println("Using manual grade " + manualGrade + " for question " + questionId);
+                    evaluation = evaluateStudentAnswer(question, studentAnswer);
+                    evaluation.put("earnedPoints", manualGrade);
+                    evaluation.put("isCorrect", manualGrade > 0);
+                    evaluation.put("manuallyGraded", true);
+                } else {
+                    // Use automatic evaluation
+                    evaluation = evaluateStudentAnswer(question, studentAnswer);
+                    evaluation.put("manuallyGraded", false);
+                }
 
                 // اضافه کردن اطلاعات اضافی
                 evaluation.put("studentAnswer", studentAnswer);
@@ -843,34 +861,57 @@ public class ExamController {
     @PostMapping("/submissions/{submissionId}/manual-grade")
     @Operation(summary = "Manual grading for essay and short answer questions")
     @SecurityRequirement(name = "basicAuth")
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
     public ResponseEntity<?> manualGradeSubmission(
             @PathVariable Long submissionId,
             @RequestBody Map<String, Object> gradingData,
             Authentication authentication) {
 
         try {
+            System.out.println("=== MANUAL GRADING START ===");
+            System.out.println("Submission ID: " + submissionId);
+            System.out.println("Teacher: " + authentication.getName());
+
             User teacher = userService.findByUsername(authentication.getName());
 
-            // پیدا کردن submission
+            // پیدا کردن submission با lock برای جلوگیری از concurrent modifications
             Submission submission = submissionRepository.findById(submissionId)
                     .orElseThrow(() -> new RuntimeException("Submission not found"));
 
+            System.out.println("Current submission score: " + submission.getScore());
+            System.out.println("Current graded manually flag: " + submission.getGradedManually());
+
             // بررسی دسترسی معلم
             if (!submission.getExam().getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                System.err.println("Access denied for teacher ID: " + teacher.getId());
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of("success", false, "message", "Access denied"));
             }
 
-            // دریافت نمرات دستی از request
+            // دریافت و validation نمرات دستی از request
             @SuppressWarnings("unchecked")
             Map<String, Object> manualGrades = (Map<String, Object>) gradingData.get("manualGrades");
             String feedback = (String) gradingData.get("feedback");
 
+            if (manualGrades == null) {
+                manualGrades = new HashMap<>();
+            }
+
+            System.out.println("Manual grades received: " + manualGrades);
+            System.out.println("Feedback: " + feedback);
+
+            // Validate manual grades before processing
+            validateManualGrades(submission, manualGrades);
+
             // Use the new recalculation method to get accurate total score
             int totalScore = examService.recalculateSubmissionScore(submission, manualGrades);
+            System.out.println("Calculated total score: " + totalScore);
 
-            // به‌روزرسانی submission
+            // Store previous values for logging
+            Integer previousScore = submission.getScore();
+            Boolean previousGradedManually = submission.getGradedManually();
+
+            // به‌روزرسانی submission با validation
             submission.setScore(totalScore);
             submission.setPassed(totalScore >= submission.getExam().getPassingScore());
             submission.setGradedManually(true);
@@ -883,21 +924,87 @@ public class ExamController {
             String manualGradesJson = objectMapper.writeValueAsString(manualGrades);
             submission.setManualGradesJson(manualGradesJson);
 
-            submissionRepository.save(submission);
+            // Save with explicit flush to ensure immediate database update
+            Submission savedSubmission = submissionRepository.saveAndFlush(submission);
+
+            System.out.println("=== MANUAL GRADING COMPLETE ===");
+            System.out.println("Previous score: " + previousScore + " -> New score: " + savedSubmission.getScore());
+            System.out.println("Previous graded manually: " + previousGradedManually + " -> New: " + savedSubmission.getGradedManually());
+            System.out.println("Passed: " + savedSubmission.isPassed());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "نمره‌گذاری با موفقیت انجام شد");
-            response.put("totalScore", totalScore);
-            response.put("passed", submission.isPassed());
+            response.put("totalScore", savedSubmission.getScore());
+            response.put("passed", savedSubmission.isPassed());
+            response.put("gradedAt", savedSubmission.getGradedAt());
+            response.put("gradedBy", teacher.getFirstName() + " " + (teacher.getLastName() != null ? teacher.getLastName() : ""));
+
+            // Add student notification data for frontend real-time updates
+            response.put("studentNotification", Map.of(
+                "studentId", savedSubmission.getStudent().getId(),
+                "studentName", savedSubmission.getStudent().getFirstName() + " " +
+                             (savedSubmission.getStudent().getLastName() != null ? savedSubmission.getStudent().getLastName() : ""),
+                "examId", savedSubmission.getExam().getId(),
+                "examTitle", savedSubmission.getExam().getTitle(),
+                "submissionId", savedSubmission.getId(),
+                "newScore", savedSubmission.getScore(),
+                "previousScore", previousScore,
+                "scoreChanged", !Objects.equals(previousScore, savedSubmission.getScore()),
+                "gradedManually", true,
+                "timestamp", LocalDateTime.now()
+            ));
 
             return ResponseEntity.ok(response);
 
+        } catch (IllegalArgumentException e) {
+            System.err.println("Validation error in manual grading: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("success", false, "message", "خطا در اعتبارسنجی: " + e.getMessage()));
         } catch (Exception e) {
             System.err.println("Error in manual grading: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "message", "خطا در نمره‌گذاری: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Validate manual grades to ensure they are within acceptable ranges
+     */
+    private void validateManualGrades(Submission submission, Map<String, Object> manualGrades) {
+        if (manualGrades == null || manualGrades.isEmpty()) {
+            return; // No manual grades to validate
+        }
+
+        Exam exam = submission.getExam();
+        List<Question> questions = questionRepository.findByExamOrderById(exam);
+
+        for (Question question : questions) {
+            if (question.getQuestionType() == QuestionType.ESSAY ||
+                question.getQuestionType() == QuestionType.SHORT_ANSWER) {
+
+                String questionId = String.valueOf(question.getId());
+                if (manualGrades.containsKey(questionId)) {
+                    Object gradeObj = manualGrades.get(questionId);
+
+                    if (gradeObj != null) {
+                        try {
+                            int grade = ((Number) gradeObj).intValue();
+
+                            if (grade < 0) {
+                                throw new IllegalArgumentException("نمره سوال " + questionId + " نمی‌تواند منفی باشد");
+                            }
+
+                            if (grade > question.getPoints()) {
+                                throw new IllegalArgumentException("نمره سوال " + questionId + " (" + grade + ") نمی‌تواند بیشتر از حداکثر امتیاز (" + question.getPoints() + ") باشد");
+                            }
+                        } catch (ClassCastException e) {
+                            throw new IllegalArgumentException("نمره سوال " + questionId + " باید عدد صحیح باشد");
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1338,6 +1445,66 @@ public class ExamController {
                     .body(Map.of("success", false, "message", "خطا در دریافت اطلاعات: " + e.getMessage()));
         }
     }
+    @GetMapping("/submissions/{submissionId}/validation")
+    @Operation(summary = "Validate submission score consistency")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<Map<String, Object>> validateSubmissionScore(
+            @PathVariable Long submissionId,
+            Authentication authentication) {
+
+        try {
+            User teacher = userService.findByUsername(authentication.getName());
+
+            // پیدا کردن submission
+            Submission submission = submissionRepository.findById(submissionId)
+                    .orElseThrow(() -> new RuntimeException("Submission not found"));
+
+            // بررسی دسترسی معلم
+            if (!submission.getExam().getLesson().getCourse().getTeacher().getId().equals(teacher.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Access denied"));
+            }
+
+            // Validate submission score
+            examService.validateSubmissionScore(submission);
+
+            // Parse manual grades if available
+            Map<String, Object> manualGrades = new HashMap<>();
+            if (submission.getManualGradesJson() != null && !submission.getManualGradesJson().trim().isEmpty()) {
+                try {
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    manualGrades = objectMapper.readValue(submission.getManualGradesJson(),
+                            new TypeReference<Map<String, Object>>() {});
+                } catch (Exception e) {
+                    System.err.println("Error parsing manual grades JSON: " + e.getMessage());
+                }
+            }
+
+            // Recalculate score
+            int recalculatedScore = examService.recalculateSubmissionScore(submission, manualGrades);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("submissionId", submission.getId());
+            response.put("currentScore", submission.getScore());
+            response.put("recalculatedScore", recalculatedScore);
+            response.put("scoreMatches", Objects.equals(submission.getScore(), recalculatedScore));
+            response.put("gradedManually", submission.getGradedManually());
+            response.put("manualGradesCount", manualGrades.size());
+            response.put("examTotalScore", submission.getExam().getTotalPossibleScore());
+            response.put("gradedAt", submission.getGradedAt());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error validating submission score: " + e.getMessage());
+            e.printStackTrace();
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در اعتبارسنجی نمره: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/{examId}/student-answers/{studentId}")
     @Operation(summary = "Get student answers for teacher", description = "Teacher can view specific student's detailed answers")
     @SecurityRequirement(name = "basicAuth")
@@ -1381,6 +1548,19 @@ public class ExamController {
             Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
             System.out.println("Parsed student answers: " + studentAnswers);
 
+            // Parse manual grades if they exist
+            Map<String, Integer> manualGrades = new HashMap<>();
+            if (submission.getManualGradesJson() != null && !submission.getManualGradesJson().trim().isEmpty()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    manualGrades = mapper.readValue(submission.getManualGradesJson(),
+                            new TypeReference<Map<String, Integer>>() {});
+                    System.out.println("Loaded manual grades: " + manualGrades);
+                } catch (Exception e) {
+                    System.err.println("Error parsing manual grades: " + e.getMessage());
+                }
+            }
+
             Map<String, Object> response = new HashMap<>();
             Map<String, Object> answersDetails = new HashMap<>();
 
@@ -1423,8 +1603,22 @@ public class ExamController {
 
                 System.out.println("Processing question " + questionId + " with answer: " + studentAnswer);
 
-                // ارزیابی پاسخ
-                Map<String, Object> evaluation = evaluateStudentAnswer(question, studentAnswer);
+                // Check if there's a manual grade for this question
+                Integer manualGrade = manualGrades.get(questionId);
+                Map<String, Object> evaluation;
+
+                if (manualGrade != null) {
+                    // Use manual grade
+                    System.out.println("Using manual grade " + manualGrade + " for question " + questionId);
+                    evaluation = evaluateStudentAnswer(question, studentAnswer);
+                    evaluation.put("earnedPoints", manualGrade);
+                    evaluation.put("isCorrect", manualGrade > 0);
+                    evaluation.put("manuallyGraded", true);
+                } else {
+                    // Use automatic evaluation
+                    evaluation = evaluateStudentAnswer(question, studentAnswer);
+                    evaluation.put("manuallyGraded", false);
+                }
 
                 // اضافه کردن اطلاعات اضافی
                 evaluation.put("studentAnswer", studentAnswer);
@@ -1436,24 +1630,25 @@ public class ExamController {
             }
 
             response.put("answers", answersDetails);
-            response.put("score", totalEarnedPoints);
+            // Use the actual submission score instead of recalculated score
+            // This ensures manual grading is respected
+            Integer actualScore = submission.getScore();
+            response.put("score", actualScore);
             response.put("totalPossibleScore", submission.getExam().getTotalPossibleScore());
-            response.put("passed", totalEarnedPoints >= submission.getExam().getPassingScore());
+            response.put("passed", actualScore >= submission.getExam().getPassingScore());
             response.put("submissionTime", submission.getSubmissionTime());
             response.put("timeSpent", submission.getTimeSpent());
             response.put("success", true);
             response.put("studentName", submission.getStudent().getFirstName() + " " +
                     (submission.getStudent().getLastName() != null ? submission.getStudent().getLastName() : ""));
 
+            System.out.println("Teacher view - Using stored submission score: " + actualScore +
+                             " (calculated from loop: " + totalEarnedPoints + ")");
 
             // اگر نمره محاسبه شده با نمره ذخیره شده متفاوت است، به‌روزرسانی کن
             if (!Objects.equals(submission.getScore(), totalEarnedPoints)) {
                 System.out.println("Score mismatch detected. Stored: " + submission.getScore() +
-                        ", Calculated: " + totalEarnedPoints + ". Updating submission...");
-
-                submission.setScore(totalEarnedPoints);
-                submission.setPassed(totalEarnedPoints >= exam.getPassingScore());
-                submission = submissionRepository.save(submission);
+                        ", Calculated: " + totalEarnedPoints + ". Using stored score for teacher view.");
             }
 
             return ResponseEntity.ok(response);
@@ -1466,6 +1661,151 @@ public class ExamController {
             errorResponse.put("success", false);
             errorResponse.put("message", "خطا در دریافت پاسخ‌ها: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    @PostMapping("/submissions/{submissionId}/sync-scores")
+    @Operation(summary = "Synchronize and validate submission scores")
+    @SecurityRequirement(name = "basicAuth")
+    @Transactional
+    public ResponseEntity<?> syncSubmissionScores(
+            @PathVariable Long submissionId,
+            Authentication authentication) {
+
+        try {
+            User user = userService.findByUsername(authentication.getName());
+
+            // Check if user is teacher or admin
+            boolean hasPermission = user.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER") ||
+                                    role.getName().equals("ROLE_ADMIN"));
+
+            if (!hasPermission) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "دسترسی غیرمجاز"));
+            }
+
+            Submission submission = submissionRepository.findById(submissionId)
+                    .orElseThrow(() -> new IllegalArgumentException("ارسالی یافت نشد"));
+
+            // Parse existing manual grades
+            Map<String, Object> manualGrades = new HashMap<>();
+            if (submission.getManualGradesJson() != null && !submission.getManualGradesJson().trim().isEmpty()) {
+                try {
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    manualGrades = objectMapper.readValue(submission.getManualGradesJson(),
+                            new TypeReference<Map<String, Object>>() {});
+                } catch (Exception e) {
+                    System.err.println("Error parsing manual grades JSON: " + e.getMessage());
+                }
+            }
+
+            // Recalculate score using existing manual grades
+            int recalculatedScore = examService.recalculateSubmissionScore(submission, manualGrades);
+            int currentScore = submission.getScore() != null ? submission.getScore() : 0;
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("submissionId", submissionId);
+            response.put("currentScore", currentScore);
+            response.put("recalculatedScore", recalculatedScore);
+            response.put("scoreMatches", currentScore == recalculatedScore);
+            response.put("studentId", submission.getStudent().getId());
+            response.put("examId", submission.getExam().getId());
+
+            // If scores don't match, update the submission score
+            if (currentScore != recalculatedScore) {
+                submission.setScore(recalculatedScore);
+                submission.setPassed(recalculatedScore >= submission.getExam().getPassingScore());
+                submissionRepository.saveAndFlush(submission);
+
+                response.put("scoreUpdated", true);
+                response.put("message", "نمره با موفقیت همگام‌سازی شد");
+
+                System.out.println("Score sync: Updated submission " + submissionId +
+                                 " from " + currentScore + " to " + recalculatedScore);
+            } else {
+                response.put("scoreUpdated", false);
+                response.put("message", "نمره‌ها قبلاً همگام بودند");
+            }
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error syncing submission scores: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در همگام‌سازی نمرات: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/submissions/scores-status")
+    @Operation(summary = "Get score synchronization status for all submissions")
+    @SecurityRequirement(name = "basicAuth")
+    public ResponseEntity<?> getScoresSyncStatus(Authentication authentication) {
+
+        try {
+            User user = userService.findByUsername(authentication.getName());
+
+            // Check if user is teacher or admin
+            boolean hasPermission = user.getRoles().stream()
+                    .anyMatch(role -> role.getName().equals("ROLE_TEACHER") ||
+                                    role.getName().equals("ROLE_ADMIN"));
+
+            if (!hasPermission) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "دسترسی غیرمجاز"));
+            }
+
+            List<Submission> allSubmissions = submissionRepository.findAll();
+            List<Map<String, Object>> submissionStatuses = new ArrayList<>();
+            int totalMismatches = 0;
+
+            for (Submission submission : allSubmissions) {
+                // Parse manual grades
+                Map<String, Object> manualGrades = new HashMap<>();
+                if (submission.getManualGradesJson() != null && !submission.getManualGradesJson().trim().isEmpty()) {
+                    try {
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        manualGrades = objectMapper.readValue(submission.getManualGradesJson(),
+                                new TypeReference<Map<String, Object>>() {});
+                    } catch (Exception e) {
+                        System.err.println("Error parsing manual grades for submission " + submission.getId());
+                    }
+                }
+
+                int recalculatedScore = examService.recalculateSubmissionScore(submission, manualGrades);
+                int currentScore = submission.getScore() != null ? submission.getScore() : 0;
+                boolean matches = currentScore == recalculatedScore;
+
+                if (!matches) {
+                    totalMismatches++;
+                    Map<String, Object> mismatchInfo = new HashMap<>();
+                    mismatchInfo.put("submissionId", submission.getId());
+                    mismatchInfo.put("studentName", submission.getStudent().getFirstName() + " " +
+                                                   (submission.getStudent().getLastName() != null ?
+                                                    submission.getStudent().getLastName() : ""));
+                    mismatchInfo.put("examTitle", submission.getExam().getTitle());
+                    mismatchInfo.put("currentScore", currentScore);
+                    mismatchInfo.put("recalculatedScore", recalculatedScore);
+                    submissionStatuses.add(mismatchInfo);
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("totalSubmissions", allSubmissions.size());
+            response.put("totalMismatches", totalMismatches);
+            response.put("mismatches", submissionStatuses);
+            response.put("allScoresSynced", totalMismatches == 0);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("Error checking scores sync status: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "خطا در بررسی وضعیت همگام‌سازی: " + e.getMessage()));
         }
     }
 }

@@ -1537,23 +1537,38 @@ public class ExamService {
      * Recalculate submission score including both automatic and manual grades
      */
     public int recalculateSubmissionScore(Submission submission, Map<String, Object> manualGrades) {
+        if (submission == null) {
+            throw new IllegalArgumentException("Submission cannot be null");
+        }
+
         Exam exam = submission.getExam();
+        if (exam == null) {
+            throw new IllegalArgumentException("Submission must have an associated exam");
+        }
+
         List<Question> questions = questionRepository.findByExamOrderById(exam);
+        if (questions.isEmpty()) {
+            System.out.println("WARNING: Exam has no questions - returning score 0");
+            return 0;
+        }
 
         // Parse student answers from JSON
         Map<String, Object> studentAnswers = parseAnswersJson(submission.getAnswersJson());
 
         int totalScore = 0;
+        int totalPossibleScore = 0;
 
         System.out.println("=== RECALCULATING SUBMISSION SCORE ===");
         System.out.println("Submission ID: " + submission.getId());
         System.out.println("Exam: " + exam.getTitle());
         System.out.println("Questions Count: " + questions.size());
+        System.out.println("Manual grades provided: " + (manualGrades != null ? manualGrades.size() : 0));
 
         for (Question question : questions) {
             String questionId = String.valueOf(question.getId());
             int questionPoints = question.getPoints();
             int earnedPoints = 0;
+            totalPossibleScore += questionPoints;
 
             System.out.println("--- Question " + questionId + " (" + question.getQuestionType() + ") ---");
             System.out.println("Question Points: " + questionPoints);
@@ -1562,10 +1577,21 @@ public class ExamService {
                 question.getQuestionType() == QuestionType.SHORT_ANSWER) {
                 // Use manual grade for essay and short answer questions
                 if (manualGrades != null && manualGrades.containsKey(questionId)) {
-                    earnedPoints = ((Number) manualGrades.get(questionId)).intValue();
-                    // Ensure manual grade doesn't exceed question points
-                    earnedPoints = Math.max(0, Math.min(earnedPoints, questionPoints));
-                    System.out.println("Manual Grade: " + earnedPoints + "/" + questionPoints);
+                    Object gradeObj = manualGrades.get(questionId);
+                    if (gradeObj != null) {
+                        try {
+                            earnedPoints = ((Number) gradeObj).intValue();
+                            // Ensure manual grade doesn't exceed question points
+                            earnedPoints = Math.max(0, Math.min(earnedPoints, questionPoints));
+                            System.out.println("Manual Grade: " + earnedPoints + "/" + questionPoints);
+                        } catch (ClassCastException e) {
+                            System.err.println("ERROR: Invalid manual grade format for question " + questionId + ": " + gradeObj);
+                            earnedPoints = 0;
+                        }
+                    } else {
+                        earnedPoints = 0;
+                        System.out.println("Manual grade is null - Points: 0/" + questionPoints);
+                    }
                 } else {
                     // No manual grade assigned yet, use 0
                     earnedPoints = 0;
@@ -1575,33 +1601,87 @@ public class ExamService {
                 // Use automatic grading for other question types
                 Object studentAnswer = studentAnswers.get(questionId);
                 if (studentAnswer != null) {
-                    Object evaluationResult = evaluateAnswerWithPartialScoring(question, studentAnswer);
+                    try {
+                        Object evaluationResult = evaluateAnswerWithPartialScoring(question, studentAnswer);
 
-                    if (evaluationResult instanceof Boolean) {
-                        // Binary scoring
-                        boolean isCorrect = (Boolean) evaluationResult;
-                        earnedPoints = isCorrect ? questionPoints : 0;
-                        System.out.println("Auto Grade (Binary): " + earnedPoints + "/" + questionPoints + " (Correct: " + isCorrect + ")");
-                    } else if (evaluationResult instanceof Double) {
-                        // Partial scoring
-                        double percentage = (Double) evaluationResult;
-                        ScoringPolicy policy = question.getScoringPolicy();
-                        earnedPoints = applyScoring(percentage, questionPoints, policy);
-                        System.out.println("Auto Grade (Partial): " + earnedPoints + "/" + questionPoints + " (" + String.format("%.1f", percentage * 100) + "%)");
+                        if (evaluationResult instanceof Boolean) {
+                            // Binary scoring
+                            boolean isCorrect = (Boolean) evaluationResult;
+                            earnedPoints = isCorrect ? questionPoints : 0;
+                            System.out.println("Auto Grade (Binary): " + earnedPoints + "/" + questionPoints + " (Correct: " + isCorrect + ")");
+                        } else if (evaluationResult instanceof Double) {
+                            // Partial scoring
+                            double percentage = (Double) evaluationResult;
+                            // Validate percentage is between 0.0 and 1.0
+                            percentage = Math.max(0.0, Math.min(1.0, percentage));
+                            ScoringPolicy policy = question.getScoringPolicy();
+                            earnedPoints = applyScoring(percentage, questionPoints, policy);
+                            System.out.println("Auto Grade (Partial): " + earnedPoints + "/" + questionPoints + " (" + String.format("%.1f", percentage * 100) + "%)");
+                        } else {
+                            System.err.println("WARNING: Unexpected evaluation result type for question " + questionId + ": " + evaluationResult);
+                            earnedPoints = 0;
+                        }
+                    } catch (Exception e) {
+                        System.err.println("ERROR: Exception during automatic grading for question " + questionId + ": " + e.getMessage());
+                        earnedPoints = 0;
                     }
                 } else {
                     System.out.println("No student answer - Points: 0/" + questionPoints);
                 }
             }
 
+            // Validate earned points don't exceed question points
+            if (earnedPoints > questionPoints) {
+                System.err.println("ERROR: Earned points (" + earnedPoints + ") exceed question points (" + questionPoints + ") for question " + questionId);
+                earnedPoints = questionPoints;
+            }
+
             totalScore += earnedPoints;
         }
 
+        // Final validation
+        if (totalScore < 0) {
+            System.err.println("ERROR: Total score is negative (" + totalScore + "), setting to 0");
+            totalScore = 0;
+        }
+
+        if (totalScore > totalPossibleScore) {
+            System.err.println("ERROR: Total score (" + totalScore + ") exceeds total possible score (" + totalPossibleScore + "), capping at maximum");
+            totalScore = totalPossibleScore;
+        }
+
         System.out.println("=== RECALCULATION COMPLETE ===");
-        System.out.println("Total Score: " + totalScore);
+        System.out.println("Total Score: " + totalScore + "/" + totalPossibleScore);
+        System.out.println("Percentage: " + (totalPossibleScore > 0 ? String.format("%.1f", (totalScore * 100.0 / totalPossibleScore)) : "0.0") + "%");
         System.out.println("===========================");
 
         return totalScore;
+    }
+
+    /**
+     * Validate that manual grades are consistent and don't exceed limits
+     */
+    public void validateSubmissionScore(Submission submission) {
+        if (submission == null || submission.getExam() == null) {
+            return;
+        }
+
+        Integer score = submission.getScore();
+        if (score == null) {
+            return;
+        }
+
+        Exam exam = submission.getExam();
+        Integer totalPossibleScore = exam.getTotalPossibleScore();
+
+        if (totalPossibleScore != null && score > totalPossibleScore) {
+            System.err.println("WARNING: Submission " + submission.getId() + " has score (" + score +
+                             ") exceeding exam total (" + totalPossibleScore + ")");
+        }
+
+        if (score < 0) {
+            System.err.println("WARNING: Submission " + submission.getId() + " has negative score: " + score);
+        }
     }
 
 }

@@ -4134,7 +4134,7 @@ public class AnalyticsService {
      */
     private Map<String, Object> getActivityTypeDistribution(List<ActivityLog> activities) {
         Map<String, Long> distribution = activities.stream()
-                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
+//                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
                 .filter(activityLog -> !"EXAM_START".equals(activityLog.getActivityType()))
                 .collect(Collectors.groupingBy(
                         ActivityLog::getActivityType,
@@ -4142,7 +4142,7 @@ public class AnalyticsService {
                 ));
 
         long total = activities.stream()
-                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
+//                .filter(activity -> !"CONTENT_VIEW".equals(activity.getActivityType()))
                 .filter(activityLog -> !"EXAM_START".equals(activityLog.getActivityType()))
                 .count();
         Map<String, Object> result = new HashMap<>();
