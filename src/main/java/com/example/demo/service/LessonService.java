@@ -1,28 +1,44 @@
 // src/main/java/com/example/demo/service/LessonService.java
 package com.example.demo.service;
 
-import com.example.demo.model.Course;
-import com.example.demo.model.Lesson;
-import com.example.demo.model.User;
-import com.example.demo.repository.CourseRepository;
-import com.example.demo.repository.LessonRepository;
+import com.example.demo.model.*;
+import com.example.demo.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class LessonService {
 
     private final LessonRepository lessonRepository;
     private final CourseRepository courseRepository;
+    private final SubmissionRepository submissionRepository;
+    private final AssignmentSubmissionRepository assignmentSubmissionRepository;
+    private final ExamRepository examRepository;
+    private final AssignmentRepository assignmentRepository;
+    private final ContentRepository contentRepository;
+    private final FileStorageService fileStorageService;
 
     public LessonService(
             LessonRepository lessonRepository,
-            CourseRepository courseRepository) {
+            CourseRepository courseRepository,
+            SubmissionRepository submissionRepository,
+            AssignmentSubmissionRepository assignmentSubmissionRepository,
+            ExamRepository examRepository,
+            AssignmentRepository assignmentRepository,
+            ContentRepository contentRepository,
+            FileStorageService fileStorageService) {
         this.lessonRepository = lessonRepository;
         this.courseRepository = courseRepository;
+        this.submissionRepository = submissionRepository;
+        this.assignmentSubmissionRepository = assignmentSubmissionRepository;
+        this.examRepository = examRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.contentRepository = contentRepository;
+        this.fileStorageService = fileStorageService;
     }
 
 
@@ -61,7 +77,61 @@ public class LessonService {
         return allLessons;
     }
 
+    @Transactional
     public void deleteLesson(Long lessonId) {
+        Lesson lesson = lessonRepository.findById(lessonId)
+                .orElseThrow(() -> new RuntimeException("Lesson not found"));
+
+        // 1. حذف تمام ارسال‌های آزمون این درس (برای جلوگیری از خطای FK constraint)
+        Optional<Exam> examOpt = examRepository.findByLessonId(lessonId);
+        if (examOpt.isPresent()) {
+            List<Submission> examSubmissions = submissionRepository.findByExam(examOpt.get());
+            submissionRepository.deleteAll(examSubmissions);
+        }
+
+        // 2. حذف تمام ارسال‌های تکالیف این درس (برای جلوگیری از خطای FK constraint)
+        List<Assignment> assignments = assignmentRepository.findByLesson(lesson);
+        List<AssignmentSubmission> assignmentSubmissions = new ArrayList<>();
+        for (Assignment assignment : assignments) {
+            List<AssignmentSubmission> submissions = assignmentSubmissionRepository.findByAssignment(assignment);
+            assignmentSubmissions.addAll(submissions);
+
+            // حذف فایل‌های فیزیکی ارسال‌های تکالیف
+            for (AssignmentSubmission submission : submissions) {
+                if (submission.getFile() != null) {
+                    try {
+                        fileStorageService.deleteFile(submission.getFile());
+                    } catch (Exception e) {
+                        System.err.println("Could not delete submission file: " + e.getMessage());
+                    }
+                }
+            }
+        }
+        assignmentSubmissionRepository.deleteAll(assignmentSubmissions);
+
+        // 3. حذف فایل‌های فیزیکی محتوا و تکالیف
+        List<Content> contents = contentRepository.findByLessonOrderByOrderIndex(lesson);
+        for (Content content : contents) {
+            if (content.getFile() != null) {
+                try {
+                    fileStorageService.deleteFile(content.getFile());
+                } catch (Exception e) {
+                    System.err.println("Could not delete content file: " + e.getMessage());
+                }
+            }
+        }
+
+        for (Assignment assignment : assignments) {
+            if (assignment.getFile() != null) {
+                try {
+                    fileStorageService.deleteFile(assignment.getFile());
+                } catch (Exception e) {
+                    System.err.println("Could not delete assignment file: " + e.getMessage());
+                }
+            }
+        }
+
+        // 4. حذف درس (cascade به Exam، Question، Assignment، Content)
         lessonRepository.deleteById(lessonId);
     }
 
