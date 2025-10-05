@@ -248,15 +248,35 @@ public class CourseService {
             }
         }
 
-        // 2. حذف رکوردهای پیشرفت دانش‌آموزان
+        // 2. حذف تمام ارسال‌های آزمون‌ها (برای جلوگیری از خطای FK constraint)
+        List<Submission> examSubmissions = new ArrayList<>();
+        for (Lesson lesson : course.getLessons()) {
+            Optional<Exam> examOpt = examRepository.findByLessonId(lesson.getId());
+            if (examOpt.isPresent()) {
+                examSubmissions.addAll(submissionRepository.findByExam(examOpt.get()));
+            }
+        }
+        submissionRepository.deleteAll(examSubmissions);
+
+        // 3. حذف تمام ارسال‌های تکالیف (برای جلوگیری از خطای FK constraint)
+        List<AssignmentSubmission> assignmentSubmissions = new ArrayList<>();
+        for (Lesson lesson : course.getLessons()) {
+            List<Assignment> assignments = assignmentRepository.findByLesson(lesson);
+            for (Assignment assignment : assignments) {
+                assignmentSubmissions.addAll(assignmentSubmissionRepository.findByAssignment(assignment));
+            }
+        }
+        assignmentSubmissionRepository.deleteAll(assignmentSubmissions);
+
+        // 4. حذف رکوردهای پیشرفت دانش‌آموزان
         List<Progress> courseProgresses = progressRepository.findByCourse(course);
         progressRepository.deleteAll(courseProgresses);
 
-        // 3. حذف دوره که به صورت Cascade تمام دروس، محتواها و تکالیف را حذف می‌کند.
+        // 5. حذف دوره که به صورت Cascade تمام دروس، محتواها و تکالیف را حذف می‌کند.
         // این کار باعث حذف رکوردهای FileMetadata از پایگاه داده نیز می‌شود.
         courseRepository.delete(course);
 
-        // 4. حذف پوشه فیزیکی پس از اتمام تراکنش
+        // 6. حذف پوشه فیزیکی پس از اتمام تراکنش
         String courseDirectoryPath = String.format("courses/%d", courseId);
         fileStorageService.deleteDirectory(courseDirectoryPath);
     }
