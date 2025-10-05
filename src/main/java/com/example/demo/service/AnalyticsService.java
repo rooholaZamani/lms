@@ -744,18 +744,23 @@ public class AnalyticsService {
     }
 
     /**
-     * Get lesson performance analysis
+     * Get lesson performance analysis grouped by course
      */
-    public List<Map<String, Object>> getLessonPerformanceAnalysis(User teacher) {
+    public Map<String, Object> getLessonPerformanceAnalysis(User teacher) {
         List<Course> teacherCourses = courseRepository.findByTeacher(teacher);
-        List<Map<String, Object>> lessonPerformance = new ArrayList<>();
+        Map<String, Object> result = new HashMap<>();
+        Map<String, List<Map<String, Object>>> lessonsByCourse = new HashMap<>();
+        List<Map<String, Object>> allLessons = new ArrayList<>();
 
         for (Course course : teacherCourses) {
             List<Lesson> lessons = lessonRepository.findByCourseOrderByOrderIndex(course);
+            List<Map<String, Object>> courseLessons = new ArrayList<>();
 
             for (Lesson lesson : lessons) {
                 Map<String, Object> lessonData = new HashMap<>();
                 lessonData.put("lesson", lesson.getTitle());
+                lessonData.put("courseId", course.getId());
+                lessonData.put("courseTitle", course.getTitle());
 
                 // Calculate average time spent on lesson
                 List<ActivityLog> lessonActivities = activityLogRepository
@@ -800,11 +805,17 @@ public class AnalyticsService {
                 lessonData.put("difficulty", getDifficultyLabel(avgTime));
                 lessonData.put("studentFeedback", 4.5); // Placeholder - you'd need feedback system
 
-                lessonPerformance.add(lessonData);
+                courseLessons.add(lessonData);
+                allLessons.add(lessonData);
             }
+
+            lessonsByCourse.put(course.getTitle(), courseLessons);
         }
 
-        return lessonPerformance;
+        result.put("lessonsByCourse", lessonsByCourse);
+        result.put("allLessons", allLessons);
+
+        return result;
     }
 
     /**

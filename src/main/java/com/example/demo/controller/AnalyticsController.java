@@ -298,9 +298,9 @@ public class AnalyticsController {
     }
 
     @GetMapping("/teacher/lesson-performance")
-    public ResponseEntity<List<Map<String, Object>>> getLessonPerformanceAnalysis(Authentication authentication) {
+    public ResponseEntity<Map<String, Object>> getLessonPerformanceAnalysis(Authentication authentication) {
         User teacher = userService.findByUsername(authentication.getName());
-        List<Map<String, Object>> lessonPerformance = analyticsService.getLessonPerformanceAnalysis(teacher);
+        Map<String, Object> lessonPerformance = analyticsService.getLessonPerformanceAnalysis(teacher);
         return ResponseEntity.ok(lessonPerformance);
     }
 
