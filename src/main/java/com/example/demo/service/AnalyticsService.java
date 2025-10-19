@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.model.*;
 import com.example.demo.repository.*;
+import com.example.demo.util.AnalyticsUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,8 @@ public class AnalyticsService {
     private final AssignmentRepository assignmentRepository;
     private final ExamService examService;
     private final ProgressService progressService;
+    private final TimeAnalyticsService timeAnalyticsService;
+    private final ScoreAnalyticsService scoreAnalyticsService;
 
     public AnalyticsService(
             CourseRepository courseRepository,
@@ -52,7 +55,9 @@ public class AnalyticsService {
             ContentRepository contentRepository,
             AssignmentRepository assignmentRepository,
             ExamService examService,
-            ProgressService progressService) {
+            ProgressService progressService,
+            TimeAnalyticsService timeAnalyticsService,
+            ScoreAnalyticsService scoreAnalyticsService) {
         this.courseRepository = courseRepository;
         this.progressRepository = progressRepository;
         this.submissionRepository = submissionRepository;
@@ -66,27 +71,8 @@ public class AnalyticsService {
         this.assignmentRepository = assignmentRepository;
         this.examService = examService;
         this.progressService = progressService;
-    }
-
-    /**
-     * Utility method to get current Iran Standard Time
-     */
-    private LocalDateTime getNowInIranTime() {
-        return ZonedDateTime.now(ZoneId.of("Asia/Tehran")).toLocalDateTime();
-    }
-
-    /**
-     * Utility method to get Iran time for a specific days ago
-     */
-    private LocalDateTime getIranTimeMinusDays(int days) {
-        return ZonedDateTime.now(ZoneId.of("Asia/Tehran")).minusDays(days).toLocalDateTime();
-    }
-
-    /**
-     * Utility method to get Iran time for a specific months ago
-     */
-    private LocalDateTime getIranTimeMinusMonths(int months) {
-        return ZonedDateTime.now(ZoneId.of("Asia/Tehran")).minusMonths(months).toLocalDateTime();
+        this.timeAnalyticsService = timeAnalyticsService;
+        this.scoreAnalyticsService = scoreAnalyticsService;
     }
 
     /**
@@ -277,7 +263,7 @@ public class AnalyticsService {
 
         examDetails.put("classAverageScore", classAverageScore);
         examDetails.put("classPassRate", classPassRate);
-        examDetails.put("percentile", calculatePercentile(submission.getScore(),
+        examDetails.put("percentile", AnalyticsUtils.calculatePercentile(submission.getScore(),
                 allSubmissions.stream().mapToDouble(Submission::getScore).toArray()));
 
         return examDetails;
@@ -442,9 +428,9 @@ public class AnalyticsService {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        LocalDateTime thirtyDaysAgo = getIranTimeMinusDays(90);
+        LocalDateTime thirtyDaysAgo = AnalyticsUtils.getIranTimeMinusDays(90);
         List<ActivityLog> activities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, getNowInIranTime());
+                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, thirtyDaysAgo, AnalyticsUtils.getNowInIranTime());
 
         return activities.stream().map(activity -> {
             Map<String, Object> activityData = new HashMap<>();
@@ -473,78 +459,14 @@ public class AnalyticsService {
      * Get exam performance for a student
      */
     public List<Map<String, Object>> getStudentExamPerformance(Long studentId) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        List<Submission> submissions = submissionRepository.findByStudent(student);
-
-        return submissions.stream().map(submission -> {
-            Map<String, Object> examData = new HashMap<>();
-            Exam exam = submission.getExam();
-
-            examData.put("examName", exam.getTitle());
-            examData.put("score", submission.getScore());
-            examData.put("timeSpent", submission.getTimeSpent() != null ?
-                    submission.getTimeSpent() : 0L);
-            examData.put("passed", submission.isPassed());
-            examData.put("date", submission.getSubmissionTime());
-
-            // Calculate class average for this exam
-            List<Submission> allSubmissions = submissionRepository.findByExam(exam);
-            double classAverage = allSubmissions.stream()
-                    .mapToDouble(Submission::getScore)
-                    .average()
-                    .orElse(0.0);
-
-            examData.put("classAverage", classAverage);
-
-            return examData;
-        }).collect(Collectors.toList());
+        return scoreAnalyticsService.getStudentExamPerformance(studentId);
     }
 
     /**
      * Get time analysis for a student
      */
     public List<Map<String, Object>> getStudentTimeAnalysis(Long studentId) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        List<ActivityLog> activities = activityLogRepository.findByUserAndTimestampBetweenOrderByTimestampDesc(
-                student, getIranTimeMinusDays(90), getNowInIranTime());
-
-        Map<String, List<ActivityLog>> groupedActivities = activities.stream()
-                .collect(Collectors.groupingBy(ActivityLog::getActivityType));
-
-        List<Map<String, Object>> timeAnalysis = new ArrayList<>();
-
-        for (Map.Entry<String, List<ActivityLog>> entry : groupedActivities.entrySet()) {
-            Map<String, Object> contentTypeData = new HashMap<>();
-            String activityType = entry.getKey();
-            List<ActivityLog> typeActivities = entry.getValue();
-
-            contentTypeData.put("contentType", getContentTypeLabel(activityType));
-
-            double avgTime = typeActivities.stream()
-                    .mapToLong(ActivityLog::getTimeSpent)
-                    .average()
-                    .orElse(0.0);
-
-            contentTypeData.put("avgTime", avgTime);
-
-            long totalTime = typeActivities.stream()
-                    .mapToLong(ActivityLog::getTimeSpent)
-                    .sum();
-
-            contentTypeData.put("totalTime", totalTime);
-
-            // Calculate efficiency based on completion rate and time spent
-            double efficiency = calculateEfficiency(activityType, avgTime);
-            contentTypeData.put("efficiency", efficiency);
-
-            timeAnalysis.add(contentTypeData);
-        }
-
-        return timeAnalysis;
+        return timeAnalyticsService.getStudentTimeAnalysis(studentId);
     }
 
     /**
@@ -687,12 +609,16 @@ public class AnalyticsService {
                     .orElse(0.0);
 
             contentData.put("avgTime", avgTime);
-            contentData.put("difficulty", getDifficultyLabel(avgTime));
+            contentData.put("difficulty", AnalyticsUtils.getDifficultyLabel(avgTime));
             contentData.put("studentCount", activities.size());
 
-            // Calculate completion rate and engagement
-            contentData.put("completionRate", calculateCompletionRateForContentType(contentType, teacherCourses));
-            contentData.put("engagement", calculateEngagementForContentType(contentType, activities));
+            // Calculate completion rate and engagement (placeholder values)
+            contentData.put("completionRate", 85.0); // Placeholder: 85% completion rate
+
+            // Calculate engagement based on average time spent
+            double avgTimeSpent = activities.isEmpty() ? 0.0 :
+                activities.stream().mapToLong(ActivityLog::getTimeSpent).average().orElse(0.0);
+            contentData.put("engagement", Math.min(95.0, 50 + (avgTimeSpent / 10)));
 
             timeAnalysis.add(contentData);
         }
@@ -728,10 +654,10 @@ public class AnalyticsService {
             topicData.put("mediumQuestions", mediumQuestions);
             topicData.put("hardQuestions", hardQuestions);
 
-            // Calculate average score and time for questions in this topic
-            double avgScore = calculateAverageScoreForQuestions(questions);
-            double avgTime = calculateAverageTimeForQuestions(questions);
-            double difficultyRating = calculateDifficultyRating(questions);
+            // Calculate average score and time for questions in this topic (placeholders)
+            double avgScore = 75.0; // Placeholder
+            double avgTime = 210.0; // Placeholder: 3.5 minutes in seconds
+            double difficultyRating = 3.2; // Placeholder: on scale of 1-5
 
             topicData.put("avgScore", avgScore);
             topicData.put("avgTime", avgTime);
@@ -802,7 +728,7 @@ public class AnalyticsService {
                 }
 
                 lessonData.put("avgScore", avgScore);
-                lessonData.put("difficulty", getDifficultyLabel(avgTime));
+                lessonData.put("difficulty", AnalyticsUtils.getDifficultyLabel(avgTime));
                 lessonData.put("studentFeedback", 4.5); // Placeholder - you'd need feedback system
 
                 courseLessons.add(lessonData);
@@ -894,25 +820,6 @@ public class AnalyticsService {
         return recentActivities;
     }
 
-
-    private double calculateEfficiency(String activityType, double avgTime) {
-        switch (activityType) {
-            case "CONTENT_VIEW":
-                return avgTime < 300 ? 95 : (avgTime < 600 ? 85 : 70); // 5-10 minutes
-            case "ASSIGNMENT_SUBMISSION":
-                return avgTime < 1800 ? 90 : (avgTime < 3600 ? 80 : 65); // 30-60 minutes
-            default:
-                return 80.0;
-        }
-    }
-
-    private String getDifficultyLabel(double avgTime) {
-        if (avgTime < 120) return "آسان";      // 2 minutes = 120 seconds
-        if (avgTime < 300) return "متوسط";     // 5 minutes = 300 seconds
-        if (avgTime < 600) return "سخت";       // 10 minutes = 600 seconds
-        return "خیلی سخت";
-    }
-
     private double calculateEngagementRate(List<Progress> progressList) {
         if (progressList.isEmpty()) return 0.0;
 
@@ -957,70 +864,6 @@ public class AnalyticsService {
         trends.put("scoreTrend", 3);     // +3% improvement
 
         return trends;
-    }
-
-    private double calculateCompletionRateForContentType(String contentType, List<Course> courses) {
-        // Placeholder implementation
-        return 85.0; // 85% completion rate
-    }
-
-    private double calculateEngagementForContentType(String contentType, List<ActivityLog> activities) {
-        // محاسبه engagement بر اساس frequency و زمان صرف شده
-        if (activities.isEmpty()) return 0.0;
-
-        double avgTimeSpent = activities.stream()
-                .mapToLong(ActivityLog::getTimeSpent)
-                .average()
-                .orElse(0.0);
-
-        // Higher time spent = higher engagement (up to a point) - اکنون در ثانیه
-        return Math.min(95.0, 50 + (avgTimeSpent / 10));
-    }
-
-    private double calculateAverageScoreForQuestions(List<Question> questions) {
-        // Get all submissions for these questions and calculate average score
-        return 75.0; // Placeholder
-    }
-
-    private double calculateAverageTimeForQuestions(List<Question> questions) {
-        // Calculate average time spent on these questions in seconds
-        return 210.0; // Placeholder - 3.5 seconds = 210 seconds
-    }
-
-    private double calculateDifficultyRating(List<Question> questions) {
-        // Calculate difficulty rating based on correct rates and time spent
-        return 3.2; // Placeholder - on scale of 1-5
-    }
-
-    private int calculateTrend(List<ActivityLog> activities, int days) {
-        if (activities.size() < days) return 0;
-
-        // Compare first half with second half of the period
-        int halfDays = days / 2;
-        LocalDateTime midPoint = LocalDateTime.now().minusDays(halfDays);
-
-        long recentCount = activities.stream()
-                .filter(a -> a.getTimestamp().isAfter(midPoint))
-                .count();
-
-        long earlierCount = activities.stream()
-                .filter(a -> a.getTimestamp().isBefore(midPoint))
-                .count();
-
-        if (earlierCount == 0) return 0;
-
-        return (int) (((double) recentCount - earlierCount) / earlierCount * 100);
-    }
-
-    private double calculatePercentile(double value, double[] values) {
-        if (values.length == 0) return 0;
-
-        int count = 0;
-        for (double v : values) {
-            if (v < value) count++;
-        }
-
-        return (double) count / values.length * 100;
     }
 
     // Additional required methods for complete functionality
@@ -1559,10 +1402,10 @@ public class AnalyticsService {
 
             Map<String, Object> dayData = new HashMap<>();
             dayData.put("date", dayStart.toLocalDate().toString());
-            dayData.put("dayName", getDayName(dayStart.getDayOfWeek()));
-            dayData.put("views", countActivitiesByType(dayActivities, "CONTENT_VIEW"));
-            dayData.put("submissions", countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "ASSIGNMENT_SUBMISSION"));
-            dayData.put("completions", countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
+            dayData.put("dayName", AnalyticsUtils.getDayName(dayStart.getDayOfWeek()));
+            dayData.put("views", AnalyticsUtils.countActivitiesByType(dayActivities, "CONTENT_VIEW"));
+            dayData.put("submissions", AnalyticsUtils.countActivitiesByType(dayActivities, "EXAM_SUBMISSION", "ASSIGNMENT_SUBMISSION"));
+            dayData.put("completions", AnalyticsUtils.countActivitiesByType(dayActivities, "LESSON_COMPLETION"));
             dayData.put("totalTime", Math.round(dayActivities.stream()
                     .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
                     .sum() * 10.0));
@@ -1643,23 +1486,17 @@ public class AnalyticsService {
                     .collect(Collectors.toList());
 
             Map<String, Object> monthData = new HashMap<>();
-            monthData.put("month", getMonthName(monthStart.getMonthValue()));
+            monthData.put("month", AnalyticsUtils.getMonthName(monthStart.getMonthValue()));
             monthData.put("year", monthStart.getYear());
-            monthData.put("lessons", countActivitiesByType(monthActivities, "LESSON_COMPLETION"));
-            monthData.put("exams", countActivitiesByType(monthActivities, "EXAM_SUBMISSION"));
-            monthData.put("assignments", countActivitiesByType(monthActivities, "ASSIGNMENT_SUBMISSION"));
+            monthData.put("lessons", AnalyticsUtils.countActivitiesByType(monthActivities, "LESSON_COMPLETION"));
+            monthData.put("exams", AnalyticsUtils.countActivitiesByType(monthActivities, "EXAM_SUBMISSION"));
+            monthData.put("assignments", AnalyticsUtils.countActivitiesByType(monthActivities, "ASSIGNMENT_SUBMISSION"));
             monthData.put("totalActivities", monthActivities.size());
 
             trend.add(monthData);
         }
 
         return trend;
-    }
-
-    private long countActivitiesByType(List<ActivityLog> activities, String... types) {
-        return activities.stream()
-                .filter(activity -> Arrays.asList(types).contains(activity.getActivityType()))
-                .count();
     }
 
     private double calculateConsistencyScore(User student, int days) {
@@ -1674,17 +1511,6 @@ public class AnalyticsService {
         return (double) activeDays.size() / days * 100;
     }
 
-    private String getDayName(DayOfWeek dayOfWeek) {
-        String[] dayNames = {"یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه", "شنبه"};
-        return dayNames[dayOfWeek.getValue() % 7];
-    }
-
-    private String getMonthName(int month) {
-        String[] monthNames = {"فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-                "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"};
-        return monthNames[month - 1];
-    }
-
     // Additional methods for course analytics
 
     /**
@@ -1697,7 +1523,7 @@ public class AnalyticsService {
         Map<String, Object> result = new HashMap<>();
 
         LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = calculateStartDate(endDate, period);
+        LocalDateTime startDate = AnalyticsUtils.calculateStartDate(endDate, period);
 
         // دریافت activity logs مربوط به این course (using inclusive date boundaries)
         List<ActivityLog> allActivities = activityLogRepository.findAll().stream()
@@ -1835,7 +1661,7 @@ public class AnalyticsService {
         Map<String, Object> result = new HashMap<>();
 
         LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = calculateStartDate(endDate, period);
+        LocalDateTime startDate = AnalyticsUtils.calculateStartDate(endDate, period);
 
         // دریافت activities مربوط به course
         List<ActivityLog> activities = activityLogRepository.findAll().stream()
@@ -1886,98 +1712,7 @@ public class AnalyticsService {
      * Get course exam scores with filtering and aggregation
      */
     public Map<String, Object> getCourseExamScores(Long courseId, String period, Long examId, boolean includeDetails) {
-        Course course = courseRepository.findById(courseId)
-                .orElseThrow(() -> new RuntimeException("Course not found"));
-
-        Map<String, Object> result = new HashMap<>();
-
-        // محاسبه time range بر اساس period
-        LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = calculateStartDate(endDate, period);
-
-        // دریافت submissions بر اساس course و time range
-        List<Submission> submissions = submissionRepository.findAll().stream()
-                .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
-                .filter(s -> s.getSubmissionTime().isAfter(startDate) && s.getSubmissionTime().isBefore(endDate))
-                .filter(s -> examId == null || s.getExam().getId().equals(examId))
-                .collect(Collectors.toList());
-
-        if (submissions.isEmpty()) {
-            result.put("courseId", courseId);
-            result.put("courseName", course.getTitle());
-            result.put("period", period);
-            result.put("examId", examId);
-            result.put("totalSubmissions", 0);
-            result.put("message", "No exam submissions found for the specified period");
-            return result;
-        }
-
-        // محاسبات آماری
-        List<Integer> scores = submissions.stream()
-                .map(Submission::getScore)
-                .collect(Collectors.toList());
-
-        double averageScore = scores.stream()
-                .mapToInt(Integer::intValue)
-                .average()
-                .orElse(0.0);
-
-        int highestScore = scores.stream()
-                .mapToInt(Integer::intValue)
-                .max()
-                .orElse(0);
-
-        int lowestScore = scores.stream()
-                .mapToInt(Integer::intValue)
-                .min()
-                .orElse(0);
-
-        long passedCount = submissions.stream()
-                .filter(Submission::isPassed)
-                .count();
-
-        double passRate = submissions.isEmpty() ? 0 : (double) passedCount / submissions.size() * 100;
-
-        // Grade distribution
-        Map<String, Integer> gradeDistribution = calculateGradeDistribution(scores);
-
-        // Exam breakdown
-        List<Map<String, Object>> examBreakdown = new ArrayList<>();
-        if (examId == null) {
-            Map<Long, List<Submission>> submissionsByExam = submissions.stream()
-                    .collect(Collectors.groupingBy(s -> s.getExam().getId()));
-
-            for (Map.Entry<Long, List<Submission>> entry : submissionsByExam.entrySet()) {
-                List<Submission> examSubmissions = entry.getValue();
-                Exam exam = examSubmissions.get(0).getExam();
-
-                Map<String, Object> examData = new HashMap<>();
-                examData.put("examId", exam.getId());
-                examData.put("examTitle", exam.getTitle());
-                examData.put("averageScore", examSubmissions.stream()
-                        .mapToInt(Submission::getScore)
-                        .average()
-                        .orElse(0.0));
-                examData.put("submissionCount", examSubmissions.size());
-                examBreakdown.add(examData);
-            }
-        }
-
-        // Build result
-        result.put("courseId", courseId);
-        result.put("courseName", course.getTitle());
-        result.put("period", period);
-        result.put("examId", examId);
-        result.put("totalSubmissions", submissions.size());
-        result.put("averageScore", Math.round(averageScore));
-        result.put("highestScore", highestScore);
-        result.put("lowestScore", lowestScore);
-        result.put("passRate", Math.round(passRate * 10.0));
-        result.put("scores", includeDetails ? scores : null);
-        result.put("gradeDistribution", gradeDistribution);
-        result.put("examBreakdown", examBreakdown);
-
-        return result;
+        return scoreAnalyticsService.getCourseExamScores(courseId, period, examId, includeDetails);
     }
 
     /**
@@ -2015,7 +1750,7 @@ public class AnalyticsService {
 
             // Calculate average time spent on this lesson
             LocalDateTime endDate = LocalDateTime.now();
-            LocalDateTime startDate = calculateStartDate(endDate, period);
+            LocalDateTime startDate = AnalyticsUtils.calculateStartDate(endDate, period);
 
             List<ActivityLog> lessonActivities = activityLogRepository.findAll().stream()
                     .filter(log -> "LESSON_COMPLETION".equals(log.getActivityType()) ||
@@ -2068,20 +1803,6 @@ public class AnalyticsService {
     }
 
     // Helper methods for new analytics functionality
-
-    private LocalDateTime calculateStartDate(LocalDateTime endDate, String period) {
-        switch (period.toLowerCase()) {
-            case "week":
-                return endDate.minusWeeks(1);
-            case "quarter":
-                return endDate.minusMonths(3);
-            case "semester":
-                return endDate.minusMonths(6);
-            case "month":
-            default:
-                return endDate.minusMonths(1);
-        }
-    }
 
     /**
      * Calculate grade distribution using percentage-based categories.
@@ -2224,54 +1945,7 @@ public class AnalyticsService {
      * @return Enhanced analytics with individual submission tracking
      */
     public Map<String, Object> getEnhancedStudentGradesDistribution(Long studentId, Long courseId, String timeFilter) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = getNowInIranTime();
-
-        List<Submission> examSubmissions = submissionRepository.findByStudentAndTimestampBetween(
-                student, startDate, endDate);
-
-        if (courseId != null) {
-            examSubmissions = examSubmissions.stream()
-                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
-                    .collect(Collectors.toList());
-        }
-
-        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository
-                .findByStudentAndSubmittedAtBetween(student, startDate, endDate);
-
-        if (courseId != null) {
-            assignmentSubmissions = assignmentSubmissions.stream()
-                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
-                    .collect(Collectors.toList());
-        }
-
-        Map<String, Object> result = new HashMap<>();
-
-        // Enhanced exam distribution
-        Map<String, Object> examAnalytics = calculateEnhancedExamGradeDistribution(examSubmissions);
-
-        // Enhanced assignment distribution
-        Map<String, Object> assignmentAnalytics = calculateEnhancedAssignmentGradeDistribution(assignmentSubmissions);
-
-        result.put("examAnalytics", examAnalytics);
-        result.put("assignmentAnalytics", assignmentAnalytics);
-
-        // Individual submission details for debugging the "only 1 assignment showing" issue
-        result.put("submissionSummary", Map.of(
-                "totalAssignmentsSubmitted", assignmentSubmissions.size(),
-                "assignmentsGraded", assignmentSubmissions.stream()
-                        .mapToInt(as -> as.getScore() != null ? 1 : 0)
-                        .sum(),
-                "assignmentsPending", assignmentSubmissions.stream()
-                        .mapToInt(as -> as.getScore() == null ? 1 : 0)
-                        .sum(),
-                "totalExamsSubmitted", examSubmissions.size()
-        ));
-
-        return result;
+        return scoreAnalyticsService.getEnhancedStudentGradesDistribution(studentId, courseId, timeFilter);
     }
 
     private Map<String, Object> calculateEnhancedExamGradeDistribution(List<Submission> examSubmissions) {
@@ -2928,19 +2602,19 @@ public class AnalyticsService {
         comparison.put("studentCompletion", studentProgress.getCompletionPercentage());
         comparison.put("classAverageCompletion", averageCompletion);
         double studentCompletionRate = (double) studentProgress.getCompletedLessonCount() / studentProgress.getTotalLessons() * 100;
-        comparison.put("completionPercentile", calculatePercentile(studentCompletionRate,
+        comparison.put("completionPercentile", AnalyticsUtils.calculatePercentile(studentCompletionRate,
                 allProgress.stream().mapToDouble(p -> (double) p.getCompletedLessonCount() / p.getTotalLessons() * 100).toArray()));
 
         comparison.put("studentExamAverage", studentExamAverage);
         comparison.put("classExamAverage", classExamAverage);
-        comparison.put("examPercentile", calculatePercentile(studentExamAverage,
+        comparison.put("examPercentile", AnalyticsUtils.calculatePercentile(studentExamAverage,
                 allSubmissions.stream().mapToDouble(Submission::getScore).toArray()));
 
         // Assignment comparison (instead of exercise)
         comparison.put("studentAssignmentAverage", studentAssignmentAverage);
         comparison.put("classAssignmentAverage", classAssignmentAverage);
         comparison.put("assignmentSubmissions", studentAssignmentSubmissions.size());
-        comparison.put("assignmentPercentile", calculatePercentile(studentAssignmentAverage,
+        comparison.put("assignmentPercentile", AnalyticsUtils.calculatePercentile(studentAssignmentAverage,
                 allAssignmentSubmissions.stream()
                         .filter(as -> as.getScore() != null)
                         .mapToDouble(as -> as.getScore().doubleValue())
@@ -3178,16 +2852,16 @@ public class AnalyticsService {
                 .findByActivityTypeAndTimestampBetween("ASSIGNMENT_SUBMISSION", thirtyDaysAgo, now);
 
         stats.put("avgDailyLogins", loginActivities.size() / 30);
-        stats.put("loginTrend", calculateTrend(loginActivities, 30));
+        stats.put("loginTrend", AnalyticsUtils.calculateTrend(loginActivities, 30));
 
         stats.put("avgContentViews", contentViews.size() / 30);
-        stats.put("viewTrend", calculateTrend(contentViews, 30));
+        stats.put("viewTrend", AnalyticsUtils.calculateTrend(contentViews, 30));
 
         stats.put("avgExamSubmissions", examSubmissions.size() / 30);
-        stats.put("examTrend", calculateTrend(examSubmissions, 30));
+        stats.put("examTrend", AnalyticsUtils.calculateTrend(examSubmissions, 30));
 
         stats.put("avgAssignmentSubmissions", assignmentSubmissions.size() / 30); // Changed from exercise
-        stats.put("assignmentTrend", calculateTrend(assignmentSubmissions, 30)); // Changed from exercise
+        stats.put("assignmentTrend", AnalyticsUtils.calculateTrend(assignmentSubmissions, 30)); // Changed from exercise
 
         return stats;
     }
@@ -3226,36 +2900,14 @@ public class AnalyticsService {
      * Calculate study time for a specific course
      */
     public long calculateCourseStudyTime(User student, Course course) {
-        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
-
-        List<ActivityLog> courseActivities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
-                .stream()
-                .filter(log -> isStudyActivity(log.getActivityType()))
-                .filter(log -> isCourseRelatedActivity(log, course.getId()))
-                .collect(Collectors.toList());
-
-        return courseActivities.stream()
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
+        return timeAnalyticsService.calculateCourseStudyTime(student, course);
     }
 
     /**
      * Calculate actual study time across multiple courses
      */
     public long calculateActualStudyTime(User student, List<Course> courses) {
-        LocalDateTime threeMonthsAgo = LocalDateTime.now().minusDays(90);
-
-        List<ActivityLog> studyActivities = activityLogRepository
-                .findByUserAndTimestampBetweenOrderByTimestampDesc(student, threeMonthsAgo, LocalDateTime.now())
-                .stream()
-                .filter(log -> isStudyActivity(log.getActivityType()))
-                .filter(log -> isCourseRelatedActivityForCourses(log, courses))
-                .collect(Collectors.toList());
-
-        return studyActivities.stream()
-                .mapToLong(log -> log.getTimeSpent() != null ? log.getTimeSpent() : 0L)
-                .sum();
+        return timeAnalyticsService.calculateActualStudyTime(student, courses);
     }
 
     /**
@@ -3507,7 +3159,7 @@ public class AnalyticsService {
 
         // Calculate time range
         LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = calculateStartDate(endDate, period);
+        LocalDateTime startDate = AnalyticsUtils.calculateStartDate(endDate, period);
 
         // Get all questions for this course
         List<Question> courseQuestions = questionRepository.findByCourseId(courseId);
@@ -3633,7 +3285,7 @@ public class AnalyticsService {
 
         // Calculate time range
         LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = calculateStartDate(endDate, period);
+        LocalDateTime startDate = AnalyticsUtils.calculateStartDate(endDate, period);
 
         // Get all students enrolled in this course
         List<Progress> courseProgress = progressRepository.findByCourse(course);
@@ -3900,7 +3552,7 @@ public class AnalyticsService {
 
         // Calculate time range
         LocalDateTime endDate = LocalDateTime.now();
-        LocalDateTime startDate = calculateStartDate(endDate, period);
+        LocalDateTime startDate = AnalyticsUtils.calculateStartDate(endDate, period);
 
         // Determine data points based on period
         int dataPoints;
@@ -4115,7 +3767,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Course not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = getNowInIranTime();
+        LocalDateTime endDate = AnalyticsUtils.getNowInIranTime();
 
         List<ActivityLog> activities = activityLogRepository
                 .findByUserAndTimestampBetweenOrderByTimestampDesc(student, startDate, endDate)
@@ -4293,15 +3945,15 @@ public class AnalyticsService {
     private LocalDateTime getStartDateByFilter(String timeFilter) {
         switch (timeFilter) {
             case "week":
-                return getIranTimeMinusDays(7);
+                return AnalyticsUtils.getIranTimeMinusDays(7);
             case "month":
-                return getIranTimeMinusMonths(1);
+                return AnalyticsUtils.getIranTimeMinusMonths(1);
             case "3months":
-                return getIranTimeMinusMonths(3);
+                return AnalyticsUtils.getIranTimeMinusMonths(3);
             case "semester":
-                return getIranTimeMinusMonths(6);
+                return AnalyticsUtils.getIranTimeMinusMonths(6);
             default:
-                return getIranTimeMinusDays(14);
+                return AnalyticsUtils.getIranTimeMinusDays(14);
         }
     }
 
@@ -4318,7 +3970,7 @@ public class AnalyticsService {
                     .orElseThrow(() -> new RuntimeException("Course not found"));
 
             LocalDateTime startDate = getStartDateByFilterHeatmap(timeFilter);
-            LocalDateTime endDate = getNowInIranTime();
+            LocalDateTime endDate = AnalyticsUtils.getNowInIranTime();
 
             // دریافت فعالیت‌های مربوط به دوره
             List<ActivityLog> activities = activityLogRepository
@@ -4388,7 +4040,7 @@ public class AnalyticsService {
 //                .orElseThrow(() -> new RuntimeException("Course not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = getNowInIranTime();
+        LocalDateTime endDate = AnalyticsUtils.getNowInIranTime();
 
         // دریافت فعالیت‌های مربوط به دوره - با محدودیت بالا
         List<ActivityLog> activities = activityLogRepository
@@ -4439,7 +4091,7 @@ public class AnalyticsService {
                 dataPoint.put("dayOfWeek", day);
                 dataPoint.put("hour", hour);
                 dataPoint.put("activityCount", count);
-                dataPoint.put("dayName", getDayName(day));
+                dataPoint.put("dayName", AnalyticsUtils.getDayName(day));
 
                 heatmapData.add(dataPoint);
             }
@@ -4460,7 +4112,7 @@ public class AnalyticsService {
                 .orElse(new HashMap<>());
 
         if (!mostActivePoint.isEmpty()) {
-            analytics.put("mostActiveDay", getDayName((Integer) mostActivePoint.get("dayOfWeek")));
+            analytics.put("mostActiveDay", AnalyticsUtils.getDayName((Integer) mostActivePoint.get("dayOfWeek")));
             analytics.put("mostActiveHour", mostActivePoint.get("hour") + ":00");
         } else {
             analytics.put("mostActiveDay", "نامشخص");
@@ -4562,7 +4214,7 @@ public class AnalyticsService {
         // محاسبه فعالیت در روزهای مختلف هفته
         Map<String, Long> weeklyDistribution = activities.stream()
                 .collect(Collectors.groupingBy(
-                        activity -> getDayName(activity.getTimestamp().getDayOfWeek().getValue() % 7),
+                        activity -> AnalyticsUtils.getDayName(activity.getTimestamp().getDayOfWeek().getValue() % 7),
                         Collectors.counting()
                 ));
         stats.put("weeklyDistribution", weeklyDistribution);
@@ -4625,18 +4277,10 @@ public class AnalyticsService {
     }
 
     /**
-     * دریافت نام روز به فارسی
-     */
-    private String getDayName(int dayOfWeek) {
-        String[] days = {"شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه"};
-        return days[dayOfWeek % 7];
-    }
-
-    /**
      * دریافت تاریخ شروع بر اساس فیلتر زمانی
      */
     private LocalDateTime getStartDateByFilterHeatmap(String timeFilter) {
-        LocalDateTime now = getNowInIranTime();
+        LocalDateTime now = AnalyticsUtils.getNowInIranTime();
 
         switch (timeFilter) {
             case "7":
@@ -4804,7 +4448,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = getNowInIranTime();
+        LocalDateTime endDate = AnalyticsUtils.getNowInIranTime();
 
         // دریافت تمام فعالیت‌های دانش‌آموز
         List<ActivityLog> allActivities = activityLogRepository
@@ -4865,7 +4509,7 @@ public class AnalyticsService {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
-        LocalDateTime endDate = getNowInIranTime();
+        LocalDateTime endDate = AnalyticsUtils.getNowInIranTime();
         LocalDateTime startDate = endDate.minusDays(days);
 
         // Get activities in the specified time range
@@ -4949,7 +4593,7 @@ public class AnalyticsService {
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
         LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = getNowInIranTime();
+        LocalDateTime endDate = AnalyticsUtils.getNowInIranTime();
 
         // Get activities in the specified time range
         List<ActivityLog> activities = activityLogRepository
@@ -5041,74 +4685,7 @@ public class AnalyticsService {
         return baseDescription;
     }
     public Map<String, Object> getStudentGradesDistribution(Long studentId, Long courseId, String timeFilter) {
-        User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        LocalDateTime startDate = getStartDateByFilter(timeFilter);
-        LocalDateTime endDate = getNowInIranTime();
-
-        List<Submission> examSubmissions = submissionRepository.findByStudentAndTimestampBetween(
-                student, startDate, endDate);
-
-        if (courseId != null) {
-            examSubmissions = examSubmissions.stream()
-                    .filter(s -> s.getExam().getLesson().getCourse().getId().equals(courseId))
-                    .collect(Collectors.toList());
-        }
-
-        Map<String, Object> result = new HashMap<>();
-
-        Map<String, Integer> distribution = calculateGradeDistribution(
-                examSubmissions.stream()
-                        .map(Submission::getScore)
-                        .collect(Collectors.toList())
-        );
-
-        List<AssignmentSubmission> assignmentSubmissions = assignmentSubmissionRepository
-                .findByStudentAndSubmittedAtBetween(student, startDate, endDate);
-
-        if (courseId != null) {
-            assignmentSubmissions = assignmentSubmissions.stream()
-                    .filter(as -> as.getAssignment().getLesson().getCourse().getId().equals(courseId))
-                    .collect(Collectors.toList());
-        }
-
-// Calculate separate distributions with proper max scores
-        Map<String, Integer> examDistribution = calculateExamGradeDistribution(examSubmissions);
-        Map<String, Integer> assignmentDistribution = calculateAssignmentGradeDistribution(assignmentSubmissions);
-
-// Combined distribution (optional)
-        List<Integer> allScores = new ArrayList<>();
-        allScores.addAll(examSubmissions.stream().map(Submission::getScore).collect(Collectors.toList()));
-        allScores.addAll(assignmentSubmissions.stream()
-                .filter(as -> as.getScore() != null)
-                .map(AssignmentSubmission::getScore)
-                .collect(Collectors.toList()));
-
-        Map<String, Integer> overallDistribution = calculateGradeDistribution(allScores);
-
-        result.put("examDistribution", examDistribution);
-        result.put("assignmentDistribution", assignmentDistribution);
-        result.put("overallDistribution", overallDistribution);
-
-        result.put("examScores", examSubmissions.stream()
-                .map(s -> Map.of(
-                        "score", s.getScore(),
-                        "examTitle", s.getExam().getTitle(),
-                        "date", s.getSubmissionTime()
-                ))
-                .collect(Collectors.toList()));
-
-        result.put("assignmentScores", assignmentSubmissions.stream()
-                .filter(as -> as.getScore() != null)
-                .map(as -> Map.of(
-                        "score", as.getScore(),
-                        "assignmentTitle", as.getAssignment().getTitle(),
-                        "date", as.getSubmittedAt()
-                ))
-                .collect(Collectors.toList()));
-
-        return result;
+        return scoreAnalyticsService.getStudentGradesDistribution(studentId, courseId, timeFilter);
     }
 
     /**
