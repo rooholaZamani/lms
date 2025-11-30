@@ -1,6 +1,8 @@
 package com.example.demo.util;
 
 import com.example.demo.model.ActivityLog;
+import com.example.demo.model.ActivityType;
+import com.example.demo.model.TimePeriod;
 
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
@@ -58,34 +60,50 @@ public class AnalyticsUtils {
 
     /**
      * Calculate start date based on period filter
+     * Now uses TimePeriod enum for better type safety
      */
     public static LocalDateTime calculateStartDate(LocalDateTime endDate, String period) {
-        LocalDateTime now = getNowInIranTime();
+        // Try parsing as number of days first (backward compatibility)
+        try {
+            int days = Integer.parseInt(period);
+            TimePeriod timePeriod = TimePeriod.fromDays(days);
+            return timePeriod.getStartDate(endDate);
+        } catch (NumberFormatException e) {
+            // Not a number, try parsing as enum name or string
+        }
 
+        // Parse as string representation
         switch (period.toLowerCase()) {
             case "day":
             case "daily":
-                return now.minusDays(1);
+                return TimePeriod.DAY.getStartDate(endDate);
             case "week":
             case "weekly":
-                return now.minusDays(7);
+                return TimePeriod.WEEK.getStartDate(endDate);
             case "month":
             case "monthly":
-                return now.minusMonths(1);
+                return TimePeriod.MONTH.getStartDate(endDate);
             case "3months":
             case "quarter":
-                return now.minusMonths(3);
+                return TimePeriod.QUARTER.getStartDate(endDate);
             case "6months":
             case "semester":
-                return now.minusMonths(6);
+                return endDate.minusMonths(6); // No enum for semester
             case "year":
             case "yearly":
-                return now.minusYears(1);
+                return TimePeriod.YEAR.getStartDate(endDate);
             case "all":
-                return LocalDateTime.of(2020, 1, 1, 0, 0); // Very old date
+                return TimePeriod.ALL_TIME.getStartDate(endDate);
             default:
-                return now.minusMonths(1); // Default to 1 month
+                return TimePeriod.MONTH.getStartDate(endDate); // Default to 1 month
         }
+    }
+
+    /**
+     * Calculate start date using TimePeriod enum directly
+     */
+    public static LocalDateTime calculateStartDate(LocalDateTime endDate, TimePeriod period) {
+        return period.getStartDate(endDate);
     }
 
     // ==================== Date Formatters ====================
@@ -144,9 +162,24 @@ public class AnalyticsUtils {
 
     /**
      * Get Persian label for activity type
+     * Now uses ActivityType enum when possible
      */
     public static String getActivityTypeLabel(String activityType) {
+        // Try using the enum first
+        ActivityType type = ActivityType.fromString(activityType);
+        if (type != null) {
+            return type.getPersianLabel();
+        }
+
+        // Fallback to legacy map for backward compatibility
         return ACTIVITY_TYPE_LABELS.getOrDefault(activityType, "فعالیت نامشخص");
+    }
+
+    /**
+     * Get Persian label for activity type using enum directly
+     */
+    public static String getActivityTypeLabel(ActivityType activityType) {
+        return activityType != null ? activityType.getPersianLabel() : "فعالیت نامشخص";
     }
 
     // ==================== Content Type Labels ====================

@@ -39,4 +39,11 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @Query("SELECT s FROM Submission s WHERE s.exam.id = :examId AND s.student = :student")
     Optional<Submission> findByExamIdAndStudent(@Param("examId") Long examId, @Param("student") User student);
 
+    // Optimized query methods to avoid stream().filter()
+    @Query("SELECT COUNT(s) FROM Submission s WHERE s.exam = :exam AND s.passed = true")
+    long countByExamAndPassedTrue(@Param("exam") Exam exam);
+
+    @Query("SELECT s FROM Submission s WHERE s.exam = :exam AND s.passed = true")
+    List<Submission> findByExamAndPassedTrue(@Param("exam") Exam exam);
+
 }
