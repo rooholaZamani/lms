@@ -1480,7 +1480,6 @@ public class ExamController {
                 }
             }
 
-
             // Recalculate score
             int recalculatedScore = examService.recalculateSubmissionScore(submission, manualGrades);
 
