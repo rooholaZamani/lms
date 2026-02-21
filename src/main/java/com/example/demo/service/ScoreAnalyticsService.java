@@ -281,7 +281,7 @@ public class ScoreAnalyticsService {
         for (Integer score : scores) {
             if (score == null) continue;
 
-            double percentage = (score / maxScore) * 100;
+            double percentage = GradeCategory.calculatePercentage(score, maxScore);
             GradeCategory category = GradeCategory.fromPercentage(percentage);
             String categoryName = category.name().toLowerCase();
             distribution.put(categoryName, distribution.get(categoryName) + 1);
